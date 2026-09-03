@@ -1,0 +1,21 @@
+{
+    "name": "Tyr",
+    "version": "1.0.0",
+    "description": "",
+    "scripts": {
+      "build": "npx tsc"
+    },
+    "keywords": [
+      "cli",
+      "npmtool"
+    ],
+    "author": "Ayaan Khan",
+    "license": "MIT",
+    "dependencies": {
+      "commander": "^10.0.1",
+      "figlet": "^1.6.0"
+    },
+    "devDependencies": {
+      "typescript": "^5.0.4"
+    }
+  }
