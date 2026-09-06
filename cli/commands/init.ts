@@ -1,6 +1,7 @@
 // init command
 
 import { Command } from "commander";
+import { mkdir } from "fs/promises";
 import * as fs from "fs/promises";
 import * as path from "path";
 
@@ -32,6 +33,7 @@ export async function registerInitCommand(program: Command){
             for (const file of files) {
                 readFile(path.relative(root, file));
             }
+            createTyrDirectory();
             if(options.start){
                 console.log("Starting the process...");
             }
@@ -64,6 +66,17 @@ async function getFilesRecursive(source: string): Promise<string[]> {
 
 async function readFile(filePath: string){
     const content = await fs.readFile(filePath, 'utf-8');
-    console.log(content);
+
     return content;
+}
+
+
+async function createTyrDirectory(){
+    const dirPath = path.join(process.cwd(), ".tyr");
+    try {
+        await mkdir(dirPath, { recursive: true });
+        console.log("./tyr file made!");
+    } catch(error) {
+        console.error('Error creating directory:', error);
+    }
 }
