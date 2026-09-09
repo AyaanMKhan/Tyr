@@ -20,6 +20,34 @@ const IGNORED_DIRS = new Set([
     ".venv",
 ]);
 
+const IGNORED_FILES = new Set([
+    ".db",
+    ".pt",
+    ".pth",
+    ".onnx",
+    ".bin",
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".7z",
+    ".rar",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".mp4",
+    ".mov",
+    ".avi",
+    ".mp3",
+    ".wav",
+    ".pdf",
+]);
+
 export async function registerInitCommand(program: Command){
     program
         .command("init")
@@ -84,15 +112,17 @@ async function getFilesRecursive(source: string): Promise<string[]> {
 
     for (const entry of entries) {
         const fullPath = path.join(source, entry.name);
+        const extension = path.extname(entry.name).toLowerCase();
         if (entry.isDirectory()) {
             if (!IGNORED_DIRS.has(entry.name)) {
                 dirs.push(fullPath);
             }
-        } else if (entry.isFile()) {
+        } else if (entry.isFile() && !IGNORED_FILES.has(extension)) {
             files.push(fullPath);
         }
     }
-
+    console.log("Files: ", files);
+    console.log("DIRS: ", dirs);
     // Walk the subdirectories in parallel, then wait for all of them.
     const nested = await Promise.all(dirs.map(dir => getFilesRecursive(dir)));
 
