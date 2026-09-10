@@ -5,6 +5,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import {exec} from 'child_process';
 import { promisify } from 'util';
+import { error } from "console";
 const execAsync = promisify(exec);
 
 
@@ -121,8 +122,6 @@ async function getFilesRecursive(source: string): Promise<string[]> {
             files.push(fullPath);
         }
     }
-    console.log("Files: ", files);
-    console.log("DIRS: ", dirs);
     // Walk the subdirectories in parallel, then wait for all of them.
     const nested = await Promise.all(dirs.map(dir => getFilesRecursive(dir)));
 
@@ -137,17 +136,21 @@ async function readFile(filePath: string){
 }
 
 
-async function detectGitRepository(root: string){
+async function detectGitRepository(root: string): Promise<boolean> {
     
     try {
-        // Executes the command in the specified directory
         await execAsync('git rev-parse --is-inside-work-tree', { cwd: root });
+  
+        const { stdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: root });
+        const branchName = stdout.trim();
+  
         return true;
-      } catch (error) {
-        // If the command fails, it's not a git repository (or git isn't installed)
+    } catch (error) {
         return false;
     }
-}
+  }
+
+
 
 async function createTyrDirectory(root: string){
     const dirPath = path.join(root, ".tyr");
