@@ -1,0 +1,4 @@
+# Tyr runtime output — not meant to be committed.
+logs/
+reports/
+state/
