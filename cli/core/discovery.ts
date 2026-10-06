@@ -152,6 +152,19 @@ const TYR_DIR = ".tyr";
 const MAX_DEPTH = 25;
 
 /**
+ * Upper bound on `fs.readdir` calls in flight across the whole walk. Each one
+ * holds a directory handle open, and an unbounded fan-out over a wide tree can
+ * exhaust the per-process descriptor limit (EMFILE) — macOS defaults to a soft
+ * limit of 256. 32 keeps us far below that while still overlapping enough I/O
+ * to keep libuv's thread pool (4 threads by default) saturated; going higher
+ * buys nothing but more open handles.
+ */
+const MAX_CONCURRENT_READDIRS = 32;
+
+/** Pause before the single retry of a readdir that failed with EMFILE/ENFILE. */
+const FD_EXHAUSTED_RETRY_MS = 50;
+
+/**
  * Resolve the project root. Git is authoritative when present; otherwise we
  * climb toward the filesystem root looking for a manifest. Always resolves to
  * an absolute path and never throws — the caller decides what to say about it.
@@ -216,10 +229,17 @@ export async function scanProject(root: string): Promise<{ files: string[]; skip
         skippedDirs.push(path.relative(absRoot, dir));
     };
 
+    // One limiter for the entire walk, not one per level: per-level limits
+    // multiply with depth and would not actually bound open handles.
+    const limit = createLimiter(MAX_CONCURRENT_READDIRS);
+
     async function walk(dir: string, depth: number): Promise<void> {
         let entries;
         try {
-            entries = await fs.readdir(dir, { withFileTypes: true });
+            // Only the readdir itself holds a slot. It is released before we
+            // recurse, so a parent never waits on children while blocking them —
+            // that is what keeps the recursion deadlock-free at any limit.
+            entries = await limit(() => readdirWithRetry(dir));
         } catch {
             // Unreadable directory (EACCES, ENOENT after a race, ...): note it and move on.
             recordSkip(dir);
@@ -257,7 +277,8 @@ export async function scanProject(root: string): Promise<{ files: string[]; skip
         }
 
         // Fan out across siblings; the shared arrays are safe because Node runs
-        // these callbacks on a single thread.
+        // these callbacks on a single thread. Pending walks cost only memory —
+        // the limiter decides how many of them are touching the disk at once.
         await Promise.all(subdirs.map((sub) => walk(sub, depth + 1)));
     }
 
@@ -282,6 +303,59 @@ export async function discoverProject(startDir?: string): Promise<DiscoveryResul
         files,
         fileCount: files.length,
         skippedDirs,
+    };
+}
+
+/**
+ * Read a directory, retrying once if the process (EMFILE) or system (ENFILE)
+ * is out of descriptors. Our own readdirs are bounded, so hitting either means
+ * something else briefly holds handles; a short pause usually clears it, and
+ * one retry is cheap insurance against reporting a readable directory as
+ * skipped. Any other error, or a second failure, propagates to the caller.
+ */
+async function readdirWithRetry(dir: string) {
+    try {
+        return await fs.readdir(dir, { withFileTypes: true });
+    } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== "EMFILE" && code !== "ENFILE") {
+            throw err;
+        }
+        await new Promise((resolve) => setTimeout(resolve, FD_EXHAUSTED_RETRY_MS));
+        return await fs.readdir(dir, { withFileTypes: true });
+    }
+}
+
+/**
+ * Minimal counting semaphore: `limit(task)` runs `task` once fewer than `max`
+ * tasks are active, queueing it otherwise. Waiters are served FIFO, and a slot
+ * is handed straight to the next waiter on release so it cannot be stolen.
+ */
+function createLimiter(max: number): <T>(task: () => Promise<T>) => Promise<T> {
+    let active = 0;
+    const waiting: Array<() => void> = [];
+
+    const release = (): void => {
+        const next = waiting.shift();
+        if (next) {
+            // Transfer the slot directly; `active` stays the same.
+            next();
+        } else {
+            active--;
+        }
+    };
+
+    return async <T>(task: () => Promise<T>): Promise<T> => {
+        if (active < max) {
+            active++;
+        } else {
+            await new Promise<void>((resolve) => waiting.push(resolve));
+        }
+        try {
+            return await task();
+        } finally {
+            release();
+        }
     };
 }
 
