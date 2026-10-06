@@ -37,7 +37,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] ESM (`"type": "module"`, `NodeNext`) and strict TypeScript build that compiles cleanly
 - [x] Unknown commands rejected with a non-zero exit (commander default)
 - [x] Single source of truth for the version: read from `package.json` by `cli/core/version.ts` (`TYR_VERSION`), used by `cli/index.ts` and `cli/commands/init.ts`
-- [ ] Show the figlet banner only for interactive or help output. Today it prints on every call, including `--version`, errors and piped output
+- [x] Show the figlet banner only for interactive or help output (`cli/ui/banner.ts`). Skipped for `--version`, usage errors, piped output and `TERM=dumb`
 - [ ] Global options: `--verbose`/`--quiet`, `--cwd <dir>`, `--json`
 - [ ] Top-level handler for uncaught errors and unhandled rejections, with consistent exit codes
 - [x] `tyr --help` text and examples for each command

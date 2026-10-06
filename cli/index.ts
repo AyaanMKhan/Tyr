@@ -4,7 +4,7 @@ import {Command} from "commander";
 
 //import * as fs from "fs";
 //import * as path from "path";
-import figlet from "figlet";
+import { bannerText, isInteractive, printBanner } from "./ui/banner.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerStartCommand } from "./commands/start.js";
 import { registerStatusCommand } from "./commands/status.js";
@@ -13,9 +13,6 @@ import { registerRunCommand } from "./commands/run.js";
 import { TYR_VERSION } from "./core/version.js";
 
 const program = new Command();
-
-console.log(figlet.textSync("Tyr"));
-console.log();
 
 program
     .name("tyr")
@@ -28,7 +25,15 @@ Typical workflow:
   $ tyr watch         Follow what Tyr is doing
   $ tyr status        See what Tyr knows
 
-Run "tyr <command> --help" for details and examples for a command.`);
+Run "tyr <command> --help" for details and examples for a command.`)
+    // Help is written to stderr when it accompanies an error, so check
+    // whichever stream it is actually going to.
+    .addHelpText("beforeAll", ({ error }) =>
+        isInteractive(error ? process.stderr : process.stdout) ? bannerText() : "",
+    )
+    // Runs only once parsing succeeded and a command action is about to run,
+    // so `--version` and usage errors never print the banner.
+    .hook("preAction", () => printBanner());
 
 
 registerInitCommand(program);
