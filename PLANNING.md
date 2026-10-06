@@ -64,11 +64,11 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] `isAlreadyInitialized()`: checks for a real directory, not a stray file
 - [x] `scanProject()`: skips symlinks, caps depth at 25, sorts output deterministically, records skipped dirs
 - [x] `discoverProject()` convenience wrapper (exported but unused)
-- [ ] Respect the project's `.gitignore` (for example via `git ls-files -co --exclude-standard` inside a repo). Today only the hard-coded list applies
-- [ ] Limit concurrency in the walk. `Promise.all` over every subdirectory can hit `EMFILE` on very large trees
-- [ ] Revisit `bin` in `IGNORED_DIRS`, which skips real source such as Node `bin/` and Rust `src/bin`. `.DS_Store` is a file, not a directory
-- [ ] User-configurable extra ignore patterns, read from `tyr.json` or a `.tyrignore`
-- [ ] Incremental re-scan: diff against the last scan to support change detection
+- [x] Respect the project's `.gitignore` (for example via `git ls-files -co --exclude-standard` inside a repo). Today only the hard-coded list applies
+- [x] Limit concurrency in the walk. `Promise.all` over every subdirectory can hit `EMFILE` on very large trees
+- [x] Revisit `bin` in `IGNORED_DIRS`, which skips real source such as Node `bin/` and Rust `src/bin`. `.DS_Store` is a file, not a directory
+- [x] User-configurable extra ignore patterns, read from `tyr.json` or a `.tyrignore`
+- [x] Incremental re-scan: diff against the last scan to support change detection
 
 ### 2.4 Git integration (`cli/core/git.ts`): 50%, Partial
 - [x] Repo detection (`isGitRepository`), which correctly reports bare repos as not being a work tree
