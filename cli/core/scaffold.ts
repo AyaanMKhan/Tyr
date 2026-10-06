@@ -97,6 +97,7 @@ export function buildConfig(snapshot: InitSnapshot, tyrVersion: string): TyrConf
         ignoredDirs?: unknown;
         ignoredExtensions?: unknown;
         ignoredFiles?: unknown;
+        extraIgnore?: unknown;
     };
 
     return {
@@ -136,6 +137,9 @@ export function buildConfig(snapshot: InitSnapshot, tyrVersion: string): TyrConf
             ignoredDirs: toStringList(scanSource.ignoredDirs),
             ignoredExtensions: toStringList(scanSource.ignoredExtensions),
             ignoredFiles: toStringList(scanSource.ignoredFiles),
+            // User patterns, preserved across `--force` re-inits. Always written,
+            // even when empty, so the knob is discoverable in tyr.json.
+            extraIgnore: toStringList(scanSource.extraIgnore),
         },
     };
 }

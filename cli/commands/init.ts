@@ -17,6 +17,7 @@ import {
 import { collectGitInfo } from "../core/git.js";
 import { profileProject } from "../core/project.js";
 import { scaffold, readConfig, appendLog } from "../core/scaffold.js";
+import { countPatterns, readTyrIgnore, TYR_IGNORE_FILE } from "../core/ignore.js";
 import { TYR_VERSION } from "../core/version.js";
 import { printJson, readGlobals, verbosityOf, type GlobalOptions } from "../core/globals.js";
 import { createReporter } from "../ui/reporter.js";
@@ -115,8 +116,10 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
 
         const git = await reportGit(reporter, root);
 
+        const ignore = await loadExtraIgnore(reporter, root);
+
         const scanTask = reporter.task("Scanning project files...");
-        const scan = await scanProject(root);
+        const scan = await scanProject(root, { extraIgnore: ignore.patterns });
         scanTask.succeed(`Files scanned: ${scan.files.length}`);
         reporter.debug(`Skipped directories: ${scan.skippedDirs.length ? scan.skippedDirs.join(", ") : "none"}`);
         reporter.debug(`Ignored directory names: ${[...IGNORED_DIRS].sort().join(", ")}`);
@@ -139,6 +142,9 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
             ignoredDirs: [...IGNORED_DIRS].sort(),
             ignoredExtensions: [...IGNORED_EXTENSIONS].sort(),
             ignoredFiles: [...IGNORED_FILES].sort(),
+            // Read from the old tyr.json before scaffold() overwrites it, so a
+            // `--force` re-init keeps the user's hand-written patterns.
+            extraIgnore: ignore.fromConfig,
         };
 
         const snapshot: InitSnapshot = { discovery, git, project };
@@ -202,6 +208,33 @@ async function isInitialized(root: string): Promise<boolean> {
         return false;
     }
     return (await readConfig(root)) !== null;
+}
+
+/**
+ * Gather user ignore patterns: `scan.extraIgnore` from any existing tyr.json,
+ * then `.tyrignore`. The file goes last so its rules win on conflict (the last
+ * matching pattern decides). Silent apart from verbose detail lines.
+ */
+async function loadExtraIgnore(
+    reporter: Reporter,
+    root: string,
+): Promise<{ patterns: string[]; fromConfig: string[] }> {
+    const config = await readConfig(root);
+    // tyr.json may be hand-edited; keep only strings and ignore any other shape.
+    const rawExtra: unknown = config?.scan?.extraIgnore;
+    const fromConfig = Array.isArray(rawExtra)
+        ? rawExtra.filter((entry): entry is string => typeof entry === "string")
+        : [];
+    const fromFile = (await readTyrIgnore(root)) ?? [];
+
+    const configCount = countPatterns(fromConfig);
+    const fileCount = countPatterns(fromFile);
+    reporter.debug(
+        `Extra ignore patterns: ${configCount} from tyr.json (scan.extraIgnore), ` +
+            `${fileCount} from ${TYR_IGNORE_FILE}`,
+    );
+
+    return { patterns: [...fromConfig, ...fromFile], fromConfig };
 }
 
 /** Runs git detection and prints the repository, branch, commit, status, remote. */

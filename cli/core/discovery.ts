@@ -9,6 +9,7 @@ import * as path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { DiscoveryResult } from "./types.js";
+import { compileIgnore } from "./ignore.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -165,6 +166,12 @@ export interface ScanOptions {
      * Has no effect outside a repo.
      */
     respectGitignore?: boolean;
+    /**
+     * Extra gitignore-style patterns (see ignore.ts for the supported subset),
+     * typically `scan.extraIgnore` from tyr.json followed by `.tyrignore`.
+     * They add to the built-in ignore rules and can never remove them.
+     */
+    extraIgnore?: readonly string[];
 }
 
 /**
@@ -345,6 +352,14 @@ export async function scanProject(
 
     const gitFilter = options.respectGitignore === false ? null : await loadGitFileFilter(absRoot);
 
+    // Compiled once per scan. With no user patterns the matcher is a no-op, so
+    // the default walk behaves exactly as it did before patterns existed.
+    const userIgnore = compileIgnore(options.extraIgnore ?? []);
+
+    /** Root-relative path with `/` separators, the form ignore patterns expect. */
+    const toPosixRelative = (target: string): string =>
+        path.relative(absRoot, target).split(path.sep).join("/");
+
     const recordSkip = (dir: string): void => {
         skippedDirs.push(path.relative(absRoot, dir));
     };
@@ -384,6 +399,11 @@ export async function scanProject(
                     recordSkip(fullPath);
                     continue;
                 }
+                // Pruned here, so nothing beneath an ignored directory is read.
+                if (userIgnore.size > 0 && userIgnore.ignores(toPosixRelative(fullPath), true)) {
+                    recordSkip(fullPath);
+                    continue;
+                }
                 let childFiltered = filtered;
                 if (filtered && gitFilter !== null) {
                     if (gitFilter.opaqueDirs.has(gitKey) || gitFilter.files.has(gitKey)) {
@@ -411,6 +431,9 @@ export async function scanProject(
                 }
                 if (filtered && gitFilter !== null && !gitFilter.files.has(gitKey)) {
                     continue; // Ignored by .gitignore / info/exclude / global excludes.
+                }
+                if (userIgnore.size > 0 && userIgnore.ignores(toPosixRelative(fullPath), false)) {
+                    continue;
                 }
                 files.push(fullPath);
             }

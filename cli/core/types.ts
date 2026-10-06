@@ -28,6 +28,12 @@ export interface DiscoveryResult {
     ignoredDirs?: string[];
     ignoredExtensions?: string[];
     ignoredFiles?: string[];
+    /**
+     * User patterns from tyr.json's `scan.extraIgnore`, carried through so a
+     * re-init (`--force`) writes them back instead of dropping them. Patterns
+     * from `.tyrignore` are not included; that file is its own source of truth.
+     */
+    extraIgnore?: string[];
 }
 
 /* -------------------------------------------------------------------------
@@ -184,6 +190,12 @@ export interface TyrConfig {
         ignoredExtensions: string[];
         /** Exact file names skipped. Optional: absent in older tyr.json files. */
         ignoredFiles?: string[];
+        /**
+         * Extra gitignore-style patterns applied on top of the built-in rules
+         * (syntax documented in cli/core/ignore.ts). Optional so configs
+         * written before this field existed remain valid.
+         */
+        extraIgnore?: string[];
     };
 }
 
