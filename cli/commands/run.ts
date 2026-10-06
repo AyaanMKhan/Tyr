@@ -7,8 +7,13 @@ import { Command } from "commander";
 
 export function registerRunCommand(program: Command){
     program
-        .command("run <prompt>")
+        .command("run")
         .description("Explicitly tell Tyr to perform something")
+        .argument("<prompt>", "What you want Tyr to do, in plain language")
+        .addHelpText("after", `
+Examples:
+  $ tyr run "review my last commit"
+  $ tyr run "why is the build failing?"`)
         .action((prompt: string) => {
             console.log(`Running the user command... ${prompt}`);
         });

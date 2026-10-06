@@ -40,6 +40,15 @@ export function registerInitCommand(program: Command) {
         .option("-s, --start", "Initialize, then start the background process")
         .option("-f, --force", "Re-initialize even if .tyr already exists")
         .option("--no-color", "Disable colored output")
+        .addHelpText("after", `
+Finds the project root (the git toplevel, or the nearest directory with a
+manifest), scans files, detects the toolchain and writes .tyr/ there.
+
+Examples:
+  $ tyr init                Initialize the current project
+  $ tyr init --force        Re-initialize, overwriting .tyr/
+  $ tyr init --start        Initialize, then start the background process
+  $ tyr init --no-color     Plain output, e.g. for logs`)
         .action(async (options: InitOptions) => {
             const ok = await runInit(options);
             if (!ok) {

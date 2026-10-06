@@ -18,8 +18,17 @@ console.log(figlet.textSync("Tyr"));
 console.log();
 
 program
-    .name("Tyr")
-    .version(TYR_VERSION, "-v, --version", "Output version of Tyr");
+    .name("tyr")
+    .description("A background engineering manager and reviewer for your repository.")
+    .version(TYR_VERSION, "-v, --version", "Output version of Tyr")
+    .addHelpText("after", `
+Typical workflow:
+  $ tyr init          Inspect the repo and create .tyr/
+  $ tyr start         Launch the background process
+  $ tyr watch         Follow what Tyr is doing
+  $ tyr status        See what Tyr knows
+
+Run "tyr <command> --help" for details and examples for a command.`);
 
 
 registerInitCommand(program);

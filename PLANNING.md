@@ -40,7 +40,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [ ] Show the figlet banner only for interactive or help output. Today it prints on every call, including `--version`, errors and piped output
 - [ ] Global options: `--verbose`/`--quiet`, `--cwd <dir>`, `--json`
 - [ ] Top-level handler for uncaught errors and unhandled rejections, with consistent exit codes
-- [ ] `tyr --help` text and examples for each command
+- [x] `tyr --help` text and examples for each command
 
 ### 2.2 `tyr init` (`cli/commands/init.ts`): 90%, Partial
 - [x] Finds the project root, with git toplevel preferred and manifest markers as fallback (`findProjectRoot`, `cli/core/discovery.ts`)
