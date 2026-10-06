@@ -16,6 +16,7 @@ import {
 import { collectGitInfo } from "../core/git.js";
 import { profileProject } from "../core/project.js";
 import { scaffold, readConfig, appendLog } from "../core/scaffold.js";
+import { TYR_VERSION } from "../core/version.js";
 import { createReporter } from "../ui/reporter.js";
 import type {
     DiscoveryResult,
@@ -25,9 +26,6 @@ import type {
     ProjectProfile,
     Reporter,
 } from "../core/types.js";
-
-/** Schema/tool version stamped into `.tyr/tyr.json`. Keep in sync with index.ts. */
-const TYR_VERSION = "1.0.0";
 
 interface InitOptions {
     start?: boolean;

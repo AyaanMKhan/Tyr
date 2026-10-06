@@ -10,6 +10,7 @@ import { registerStartCommand } from "./commands/start.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerWatchCommand } from "./commands/watch.js";
 import { registerRunCommand } from "./commands/run.js";
+import { TYR_VERSION } from "./core/version.js";
 
 const program = new Command();
 
@@ -18,7 +19,7 @@ console.log();
 
 program
     .name("Tyr")
-    .version("1.0.0", "-v, --version", "Output version of Tyr");
+    .version(TYR_VERSION, "-v, --version", "Output version of Tyr");
 
 
 registerInitCommand(program);
