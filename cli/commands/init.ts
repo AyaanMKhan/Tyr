@@ -18,6 +18,7 @@ import { collectGitInfo } from "../core/git.js";
 import { profileProject } from "../core/project.js";
 import { scaffold, readConfig, appendLog } from "../core/scaffold.js";
 import { countPatterns, readTyrIgnore, TYR_IGNORE_FILE } from "../core/ignore.js";
+import { buildScanManifest, saveScanManifest } from "../core/scan-diff.js";
 import { TYR_VERSION } from "../core/version.js";
 import { printJson, readGlobals, verbosityOf, type GlobalOptions } from "../core/globals.js";
 import { createReporter } from "../ui/reporter.js";
@@ -161,6 +162,12 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         writeTask.succeed("Configuration created");
         reporter.debug(`Wrote ${paths.configFile}`);
         reporter.debug(`Wrote ${paths.stateFile}`);
+
+        // Baseline for change detection: `tyr status` / `tyr watch` diff
+        // later scans against this manifest.
+        const manifest = await buildScanManifest(root, scan.files);
+        await saveScanManifest(root, manifest);
+        reporter.debug(`Wrote ${paths.scanFile} (${manifest.fileCount} files fingerprinted)`);
         reporter.success("State initialized");
         reporter.success("Logging initialized");
 

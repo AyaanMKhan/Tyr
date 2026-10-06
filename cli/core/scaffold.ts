@@ -21,6 +21,8 @@ export interface TyrPaths {
     configFile: string;
     stateDir: string;
     stateFile: string;
+    /** Scan manifest used for change detection; see scan-diff.ts. */
+    scanFile: string;
     logsDir: string;
     logFile: string;
     reportsDir: string;
@@ -57,6 +59,8 @@ export function resolveTyrPaths(root: string): TyrPaths {
         configFile: path.join(tyrDir, "tyr.json"),
         stateDir,
         stateFile: path.join(stateDir, "state.json"),
+        // Lives under state/ so the generated .gitignore already covers it.
+        scanFile: path.join(stateDir, "scan.json"),
         logsDir,
         logFile: path.join(logsDir, "tyr.log"),
         reportsDir,
@@ -164,7 +168,7 @@ export function buildInitialState(snapshot: InitSnapshot): TyrState {
  * ---------------------------------------------------------------------- */
 
 /** Humans read and diff these files, so pretty-print and end with a newline. */
-function toJsonDocument(value: unknown): string {
+export function toJsonDocument(value: unknown): string {
     return `${JSON.stringify(value, null, 2)}\n`;
 }
 
@@ -173,7 +177,7 @@ function toJsonDocument(value: unknown): string {
  * The rename is atomic within a filesystem, so an interrupted init can never
  * leave a half-written tyr.json behind; a temp file in /tmp would risk EXDEV.
  */
-async function writeFileAtomic(target: string, contents: string): Promise<void> {
+export async function writeFileAtomic(target: string, contents: string): Promise<void> {
     const tmp = path.join(
         path.dirname(target),
         `.${path.basename(target)}.${process.pid}.${Date.now()}.tmp`,
@@ -195,7 +199,7 @@ function formatLogLine(level: "info" | "warn" | "error", message: string): strin
 }
 
 /** Parse a JSON object, or null when it is missing, unreadable, or malformed. */
-async function readJsonObject<T>(file: string): Promise<T | null> {
+export async function readJsonObject<T>(file: string): Promise<T | null> {
     try {
         const raw = await fs.readFile(file, "utf8");
         const parsed: unknown = JSON.parse(raw);

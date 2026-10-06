@@ -216,6 +216,48 @@ export interface TyrState {
 }
 
 /* -------------------------------------------------------------------------
+ * Scan manifest — incremental re-scan / change detection
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Cheap identity of a file at scan time. Size plus modification time catches
+ * every ordinary edit without reading contents; see scan-diff.ts for the
+ * cases it can miss.
+ */
+export interface FileFingerprint {
+    size: number;
+    /** `fs.Stats.mtimeMs`, kept at full (fractional) precision. */
+    mtimeMs: number;
+}
+
+/** Shape of `.tyr/state/scan.json`. */
+export interface ScanManifest {
+    /** Schema version of this manifest. */
+    version: number;
+    /** ISO-8601 timestamp of the scan that produced it. */
+    scannedAt: string;
+    /** Convenience: number of entries in `files`. */
+    fileCount: number;
+    /**
+     * Root-relative POSIX paths (always `/`, never `\`) mapped to their
+     * fingerprints. Relative so the manifest survives moving the checkout.
+     */
+    files: Record<string, FileFingerprint>;
+}
+
+/** Result of comparing two manifests. Every list is sorted. */
+export interface ScanDiff {
+    /** In the new scan only. */
+    added: string[];
+    /** In the previous scan only. */
+    removed: string[];
+    /** In both, with a different size or mtime. */
+    modified: string[];
+    /** In both with an identical fingerprint; a count, since nobody lists them. */
+    unchanged: number;
+}
+
+/* -------------------------------------------------------------------------
  * Reporter — the animated console UI
  * ---------------------------------------------------------------------- */
 
