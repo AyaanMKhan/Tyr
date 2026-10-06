@@ -17,6 +17,7 @@ import { collectGitInfo } from "../core/git.js";
 import { profileProject } from "../core/project.js";
 import { scaffold, readConfig, appendLog } from "../core/scaffold.js";
 import { TYR_VERSION } from "../core/version.js";
+import { printJson, readGlobals, verbosityOf, type GlobalOptions } from "../core/globals.js";
 import { createReporter } from "../ui/reporter.js";
 import type {
     DiscoveryResult,
@@ -48,10 +49,16 @@ Examples:
   $ tyr init                Initialize the current project
   $ tyr init --force        Re-initialize, overwriting .tyr/
   $ tyr init --start        Initialize, then start the background process
-  $ tyr init --no-color     Plain output, e.g. for logs`)
-        .action(async (options: InitOptions) => {
-            const ok = await runInit(options);
-            if (!ok) {
+  $ tyr init --no-color     Plain output, e.g. for logs
+  $ tyr init --verbose      Also show scan and write details
+  $ tyr init --json         Print a JSON summary instead of text`)
+        .action(async (options: InitOptions, command: Command) => {
+            const globals = readGlobals(command);
+            const result = await runInit(options, globals);
+            if (globals.json) {
+                printJson(result);
+            }
+            if (!result.ok) {
                 // Signal failure to shells and CI without killing the process
                 // mid-write, which process.exit() would risk.
                 process.exitCode = 1;
@@ -59,12 +66,28 @@ Examples:
         });
 }
 
-/** Returns false when initialization did not complete. */
-async function runInit(options: InitOptions): Promise<boolean> {
+/** The outcome of `tyr init`, and exactly what `--json` prints. */
+type InitResult =
+    | {
+          ok: true;
+          root: string;
+          tyrDir: string;
+          tyrVersion: string;
+          fileCount: number;
+          git: { isRepo: boolean; branch: string | null; headCommit: string | null };
+          project: ProjectProfile;
+      }
+    | { ok: false; root?: string; error: string };
+
+async function runInit(options: InitOptions, globals: GlobalOptions): Promise<InitResult> {
     const reporter = createReporter({
         // `--no-color` gives us `color: false`; anything else stays auto-detected.
         color: options.color === false ? false : undefined,
+        verbosity: verbosityOf(globals),
+        // Under --json stdout carries only the JSON, so warnings and errors go to stderr.
+        stream: globals.json ? process.stderr : undefined,
     });
+    let root: string | undefined;
 
     reporter.header("Initializing Tyr...");
     reporter.blank();
@@ -75,7 +98,7 @@ async function runInit(options: InitOptions): Promise<boolean> {
          * ------------------------------------------------------------ */
 
         const rootTask = reporter.task("Locating project root...");
-        const root = await findProjectRoot();
+        root = await findProjectRoot();
         rootTask.succeed(`Project root: ${root}`);
 
         if (await isInitialized(root)) {
@@ -84,7 +107,7 @@ async function runInit(options: InitOptions): Promise<boolean> {
                 reporter.warn("Project is already initialized (.tyr/tyr.json exists).");
                 reporter.info("Re-run with --force to overwrite the existing configuration.");
                 reporter.stop();
-                return false;
+                return { ok: false, root, error: "Project is already initialized (.tyr/tyr.json exists)" };
             }
             reporter.info("Existing configuration found - overwriting (--force).");
         }
@@ -94,6 +117,8 @@ async function runInit(options: InitOptions): Promise<boolean> {
         const scanTask = reporter.task("Scanning project files...");
         const scan = await scanProject(root);
         scanTask.succeed(`Files scanned: ${scan.files.length}`);
+        reporter.debug(`Skipped directories: ${scan.skippedDirs.length ? scan.skippedDirs.join(", ") : "none"}`);
+        reporter.debug(`Ignored directory names: ${[...IGNORED_DIRS].sort().join(", ")}`);
 
         const profileTask = reporter.task("Identifying project...");
         const project = await profileProject(root, scan.files);
@@ -123,8 +148,10 @@ async function runInit(options: InitOptions): Promise<boolean> {
         reporter.header("Creating .tyr...");
 
         const writeTask = reporter.task("Writing configuration...");
-        await scaffold(snapshot, TYR_VERSION);
+        const paths = await scaffold(snapshot, TYR_VERSION);
         writeTask.succeed("Configuration created");
+        reporter.debug(`Wrote ${paths.configFile}`);
+        reporter.debug(`Wrote ${paths.stateFile}`);
         reporter.success("State initialized");
         reporter.success("Logging initialized");
 
@@ -140,14 +167,26 @@ async function runInit(options: InitOptions): Promise<boolean> {
         }
 
         reporter.stop();
-        return true;
+        return {
+            ok: true,
+            root,
+            tyrDir: paths.tyrDir,
+            tyrVersion: TYR_VERSION,
+            fileCount: scan.files.length,
+            git: {
+                isRepo: git.isRepo,
+                branch: git.branch,
+                headCommit: git.headCommit?.hash ?? null,
+            },
+            project,
+        };
     } catch (error) {
         // Any throw here means `.tyr` may be incomplete, so say so plainly
         // rather than reporting a success the user does not actually have.
         reporter.stop();
         reporter.blank();
         reporter.error(`Initialization failed: ${describeError(error)}`);
-        return false;
+        return { ok: false, root, error: describeError(error) };
     }
 }
 

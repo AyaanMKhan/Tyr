@@ -5,6 +5,7 @@
 // runtime dependencies. Everything funnels through a single write stream so
 // the "one spinner owns the current line" invariant is easy to hold.
 
+import type { Verbosity } from "../core/globals.js";
 import { Reporter, TaskHandle } from "../core/types.js";
 
 /* -------------------------------------------------------------------------
@@ -153,6 +154,11 @@ export interface ReporterOptions {
     color?: boolean;
     /** Force spinner animation on/off. Defaults to auto-detection. */
     animate?: boolean;
+    /**
+     * `quiet` keeps only warnings, errors and failed tasks; `verbose` also
+     * prints `debug()` lines. Defaults to `normal`.
+     */
+    verbosity?: Verbosity;
 }
 
 type Outcome = "success" | "failure" | "skip";
@@ -162,6 +168,7 @@ class ConsoleReporter implements Reporter {
     private readonly color: boolean;
     private readonly animate: boolean;
     private readonly glyphs: Glyphs;
+    private readonly verbosity: Verbosity;
 
     private current: Task | null = null;
     private timer: NodeJS.Timeout | null = null;
@@ -170,14 +177,17 @@ class ConsoleReporter implements Reporter {
 
     constructor(options: ReporterOptions = {}) {
         this.stream = options.stream ?? process.stdout;
+        this.verbosity = options.verbosity ?? "normal";
         this.color = options.color ?? detectColor(this.stream);
-        this.animate = options.animate ?? detectAnimation(this.stream);
+        // A spinner is progress chatter, which quiet mode exists to remove.
+        this.animate = this.verbosity !== "quiet" && (options.animate ?? detectAnimation(this.stream));
         this.glyphs = detectUnicode() ? UNICODE_GLYPHS : ASCII_GLYPHS;
     }
 
     /* ----- public API ---------------------------------------------------- */
 
     header(text: string): void {
+        if (this.quiet) return;
         this.emit(this.paint(text, SGR.bold));
     }
 
@@ -201,16 +211,19 @@ class ConsoleReporter implements Reporter {
     }
 
     success(text: string): void {
+        if (this.quiet) return;
         this.emit(this.paint(this.glyphs.success, SGR.green) + " " + text);
     }
 
     info(text: string): void {
+        if (this.quiet) return;
         this.emit(text);
     }
 
     muted(text: string): void {
         // Same glyph and dim styling a skipped task resolves to, so detected
         // and not-detected lines share one column.
+        if (this.quiet) return;
         this.emit(this.paint(this.glyphs.skip, SGR.dim) + " " + text);
     }
 
@@ -222,13 +235,20 @@ class ConsoleReporter implements Reporter {
         this.emit(this.paint(this.glyphs.failure + " " + text, SGR.red));
     }
 
+    debug(text: string): void {
+        if (this.verbosity !== "verbose") return;
+        this.emit(this.paint("  · " + text, SGR.dim));
+    }
+
     blank(): void {
+        if (this.quiet) return;
         this.emit("");
     }
 
     done(text: string): void {
         // The summary closes the run, so nothing may still be spinning under it.
         this.current?.succeed();
+        if (this.quiet) return;
         this.emit(this.paint(text, SGR.bold));
     }
 
@@ -253,10 +273,17 @@ class ConsoleReporter implements Reporter {
             this.teardownSpinner();
             this.current = null;
         }
+        if (this.quiet && outcome !== "failure") {
+            return;
+        }
         this.stream.write(this.symbolFor(outcome) + " " + text + "\n");
     }
 
     /* ----- rendering ------------------------------------------------------ */
+
+    private get quiet(): boolean {
+        return this.verbosity === "quiet";
+    }
 
     private symbolFor(outcome: Outcome): string {
         switch (outcome) {

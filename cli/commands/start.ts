@@ -1,6 +1,7 @@
 // init command
 
 import { Command } from "commander";
+import { reportPlaceholder } from "./placeholder.js";
 //import * as fs from "fs";
 //import * as path from "path";
 
@@ -14,7 +15,7 @@ Launches Tyr's background process for the current project. Run "tyr init" first.
 
 Examples:
   $ tyr start`)
-        .action(() => {
-            console.log("Starting the process...");
+        .action((_options, command: Command) => {
+            reportPlaceholder(command, "Starting the process...");
         });
 }

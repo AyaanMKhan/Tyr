@@ -11,8 +11,11 @@ import { registerStatusCommand } from "./commands/status.js";
 import { registerWatchCommand } from "./commands/watch.js";
 import { registerRunCommand } from "./commands/run.js";
 import { TYR_VERSION } from "./core/version.js";
+import { readGlobals, registerGlobalOptions } from "./core/globals.js";
 
 const program = new Command();
+
+registerGlobalOptions(program);
 
 program
     .name("tyr")
@@ -25,6 +28,11 @@ Typical workflow:
   $ tyr watch         Follow what Tyr is doing
   $ tyr status        See what Tyr knows
 
+Global options work with every command:
+  $ tyr --cwd ../api status       Act on another directory
+  $ tyr init --quiet              Only print warnings and errors
+  $ tyr init --json | jq .root    Machine-readable output
+
 Run "tyr <command> --help" for details and examples for a command.`)
     // Help is written to stderr when it accompanies an error, so check
     // whichever stream it is actually going to.
@@ -32,8 +40,14 @@ Run "tyr <command> --help" for details and examples for a command.`)
         isInteractive(error ? process.stderr : process.stdout) ? bannerText() : "",
     )
     // Runs only once parsing succeeded and a command action is about to run,
-    // so `--version` and usage errors never print the banner.
-    .hook("preAction", () => printBanner());
+    // so `--version` and usage errors never print the banner. `--quiet` and
+    // `--json` keep stdout free of decoration.
+    .hook("preAction", (_root, action) => {
+        const { quiet, json } = readGlobals(action);
+        if (!quiet && !json) {
+            printBanner();
+        }
+    });
 
 
 registerInitCommand(program);

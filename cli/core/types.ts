@@ -235,6 +235,8 @@ export interface Reporter {
     warn(text: string): void;
     /** Emit an error line. */
     error(text: string): void;
+    /** Emit a dimmed detail line, shown only with `--verbose`. */
+    debug(text: string): void;
     /** Blank spacer line. */
     blank(): void;
     /** Final summary line. */

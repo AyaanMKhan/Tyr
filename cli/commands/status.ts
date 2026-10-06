@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { reportPlaceholder } from "./placeholder.js";
 //import * as fs from "fs";
 //import * as path from "path";
 
@@ -12,7 +13,7 @@ Reports the state recorded in .tyr/ and whether the background process is runnin
 
 Examples:
   $ tyr status`)
-        .action(() => {
-            console.log("Status of Project ...");
+        .action((_options, command: Command) => {
+            reportPlaceholder(command, "Status of Project ...");
         })
 }
