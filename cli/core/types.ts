@@ -27,6 +27,7 @@ export interface DiscoveryResult {
      */
     ignoredDirs?: string[];
     ignoredExtensions?: string[];
+    ignoredFiles?: string[];
 }
 
 /* -------------------------------------------------------------------------
@@ -181,6 +182,8 @@ export interface TyrConfig {
     scan: {
         ignoredDirs: string[];
         ignoredExtensions: string[];
+        /** Exact file names skipped. Optional: absent in older tyr.json files. */
+        ignoredFiles?: string[];
     };
 }
 

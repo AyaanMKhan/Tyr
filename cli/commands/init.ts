@@ -12,6 +12,7 @@ import {
     scanProject,
     IGNORED_DIRS,
     IGNORED_EXTENSIONS,
+    IGNORED_FILES,
 } from "../core/discovery.js";
 import { collectGitInfo } from "../core/git.js";
 import { profileProject } from "../core/project.js";
@@ -119,6 +120,7 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         scanTask.succeed(`Files scanned: ${scan.files.length}`);
         reporter.debug(`Skipped directories: ${scan.skippedDirs.length ? scan.skippedDirs.join(", ") : "none"}`);
         reporter.debug(`Ignored directory names: ${[...IGNORED_DIRS].sort().join(", ")}`);
+        reporter.debug(`Ignored file names: ${[...IGNORED_FILES].sort().join(", ")}`);
 
         const profileTask = reporter.task("Identifying project...");
         const project = await profileProject(root, scan.files);
@@ -136,6 +138,7 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
             // rules changed underneath an existing index.
             ignoredDirs: [...IGNORED_DIRS].sort(),
             ignoredExtensions: [...IGNORED_EXTENSIONS].sort(),
+            ignoredFiles: [...IGNORED_FILES].sort(),
         };
 
         const snapshot: InitSnapshot = { discovery, git, project };

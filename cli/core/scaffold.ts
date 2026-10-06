@@ -96,6 +96,7 @@ export function buildConfig(snapshot: InitSnapshot, tyrVersion: string): TyrConf
     const scanSource = discovery as unknown as {
         ignoredDirs?: unknown;
         ignoredExtensions?: unknown;
+        ignoredFiles?: unknown;
     };
 
     return {
@@ -134,6 +135,7 @@ export function buildConfig(snapshot: InitSnapshot, tyrVersion: string): TyrConf
         scan: {
             ignoredDirs: toStringList(scanSource.ignoredDirs),
             ignoredExtensions: toStringList(scanSource.ignoredExtensions),
+            ignoredFiles: toStringList(scanSource.ignoredFiles),
         },
     };
 }

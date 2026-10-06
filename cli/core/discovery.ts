@@ -12,7 +12,14 @@ import { DiscoveryResult } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
-/** Directories we never walk into when scanning a project. */
+/**
+ * Directories we never walk into when scanning a project. Matched by bare
+ * name at any depth, so only names that are never real source belong here.
+ * `bin` and `obj` are deliberately absent: `bin/` holds Node CLI entry
+ * scripts and Rust `src/bin` binaries, and `obj` is a plausible source folder
+ * name too. .NET build output in those folders is mostly .dll/.exe, which
+ * IGNORED_EXTENSIONS already drops.
+ */
 export const IGNORED_DIRS: ReadonlySet<string> = new Set([
     // VCS / tooling
     ".git",
@@ -23,7 +30,6 @@ export const IGNORED_DIRS: ReadonlySet<string> = new Set([
     ".parcel-cache",
     ".pnpm-store",
     ".terraform",
-    ".DS_Store",
     // JS/TS
     "node_modules",
     "bower_components",
@@ -46,9 +52,14 @@ export const IGNORED_DIRS: ReadonlySet<string> = new Set([
     "target",
     "vendor",
     ".gradle",
-    "bin",
-    "obj",
     "Pods",
+]);
+
+/** OS-generated junk files, matched by exact file name. */
+export const IGNORED_FILES: ReadonlySet<string> = new Set([
+    ".DS_Store", // macOS Finder metadata
+    "Thumbs.db", // Windows thumbnail cache
+    "desktop.ini", // Windows folder settings
 ]);
 
 /** File extensions with no textual content worth indexing. */
@@ -236,7 +247,10 @@ export async function scanProject(root: string): Promise<{ files: string[]; skip
                 }
                 subdirs.push(fullPath);
             } else if (entry.isFile()) {
-                if (!IGNORED_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+                if (
+                    !IGNORED_FILES.has(entry.name) &&
+                    !IGNORED_EXTENSIONS.has(path.extname(entry.name).toLowerCase())
+                ) {
                     files.push(fullPath);
                 }
             }
