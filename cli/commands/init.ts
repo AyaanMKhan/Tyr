@@ -336,6 +336,15 @@ function reportProject(
         reporter.muted("Package manager: none detected");
     }
 
+    // Single-package projects are the common case, so absence stays silent.
+    if (project.workspace) {
+        const { tool, packages } = project.workspace;
+        reporter.success(`Workspace: ${tool} (${packages.length} package${packages.length === 1 ? "" : "s"})`);
+        for (const pkg of packages) {
+            reporter.debug(`Workspace package: ${pkg.path}${pkg.name ? ` (${pkg.name})` : ""}`);
+        }
+    }
+
     reportCommand(reporter, "Build", project.build, checks?.build ?? null);
     reportCommand(reporter, "Tests", project.test, checks?.test ?? null);
     reportCommand(reporter, "Linter", project.lint, checks?.lint ?? null);

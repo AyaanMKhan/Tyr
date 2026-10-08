@@ -138,6 +138,26 @@ export interface CommandProbe {
 /** One probe per command slot; null where the profile had no command. */
 export type CommandVerification = Record<CommandKind, CommandProbe | null>;
 
+/** Tool that declares a multi-package layout; "nested" means no declaration. */
+export type WorkspaceTool = "npm" | "yarn" | "pnpm" | "cargo" | "nested";
+
+export interface WorkspacePackage {
+    /** Name from the package's manifest, or null when it declares none. */
+    name: string | null;
+    /** Package directory, root-relative POSIX ("." for the root itself). */
+    path: string;
+    /** Manifest that defines the package, root-relative POSIX. */
+    manifest: string;
+}
+
+export interface WorkspaceInfo {
+    tool: WorkspaceTool;
+    /** File that declared the workspace, relative to root; "nested manifests" for `nested`. */
+    evidence: string;
+    /** Sorted by path. Never empty — a workspace with no members is reported as null. */
+    packages: WorkspacePackage[];
+}
+
 export interface ProjectProfile {
     /**
      * Name declared by the root manifest (package.json, pyproject.toml or
@@ -167,6 +187,8 @@ export interface ProjectProfile {
     readme: string | null;
     /** Path to CLAUDE.md, relative to root, or null. */
     claudeMd: string | null;
+    /** Monorepo layout, or null for a single-package project. */
+    workspace: WorkspaceInfo | null;
 }
 
 /* -------------------------------------------------------------------------
@@ -210,6 +232,11 @@ export interface TyrConfig {
         frameworks: string[];
         packageManager: string | null;
         fileCount: number;
+        /**
+         * Compact monorepo summary: the declaring tool and member paths.
+         * Optional: absent in older tyr.json files; null for single packages.
+         */
+        workspace?: { tool: WorkspaceTool; packages: string[] } | null;
     };
     commands: {
         build: ConfigCommand | null;

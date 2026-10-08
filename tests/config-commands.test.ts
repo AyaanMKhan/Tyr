@@ -38,6 +38,7 @@ function snapshotWith(project: Partial<ProjectProfile>): InitSnapshot {
             typecheck: null,
             readme: null,
             claudeMd: null,
+            workspace: null,
             ...project,
         },
     };

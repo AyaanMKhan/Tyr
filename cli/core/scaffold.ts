@@ -123,6 +123,7 @@ export function buildConfig(snapshot: InitSnapshot, tyrVersion: string): TyrConf
             frameworks: project.frameworks,
             packageManager: project.packageManager === null ? null : project.packageManager.name,
             fileCount: discovery.fileCount,
+            workspace: project.workspace && { tool: project.workspace.tool, packages: project.workspace.packages.map((pkg) => pkg.path) },
         },
         commands: {
             build: commandOf(project.build),

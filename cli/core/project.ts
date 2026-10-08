@@ -14,6 +14,7 @@ import {
     ProjectCommand,
     ProjectProfile,
 } from "./types.js";
+import { detectWorkspaces } from "./workspaces.js";
 
 /* -------------------------------------------------------------------------
  * Language tables
@@ -849,11 +850,12 @@ export async function profileProject(root: string, files: string[]): Promise<Pro
     const languages = buildLanguageStats(counts);
     const hasJsx = JSX_EXTENSIONS.some((extension) => (counts.get(extension) ?? 0) > 0);
 
-    const [identity, packageManager, frameworks, docs] = await Promise.all([
+    const [identity, packageManager, frameworks, docs, workspace] = await Promise.all([
         detectProjectName(root, ctx),
         detectPackageManager(root, ctx),
         detectFrameworks(root, ctx, hasJsx),
         detectDocs(root, ctx),
+        detectWorkspaces(root, files),
     ]);
 
     const commands = detectCommands(ctx, packageManager);
@@ -871,5 +873,6 @@ export async function profileProject(root: string, files: string[]): Promise<Pro
         typecheck: commands.typecheck,
         readme: docs.readme,
         claudeMd: docs.claudeMd,
+        workspace,
     };
 }
