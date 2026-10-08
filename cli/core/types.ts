@@ -159,6 +159,20 @@ export interface InitSnapshot {
     project: ProjectProfile;
 }
 
+/**
+ * A detected command as recorded in tyr.json. Same fields as ProjectCommand,
+ * spelled out separately because this one is an on-disk format: keep it
+ * stable even if the in-memory detection result grows.
+ */
+export interface ConfigCommand {
+    /** Full shell command, e.g. "npm run test". */
+    command: string;
+    /** Underlying tool for display, e.g. "Jest". */
+    tool: string;
+    /** File that proved it, relative to root. */
+    evidence: string;
+}
+
 /** Shape of `.tyr/tyr.json`. */
 export interface TyrConfig {
     /** Schema version of this config file. */
@@ -177,11 +191,11 @@ export interface TyrConfig {
         fileCount: number;
     };
     commands: {
-        build: string | null;
-        test: string | null;
-        lint: string | null;
-        format: string | null;
-        typecheck: string | null;
+        build: ConfigCommand | null;
+        test: ConfigCommand | null;
+        lint: ConfigCommand | null;
+        format: ConfigCommand | null;
+        typecheck: ConfigCommand | null;
     };
     git: {
         isRepo: boolean;

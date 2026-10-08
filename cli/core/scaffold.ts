@@ -8,7 +8,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { InitSnapshot, ProjectCommand, TyrConfig, TyrState } from "./types.js";
+import { ConfigCommand, InitSnapshot, ProjectCommand, TyrConfig, TyrState } from "./types.js";
 
 /** Name of the directory Tyr owns inside a project root. */
 export const TYR_DIR_NAME = ".tyr";
@@ -71,9 +71,14 @@ export function resolveTyrPaths(root: string): TyrPaths {
  * Snapshot -> on-disk shapes
  * ---------------------------------------------------------------------- */
 
-/** Config records the command string only; `tool`/`evidence` are display data. */
-function commandOf(command: ProjectCommand | null): string | null {
-    return command === null ? null : command.command;
+/**
+ * Config keeps the tool and its evidence alongside the command string, so
+ * later commands can explain *why* Tyr runs something without re-detecting.
+ * Copied field by field so the on-disk shape never picks up extra keys.
+ */
+function commandOf(command: ProjectCommand | null): ConfigCommand | null {
+    if (command === null) return null;
+    return { command: command.command, tool: command.tool, evidence: command.evidence };
 }
 
 /** Defensive: accept an array or a Set, keep only strings, never throw. */
