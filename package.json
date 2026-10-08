@@ -3,7 +3,8 @@
     "version": "1.0.0",
     "description": "",
     "scripts": {
-        "build": "npx tsc"
+        "build": "npx tsc",
+        "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --test \".test-build/tests/**/*.test.js\""
     },
     "bin": {
         "tyr": "dist/cli/index.js"
