@@ -117,6 +117,27 @@ export interface ProjectCommand {
     evidence: string;
 }
 
+/** The command slots a profile fills, in display order. */
+export type CommandKind = "build" | "test" | "lint" | "format" | "typecheck";
+
+/**
+ * Whether a detected command looks runnable, judged without actually running
+ * it (see verify-commands.ts).
+ *
+ * - `ok`      the executable resolves and, where probed, answers `--version`
+ * - `missing` the executable or npm script does not exist
+ * - `failed`  the executable exists but the probe exited non-zero or timed out
+ * - `skipped` the command could not be checked (shell syntax, unknown shape)
+ */
+export interface CommandProbe {
+    status: "ok" | "missing" | "failed" | "skipped";
+    /** One human-readable line explaining the status. */
+    detail: string;
+}
+
+/** One probe per command slot; null where the profile had no command. */
+export type CommandVerification = Record<CommandKind, CommandProbe | null>;
+
 export interface ProjectProfile {
     /**
      * Name declared by the root manifest (package.json, pyproject.toml or

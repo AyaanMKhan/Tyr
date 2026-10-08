@@ -19,10 +19,13 @@ import { profileProject } from "../core/project.js";
 import { scaffold, readConfig, appendLog } from "../core/scaffold.js";
 import { countPatterns, readTyrIgnore, TYR_IGNORE_FILE } from "../core/ignore.js";
 import { buildScanManifest, saveScanManifest } from "../core/scan-diff.js";
+import { verifyCommands } from "../core/verify-commands.js";
 import { TYR_VERSION } from "../core/version.js";
 import { printJson, readGlobals, verbosityOf, type GlobalOptions } from "../core/globals.js";
 import { createReporter } from "../ui/reporter.js";
 import type {
+    CommandProbe,
+    CommandVerification,
     DiscoveryResult,
     GitInfo,
     InitSnapshot,
@@ -35,6 +38,8 @@ interface InitOptions {
     start?: boolean;
     force?: boolean;
     color?: boolean;
+    /** False under `--no-verify`. */
+    verify?: boolean;
 }
 
 export function registerInitCommand(program: Command) {
@@ -44,15 +49,20 @@ export function registerInitCommand(program: Command) {
         .option("-s, --start", "Initialize, then start the background process")
         .option("-f, --force", "Re-initialize even if .tyr already exists")
         .option("--no-color", "Disable colored output")
+        .option("--no-verify", "Skip checking that detected commands are runnable")
         .addHelpText("after", `
 Finds the project root (the git toplevel, or the nearest directory with a
 manifest), scans files, detects the toolchain and writes .tyr/ there.
+Detected commands are checked without running them: the tool must resolve
+(node_modules/.bin, then PATH) and answer --version, and npm scripts must
+exist in package.json.
 
 Examples:
   $ tyr init                Initialize the current project
   $ tyr init --force        Re-initialize, overwriting .tyr/
   $ tyr init --start        Initialize, then start the background process
   $ tyr init --no-color     Plain output, e.g. for logs
+  $ tyr init --no-verify    Skip probing build/test/lint tools
   $ tyr init --verbose      Also show scan and write details
   $ tyr init --json         Print a JSON summary instead of text`)
         .action(async (options: InitOptions, command: Command) => {
@@ -79,6 +89,8 @@ type InitResult =
           fileCount: number;
           git: { isRepo: boolean; branch: string | null; headCommit: string | null };
           project: ProjectProfile;
+          /** Null under `--no-verify`. */
+          commandChecks: CommandVerification | null;
       }
     | { ok: false; root?: string; error: string };
 
@@ -130,7 +142,16 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         const project = await profileProject(root, scan.files);
         profileTask.succeed(`Project type: ${project.primaryLanguage ?? "unknown"}`);
 
-        reportProject(reporter, project);
+        // Probing spawns `<tool> --version` for each detected command, which
+        // costs real time on a cold disk; --no-verify opts out entirely.
+        let checks: CommandVerification | null = null;
+        if (options.verify !== false) {
+            const verifyTask = reporter.task("Verifying commands...");
+            checks = await verifyCommands(root, project);
+            verifyTask.succeed(`Commands checked: ${describeChecks(checks)}`);
+        }
+
+        reportProject(reporter, project, checks);
 
         const discovery: DiscoveryResult = {
             root,
@@ -195,6 +216,7 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
                 headCommit: git.headCommit?.hash ?? null,
             },
             project,
+            commandChecks: checks,
         };
     } catch (error) {
         // Any throw here means `.tyr` may be incomplete, so say so plainly
@@ -299,7 +321,11 @@ function describeStatus(status: NonNullable<GitInfo["status"]>): string {
 }
 
 /** Prints the toolchain Tyr will drive: frameworks, package manager, commands, docs. */
-function reportProject(reporter: Reporter, project: ProjectProfile): void {
+function reportProject(
+    reporter: Reporter,
+    project: ProjectProfile,
+    checks: CommandVerification | null,
+): void {
     if (project.frameworks.length) {
         reporter.success(`Frameworks: ${project.frameworks.join(", ")}`);
     }
@@ -310,11 +336,11 @@ function reportProject(reporter: Reporter, project: ProjectProfile): void {
         reporter.muted("Package manager: none detected");
     }
 
-    reportCommand(reporter, "Build", project.build);
-    reportCommand(reporter, "Tests", project.test);
-    reportCommand(reporter, "Linter", project.lint);
-    reportCommand(reporter, "Formatter", project.format);
-    reportCommand(reporter, "Type checker", project.typecheck);
+    reportCommand(reporter, "Build", project.build, checks?.build ?? null);
+    reportCommand(reporter, "Tests", project.test, checks?.test ?? null);
+    reportCommand(reporter, "Linter", project.lint, checks?.lint ?? null);
+    reportCommand(reporter, "Formatter", project.format, checks?.format ?? null);
+    reportCommand(reporter, "Type checker", project.typecheck, checks?.typecheck ?? null);
 
     if (project.readme) {
         reporter.success(`${project.readme} detected`);
@@ -329,12 +355,42 @@ function reportProject(reporter: Reporter, project: ProjectProfile): void {
     }
 }
 
-function reportCommand(reporter: Reporter, label: string, command: ProjectCommand | null): void {
-    if (command) {
-        reporter.success(`${label}: ${command.tool}`);
-    } else {
+/**
+ * A command that failed its probe is still reported (and still written to
+ * tyr.json) — the user may simply not have run `npm install` yet — but as a
+ * warning carrying the reason instead of a `✓`.
+ */
+function reportCommand(
+    reporter: Reporter,
+    label: string,
+    command: ProjectCommand | null,
+    probe: CommandProbe | null,
+): void {
+    if (!command) {
         reporter.muted(`${label}: none detected`);
+        return;
     }
+    if (probe?.status === "missing" || probe?.status === "failed") {
+        reporter.warn(`${label}: ${command.tool} - ${probe.detail}`);
+        return;
+    }
+    reporter.success(`${label}: ${command.tool}`);
+    if (probe) {
+        reporter.debug(`${label} (${command.command}): ${probe.status} - ${probe.detail}`);
+    }
+}
+
+/** e.g. "3 ok, 1 missing" over the slots that had a command. */
+function describeChecks(checks: CommandVerification): string {
+    const counts = new Map<CommandProbe["status"], number>();
+    for (const probe of Object.values(checks)) {
+        if (probe) counts.set(probe.status, (counts.get(probe.status) ?? 0) + 1);
+    }
+    if (counts.size === 0) return "none detected";
+    return (["ok", "missing", "failed", "skipped"] as const)
+        .filter((status) => counts.has(status))
+        .map((status) => `${counts.get(status)} ${status}`)
+        .join(", ");
 }
 
 function describeError(error: unknown): string {
