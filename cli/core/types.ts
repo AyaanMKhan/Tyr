@@ -118,6 +118,14 @@ export interface ProjectCommand {
 }
 
 export interface ProjectProfile {
+    /**
+     * Name declared by the root manifest (package.json, pyproject.toml or
+     * Cargo.toml), or null when none declares a usable one. Consumers fall
+     * back to the root directory name.
+     */
+    name: string | null;
+    /** Manifest the name came from, relative to root; null when `name` is. */
+    nameSource: string | null;
     /** Sorted by fileCount, descending. */
     languages: LanguageStat[];
     /**

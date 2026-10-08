@@ -81,6 +81,8 @@ const JSX_EXTENSIONS: readonly string[] = [".tsx", ".jsx"];
 
 /** The slice of `package.json` we care about, normalized so nothing is optional. */
 interface PackageJson {
+    /** The `name` field, or null when absent, empty or not a string. */
+    name: string | null;
     scripts: Record<string, string>;
     dependencies: Record<string, string>;
     devDependencies: Record<string, string>;
@@ -140,6 +142,13 @@ function stringRecord(value: unknown): Record<string, string> {
     return out;
 }
 
+/** Trimmed string, or null for anything empty or not a string. */
+function nonEmptyString(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+}
+
 async function readPackageJson(root: string): Promise<PackageJson | null> {
     const text = await readTextFile(path.join(root, "package.json"));
     if (text === null) return null;
@@ -156,6 +165,7 @@ async function readPackageJson(root: string): Promise<PackageJson | null> {
     const raw = parsed as Record<string, unknown>;
     const declared = raw["packageManager"];
     return {
+        name: nonEmptyString(raw["name"]),
         scripts: stringRecord(raw["scripts"]),
         dependencies: stringRecord(raw["dependencies"]),
         devDependencies: stringRecord(raw["devDependencies"]),
@@ -482,6 +492,63 @@ export async function detectFrameworks(
 }
 
 /* -------------------------------------------------------------------------
+ * Project name
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The quoted string value of `key` directly under the TOML table `[section]`.
+ * Not a TOML parser: it handles the `key = "value"` / `key = 'value'` lines
+ * real manifests use and returns null for anything fancier (dotted keys like
+ * `name.workspace = true`, multi-line strings, inline tables).
+ */
+function tomlString(text: string, section: string, key: string): string | null {
+    const header = new RegExp(`^\\s*\\[\\s*${section}\\s*\\]\\s*(#.*)?$`);
+    const assignment = new RegExp(`^\\s*${key}\\s*=\\s*(?:"([^"\\\\]*)"|'([^']*)')\\s*(#.*)?$`);
+
+    let inSection = false;
+    for (const line of text.split(/\r?\n/)) {
+        if (/^\s*\[/.test(line)) {
+            // Any header — including `[project.urls]` or `[[bin]]` — ends the table.
+            inSection = header.test(line);
+            continue;
+        }
+        if (!inSection) continue;
+        const match = assignment.exec(line);
+        if (match !== null) return nonEmptyString(match[1] ?? match[2]);
+    }
+    return null;
+}
+
+/**
+ * Manifest-declared project name, most authoritative first: package.json,
+ * then PEP 621 `[project]`, then Poetry, then Cargo. A manifest whose name is
+ * missing or unusable is skipped rather than ending the search.
+ */
+export async function detectProjectName(
+    root: string,
+    ctx?: RootContext,
+): Promise<{ name: string | null; nameSource: string | null }> {
+    const context = ctx ?? (await buildContext(root));
+
+    if (context.pkg !== null && context.pkg.name !== null) {
+        return { name: context.pkg.name, nameSource: entryOf(context, "package.json") ?? "package.json" };
+    }
+
+    const candidates: readonly (readonly [file: string, section: string])[] = [
+        ["pyproject.toml", "project"],
+        ["pyproject.toml", "tool\\.poetry"],
+        ["Cargo.toml", "package"],
+    ];
+    for (const [file, section] of candidates) {
+        const text = markerText(context, file);
+        if (text === null) continue;
+        const name = tomlString(text, section, "name");
+        if (name !== null) return { name, nameSource: entryOf(context, file) ?? file };
+    }
+    return { name: null, nameSource: null };
+}
+
+/* -------------------------------------------------------------------------
  * Docs
  * ---------------------------------------------------------------------- */
 
@@ -782,7 +849,8 @@ export async function profileProject(root: string, files: string[]): Promise<Pro
     const languages = buildLanguageStats(counts);
     const hasJsx = JSX_EXTENSIONS.some((extension) => (counts.get(extension) ?? 0) > 0);
 
-    const [packageManager, frameworks, docs] = await Promise.all([
+    const [identity, packageManager, frameworks, docs] = await Promise.all([
+        detectProjectName(root, ctx),
         detectPackageManager(root, ctx),
         detectFrameworks(root, ctx, hasJsx),
         detectDocs(root, ctx),
@@ -790,6 +858,8 @@ export async function profileProject(root: string, files: string[]): Promise<Pro
 
     const commands = detectCommands(ctx, packageManager);
     return {
+        name: identity.name,
+        nameSource: identity.nameSource,
         languages,
         primaryLanguage: pickPrimaryLanguage(languages),
         frameworks,

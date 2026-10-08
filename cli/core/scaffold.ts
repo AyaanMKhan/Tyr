@@ -109,9 +109,9 @@ export function buildConfig(snapshot: InitSnapshot, tyrVersion: string): TyrConf
         tyrVersion,
         initializedAt: new Date().toISOString(),
         project: {
-            // No package.json name in the snapshot; the root directory name is
-            // the right fallback for every ecosystem.
-            name: path.basename(root),
+            // The manifest name when one declares it; otherwise the root
+            // directory name, which is the right fallback for every ecosystem.
+            name: project.name ?? path.basename(root),
             root,
             primaryLanguage: project.primaryLanguage,
             languages: project.languages,
