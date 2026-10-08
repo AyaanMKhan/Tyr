@@ -91,10 +91,10 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Framework detection for JS, Python, Ruby, PHP and Java (`detectFrameworks`)
 - [x] Build/test/lint/format/typecheck command resolution: npm scripts first, then config-file fallbacks (`detectCommands`, `resolveCommand`)
 - [x] README and CLAUDE.md detection (`detectDocs`)
-- [ ] Use the `package.json` / `pyproject.toml` name for `project.name`. Today it is the directory basename (`scaffold.ts` `buildConfig`)
-- [ ] Monorepo and workspace awareness (npm/pnpm/yarn workspaces, Cargo workspaces, nested packages)
-- [ ] Keep each command's `tool` and `evidence` in `tyr.json`. `commandOf()` currently drops them
-- [ ] Check that detected commands actually run (dry run or `--help` probe)
+- [x] Use the `package.json` / `pyproject.toml` / `Cargo.toml` name for `project.name`, falling back to the directory basename (`detectProjectName`)
+- [x] Monorepo and workspace awareness (npm/pnpm/yarn workspaces, Cargo workspaces, nested packages) (`cli/core/workspaces.ts`, `detectWorkspaces`)
+- [x] Keep each command's `tool` and `evidence` in `tyr.json` (`ConfigCommand`, `commandOf`)
+- [x] Check that detected commands actually run: script lookup or `--version` probe, skippable with `--no-verify` (`cli/core/verify-commands.ts`)
 
 ### 2.6 `.tyr/` state and storage (`cli/core/scaffold.ts`, `cli/core/types.ts`): 55%, Partial
 - [x] Layout `.tyr/{tyr.json, state/state.json, logs/tyr.log, reports/, .gitignore}` (`resolveTyrPaths`, `scaffold`)
