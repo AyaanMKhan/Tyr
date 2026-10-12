@@ -87,7 +87,7 @@ type InitResult =
           tyrDir: string;
           tyrVersion: string;
           fileCount: number;
-          git: { isRepo: boolean; branch: string | null; headCommit: string | null };
+          git: { isRepo: boolean; branch: string | null; detached: boolean; headCommit: string | null };
           project: ProjectProfile;
           /** Null under `--no-verify`. */
           commandChecks: CommandVerification | null;
@@ -213,6 +213,7 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
             git: {
                 isRepo: git.isRepo,
                 branch: git.branch,
+                detached: git.detached,
                 headCommit: git.headCommit?.hash ?? null,
             },
             project,
@@ -291,6 +292,11 @@ async function reportGit(reporter: Reporter, root: string): Promise<GitInfo> {
 
     if (git.status) {
         reporter.success(`Working tree: ${describeStatus(git.status)}`);
+        if (git.status.untrackedSkipped) {
+            reporter.warn("Working tree: git status was slow, so untracked files were not checked");
+        }
+    } else if (git.statusTimedOut) {
+        reporter.warn("Working tree: git status timed out; status unknown");
     }
 
     const remote = git.remotes.find((r) => r.name === git.defaultRemote) ?? git.remotes[0];

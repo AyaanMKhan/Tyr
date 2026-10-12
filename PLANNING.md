@@ -70,20 +70,20 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] User-configurable extra ignore patterns, read from `tyr.json` or a `.tyrignore`
 - [x] Incremental re-scan: diff against the last scan to support change detection
 
-### 2.4 Git integration (`cli/core/git.ts`): 50%, Partial
+### 2.4 Git integration (`cli/core/git*.ts`): 100%, Done
 - [x] Repo detection (`isGitRepository`), which correctly reports bare repos as not being a work tree
 - [x] Current branch, including unborn and detached HEAD with a tag or short-hash label (`getCurrentBranch`, `describeDetachedHead`)
 - [x] HEAD commit with a robust delimiter (`getHeadCommit`)
 - [x] Porcelain v1 status parsing: staged, modified, untracked, conflicted, ahead/behind, renames, C-quoted paths (`getStatus`, `unquotePath`)
 - [x] Remotes and default remote resolution (`getRemotes`, `resolveDefaultRemote`)
-- [x] Every call is argv-only (no shell injection), time-limited and returns a value on every path (`runGit`)
-- [ ] Change detection: compare HEAD and working tree against `state.lastIndexedCommit`
-- [ ] Diffs: `git diff` / `git diff --stat` for staged, unstaged and since-commit changes, so Tyr can review them
-- [ ] Commit log since a reference point (to see what Claude Code committed)
-- [ ] Watch for git events (HEAD, index or ref changes, via fs watch on `.git/` or hooks)
-- [ ] Write operations for corrective agents: create branch or worktree, stash, commit, revert. All guarded
-- [ ] Handle status timeouts on huge repos. Today a `git status` that exceeds 5s quietly becomes `status: null`
-- [ ] Persist the `detached` flag in `tyr.json` (today `git.branch` can silently hold a hash or tag)
+- [x] Every call is argv-only (no shell injection), time-limited and returns a value on every path (`runGit`, shared in `cli/core/git-exec.ts`)
+- [x] Change detection: compare HEAD and working tree against `state.lastIndexedCommit`, surviving resets, rebases and missing commits (`cli/core/git-history.ts`, `detectChanges`)
+- [x] Diffs: `git diff` / `git diff --stat` for staged, unstaged and since-commit changes, so Tyr can review them. Size-capped, rename-aware, config-proof (`cli/core/git-diff.ts`, `getDiff`, `getDiffStat`)
+- [x] Commit log since a reference point (to see what Claude Code committed), with optional per-commit files (`getCommitLog`, `getCommitsSince`)
+- [x] Watch for git events (HEAD, index, ref and merge-state changes) via debounced fs watch on `.git/`, with a polling fallback and worktree support (`cli/core/git-watch.ts`, `watchGit`)
+- [x] Write operations for corrective agents: create branch or worktree, stash, commit, revert. All guarded: per-repo lock, dry run, protected branches, `Tyr-Agent` trailer, no force/push (`cli/core/git-write.ts`)
+- [x] Handle status timeouts on huge repos: retry without untracked files (`untrackedSkipped`), and report `statusTimedOut` instead of a silent null (`getStatusOutcome`)
+- [x] Persist the `detached` flag in `tyr.json` and `init --json`
 
 ### 2.5 Project profiling (`cli/core/project.ts`): 90%, Partial
 - [x] Language histogram from the discovery file list. Docs and data formats never count as the primary language (`buildLanguageStats`, `pickPrimaryLanguage`)
@@ -129,7 +129,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 
 ### 2.9 Observation of Claude Code and the repo: `tyr watch` (`cli/commands/watch.ts`): 0%, Not started
 - [ ] File-system watcher on the project, using the discovery ignore rules and debounced
-- [ ] Git event watcher (see 2.4)
+- [ ] Git event watcher: the module is done (`watchGit`, see 2.4) but is not yet wired into the daemon or `tyr watch`
 - [ ] Claude Code session observation: read the session transcripts or JSONL logs and/or install Claude Code hooks (PreToolUse/PostToolUse/Stop) that report to Tyr
 - [ ] IPC channel between the daemon and the CLI (Unix socket or named pipe, or a polled file in `.tyr/state/`)
 - [ ] `tyr watch` live view: stream daemon events and progress through the reporter
@@ -228,7 +228,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 1 | CLI framework (`cli/index.ts`) | 5 | 80% | Partial | 4.0 |
 | 2 | `tyr init` command | 10 | 90% | Partial | 9.0 |
 | 3 | Discovery / file scanning | (in 2) | 85% | Partial | — |
-| 4 | Git integration | 8 | 50% | Partial | 4.0 |
+| 4 | Git integration | 8 | 100% | Done | 8.0 |
 | 5 | Project profiling | 5 | 90% | Partial | 4.5 |
 | 6 | `.tyr/` state and storage | 8 | 55% | Partial | 4.4 |
 | 7 | User configuration | 4 | 15% | Partial | 0.6 |
@@ -246,7 +246,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 19 | Lint / format / CI | 1 | 0% | Not started | 0 |
 | 20 | Packaging and distribution | 2 | 30% | Partial | 0.6 |
 | 21 | Documentation | 2 | 10% | Partial | 0.2 |
-| | **Total** | **100** | | | **≈ 28.6 → 29%** |
+| | **Total** | **100** | | | **≈ 32.6 → 33%** |
 
 Discovery and the reporter are counted inside the `init` and CLI weights, because their only consumer today is `init`.
 

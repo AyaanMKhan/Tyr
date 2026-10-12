@@ -1,4 +1,4 @@
-// Git detection for `tyr init`.
+// Git detection for `tyr init` (read-only repository facts).
 //
 // Everything here shells out to the real `git` binary, so Tyr picks up no new
 // npm dependency. Every export is *total*: a missing git binary, a plain
@@ -6,25 +6,12 @@
 // inputs that resolve to the documented empty/null value. Nothing in this
 // module throws and nothing prints — the caller owns all user-facing output.
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
+import { COMMIT_FORMAT, FIELD_DELIM, GIT_TIMEOUT_MS, runGit } from "./git-exec.js";
 import type { GitCommit, GitInfo, GitRemote, GitStatus } from "./types.js";
 
-const execFileAsync = promisify(execFile);
-
-// A hung git (credential prompt, lock contention, unreachable remote) must
-// never wedge `tyr init`, so every invocation is capped.
-const GIT_TIMEOUT_MS = 5000;
-
-// Status output on a huge working tree can be sizeable; bounded but generous.
-const GIT_MAX_BUFFER = 16 * 1024 * 1024;
-
-// Unit separator + record separator. A *multi-char* delimiter built from two
-// ASCII control codes cannot realistically occur inside a commit subject, so
-// pretty-format records stay parseable no matter what people type.
-const FIELD_DELIM = "\u001f\u001e";
-const COMMIT_FORMAT = ["%H", "%h", "%s", "%an", "%aI"].join("%x1f%x1e");
+// A status that blows the normal limit is retried once with this much longer
+// cap, and without the untracked-file walk, which dominates on huge trees.
+const STATUS_RETRY_TIMEOUT_MS = 30_000;
 
 // Porcelain v1 two-letter codes that mean "unmerged path".
 const CONFLICT_CODES = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
@@ -41,34 +28,6 @@ const SIMPLE_ESCAPES: Record<string, number> = {
     t: 0x09,
     v: 0x0b,
 };
-
-interface GitResult {
-    ok: boolean;
-    stdout: string;
-}
-
-/**
- * Run git with an argv array (never a shell string, so branch names and paths
- * cannot be shell-injected) and normalize every failure into `ok: false`.
- */
-async function runGit(root: string, args: string[]): Promise<GitResult> {
-    try {
-        const { stdout } = await execFileAsync("git", args, {
-            cwd: root,
-            timeout: GIT_TIMEOUT_MS,
-            maxBuffer: GIT_MAX_BUFFER,
-            encoding: "utf8",
-            windowsHide: true,
-        });
-        return { ok: true, stdout: stdout.toString() };
-    } catch (error) {
-        // git exits non-zero for plenty of perfectly normal situations (not a
-        // repo, no commits yet, no upstream), and ENOENT means git isn't even
-        // installed. None of those are errors for us.
-        const stdout = (error as { stdout?: string | Buffer } | null)?.stdout;
-        return { ok: false, stdout: stdout === undefined ? "" : stdout.toString() };
-    }
-}
 
 /* -------------------------------------------------------------------------
  * Repository / branch
@@ -155,16 +114,54 @@ export async function getHeadCommit(root: string): Promise<GitCommit | null> {
  * Working-tree status
  * ---------------------------------------------------------------------- */
 
-export async function getStatus(root: string): Promise<GitStatus | null> {
-    const result = await runGit(root, [
-        "status",
-        "--porcelain=v1",
-        "--branch",
-        "--untracked-files=all",
-    ]);
-    if (!result.ok) {
-        return null;
+export interface StatusOptions {
+    /** Time limit for the first, full attempt. */
+    timeoutMs?: number;
+    /** Time limit for the fallback attempt that skips untracked files. */
+    retryTimeoutMs?: number;
+}
+
+export interface StatusOutcome {
+    status: GitStatus | null;
+    /**
+     * True when even the fallback attempt timed out, so `status` is null
+     * because the repo is too slow — not because it isn't a repo.
+     */
+    timedOut: boolean;
+}
+
+export async function getStatus(root: string, options: StatusOptions = {}): Promise<GitStatus | null> {
+    return (await getStatusOutcome(root, options)).status;
+}
+
+/**
+ * Like `getStatus`, but says *why* there is no status. A huge working tree
+ * that blows the normal limit is retried once, longer and without walking
+ * untracked files (by far the expensive part), and the result is flagged
+ * `untrackedSkipped` rather than quietly dropped.
+ */
+export async function getStatusOutcome(root: string, options: StatusOptions = {}): Promise<StatusOutcome> {
+    const base = ["status", "--porcelain=v1", "--branch"];
+    const full = await runGit(root, [...base, "--untracked-files=all"], {
+        timeoutMs: options.timeoutMs ?? GIT_TIMEOUT_MS,
+    });
+    if (full.ok) {
+        return { status: parseStatus(full.stdout, false), timedOut: false };
     }
+    if (!full.timedOut) {
+        return { status: null, timedOut: false };
+    }
+
+    const fallback = await runGit(root, [...base, "--untracked-files=no"], {
+        timeoutMs: options.retryTimeoutMs ?? STATUS_RETRY_TIMEOUT_MS,
+    });
+    if (fallback.ok) {
+        return { status: parseStatus(fallback.stdout, true), timedOut: false };
+    }
+    return { status: null, timedOut: fallback.timedOut };
+}
+
+function parseStatus(stdout: string, untrackedSkipped: boolean): GitStatus {
 
     const staged: string[] = [];
     const modified: string[] = [];
@@ -173,7 +170,7 @@ export async function getStatus(root: string): Promise<GitStatus | null> {
     let ahead: number | null = null;
     let behind: number | null = null;
 
-    for (const line of result.stdout.split("\n")) {
+    for (const line of stdout.split("\n")) {
         if (line.length === 0) {
             continue;
         }
@@ -231,6 +228,7 @@ export async function getStatus(root: string): Promise<GitStatus | null> {
         conflicted,
         ahead,
         behind,
+        untrackedSkipped,
     };
 }
 
@@ -349,6 +347,7 @@ export async function collectGitInfo(root: string): Promise<GitInfo> {
             detached: false,
             headCommit: null,
             status: null,
+            statusTimedOut: false,
             remotes: [],
             defaultRemote: null,
         };
@@ -356,10 +355,10 @@ export async function collectGitInfo(root: string): Promise<GitInfo> {
 
     // None of these lookups feed each other, so run them together instead of
     // paying for five serial subprocess round trips.
-    const [branchInfo, headCommit, status, remotes, upstreamRemote] = await Promise.all([
+    const [branchInfo, headCommit, statusOutcome, remotes, upstreamRemote] = await Promise.all([
         getCurrentBranch(root),
         getHeadCommit(root),
-        getStatus(root),
+        getStatusOutcome(root),
         getRemotes(root),
         getUpstreamRemoteName(root),
     ]);
@@ -369,7 +368,8 @@ export async function collectGitInfo(root: string): Promise<GitInfo> {
         branch: branchInfo.branch,
         detached: branchInfo.detached,
         headCommit,
-        status,
+        status: statusOutcome.status,
+        statusTimedOut: statusOutcome.timedOut,
         remotes,
         defaultRemote: resolveDefaultRemote(remotes, upstreamRemote),
     };

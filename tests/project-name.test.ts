@@ -115,6 +115,7 @@ function snapshotWith(root: string, project: Partial<ProjectProfile>): InitSnaps
             detached: false,
             headCommit: null,
             status: null,
+            statusTimedOut: false,
             remotes: [],
             defaultRemote: null,
         },

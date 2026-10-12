@@ -60,6 +60,11 @@ export interface GitStatus {
     /** Commits ahead of / behind the upstream branch, null when no upstream. */
     ahead: number | null;
     behind: number | null;
+    /**
+     * True when the full status timed out and was retried without walking
+     * untracked files, so `untracked` is empty because it was not checked.
+     */
+    untrackedSkipped: boolean;
 }
 
 export interface GitRemote {
@@ -82,6 +87,8 @@ export interface GitInfo {
     /** Most recent commit, or null on a repo with no commits. */
     headCommit: GitCommit | null;
     status: GitStatus | null;
+    /** True when `status` is null because git status timed out on a huge repo. */
+    statusTimedOut: boolean;
     remotes: GitRemote[];
     /** Name of the remote tracking the current branch (usually "origin"). */
     defaultRemote: string | null;
@@ -247,7 +254,13 @@ export interface TyrConfig {
     };
     git: {
         isRepo: boolean;
+        /** Branch name, or a tag/short-hash label when `detached`. */
         branch: string | null;
+        /**
+         * True when `branch` is a detached-HEAD label, not a real branch.
+         * Optional: absent in older tyr.json files.
+         */
+        detached?: boolean;
         remote: string | null;
         headCommit: string | null;
     };

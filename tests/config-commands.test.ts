@@ -21,6 +21,7 @@ function snapshotWith(project: Partial<ProjectProfile>): InitSnapshot {
             detached: false,
             headCommit: null,
             status: null,
+            statusTimedOut: false,
             remotes: [],
             defaultRemote: null,
         },

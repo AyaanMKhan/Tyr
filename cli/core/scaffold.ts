@@ -135,6 +135,7 @@ export function buildConfig(snapshot: InitSnapshot, tyrVersion: string): TyrConf
         git: {
             isRepo: git.isRepo,
             branch: git.branch,
+            detached: git.detached,
             remote: git.defaultRemote,
             // Full hash, not the short one: this is what change detection diffs.
             headCommit: git.headCommit === null ? null : git.headCommit.hash,
