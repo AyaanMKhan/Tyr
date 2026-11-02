@@ -7,6 +7,7 @@ import {Command} from "commander";
 import { bannerText, isInteractive, printBanner } from "./ui/banner.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerStartCommand } from "./commands/start.js";
+import { registerStopCommand } from "./commands/stop.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerWatchCommand } from "./commands/watch.js";
 import { registerRunCommand } from "./commands/run.js";
@@ -27,6 +28,7 @@ Typical workflow:
   $ tyr start         Launch the background process
   $ tyr watch         Follow what Tyr is doing
   $ tyr status        See what Tyr knows
+  $ tyr stop          Stop the background process
 
 Global options work with every command:
   $ tyr --cwd ../api status       Act on another directory
@@ -52,6 +54,7 @@ Run "tyr <command> --help" for details and examples for a command.`)
 
 registerInitCommand(program);
 registerStartCommand(program);
+registerStopCommand(program);
 registerWatchCommand(program);
 registerStatusCommand(program);
 registerRunCommand(program);

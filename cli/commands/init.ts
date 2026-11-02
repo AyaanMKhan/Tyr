@@ -25,6 +25,7 @@ import { TYR_VERSION } from "../core/version.js";
 import { printJson, readGlobals, verbosityOf, type GlobalOptions } from "../core/globals.js";
 import { createReporter } from "../ui/reporter.js";
 import { ask, canPrompt, confirm } from "../ui/prompt.js";
+import { reportDaemonStart, type DaemonSummary } from "./start.js";
 import type {
     CommandKind,
     CommandProbe,
@@ -103,6 +104,8 @@ type InitResult =
           project: ProjectProfile;
           /** Null under `--no-verify`. */
           commandChecks: CommandVerification | null;
+          /** Null unless `--start` was given and the background process started. */
+          daemon: DaemonSummary | null;
       }
     | { ok: false; root?: string; error: string };
 
@@ -220,10 +223,13 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         reporter.blank();
         reporter.done("Tyr initialized successfully.");
 
+        // Same code path and output as `tyr start`. Init itself succeeded, so a
+        // failed start keeps `ok: true` but still fails the exit code.
+        let daemon: DaemonSummary | null = null;
         if (options.start) {
             reporter.blank();
-            reporter.warn("--start was requested, but the background process is not implemented yet.");
-            await appendLog(root, "warn", "--start requested but background process is unimplemented");
+            daemon = await reportDaemonStart(reporter, root);
+            if (daemon === null) process.exitCode = 1;
         }
 
         reporter.stop();
@@ -241,6 +247,7 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
             },
             project,
             commandChecks: checks,
+            daemon,
         };
     } catch (error) {
         // Any throw here means `.tyr` may be incomplete, so say so plainly

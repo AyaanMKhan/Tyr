@@ -53,7 +53,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Records the ignore lists in `tyr.json` (`DiscoveryResult.ignoredDirs/ignoredExtensions`)
 - [x] Writes `.tyr/` through `scaffold()` and logs completion
 - [x] `--no-color` flag. Sets `process.exitCode = 1` on failure
-- [ ] `--start` really starts the background process. Today it only warns "not implemented" (`init.ts:129-133`)
+- [x] `--start` really starts the background process, through the same `reportDaemonStart()` as `tyr start`. `--json` reports `daemon: { pid, alreadyRunning }` or null
 - [x] Marks the in-flight task as failed (`✗`) when an error occurs (`reporter.failActive()` in `runInit`'s `catch`)
 - [ ] Offers to add `.tyr/` entries to the project's root `.gitignore`, or documents which parts get committed
 - [x] Optional interactive confirmation or editing of detected commands before writing them (`tyr init --interactive`, `cli/core/edit-commands.ts`)
@@ -105,7 +105,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [ ] Validate loaded config and state against the schema. Today it is a blind `as T` cast
 - [ ] Schema version migration (`version` exists, but nothing reads or upgrades it)
 - [ ] Code that updates state: `status` changes between `running`, `stopped` and `error`, plus `runCount` and `lastRunAt`. Nothing calls `writeState` today
-- [ ] A lock or PID file so two daemons or commands cannot race on `.tyr/`
+- [ ] A lock or PID file so two daemons or commands cannot race on `.tyr/`. Two daemons cannot (`.tyr/state/daemon.pid`, see 2.8); commands still can
 - [ ] Report writer for `reports/` (format, naming, retention)
 - [ ] Log rotation or size cap, and a `--log-level`
 - [ ] Event/history store (what Claude Code did, what Tyr detected, what actions were taken)
@@ -118,14 +118,15 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [ ] Global, per-user config (`~/.config/tyr`) for API keys and defaults
 - [ ] Env var overrides
 
-### 2.8 Background process: `tyr start` (`cli/commands/start.ts`): 0%, Not started
-- [ ] Choose the process model: detached child process, or foreground plus a supervisor
-- [ ] Spawn a detached daemon and write a PID file to `.tyr/state/`
-- [ ] Prevent duplicates (detect a live PID or stale lock)
-- [ ] `tyr stop` command (not registered yet)
-- [ ] Graceful shutdown on SIGINT/SIGTERM. Persist `status: "stopped"`
-- [ ] Windows-compatible daemonizing (`detached`, `windowsHide`, no POSIX-only signals)
-- [ ] Recover after a crash: `status: "error"` plus a log entry
+### 2.8 Background process: `tyr start` (`cli/commands/start.ts`, `cli/core/daemon.ts`): 90%, Partial
+- [x] Choose the process model: a detached `node` child running a dedicated entry (`cli/daemon-main.ts`), not a hidden commander command
+- [x] Spawn a detached daemon and write a PID file to `.tyr/state/` (`startDaemon`, `daemon.pid` holds `{ pid, startedAt }`; stdout/stderr go to `.tyr/logs/daemon.log`)
+- [x] Prevent duplicates (detect a live PID or stale lock). Exclusive-create claim of the PID file, `process.kill(pid, 0)` with EPERM counted as alive, stale files replaced (`readDaemonStatus`)
+- [x] `tyr stop` command (`cli/commands/stop.ts`, `stopDaemon`): writes a `daemon.stop` request the daemon polls for, then falls back to a kill plus cleanup after 5s
+- [x] Graceful shutdown on SIGINT/SIGTERM (and SIGBREAK on Windows). Persist `status: "stopped"`, remove the PID file
+- [x] Windows-compatible daemonizing (`detached`, `windowsHide`, no POSIX-only signals). Stop uses the request file because `SIGTERM` is a hard kill on Windows
+- [x] Recover after a crash: `status: "error"` plus a log entry on uncaught errors; `tyr start`/`tyr stop` clear the stale PID file a hard-killed daemon leaves behind
+- [ ] The daemon only follows git events into `tyr.log` today (`watchGit`); real work (observation, review) still has to be wired in (see 2.9, 2.10)
 
 ### 2.9 Observation of Claude Code and the repo: `tyr watch` (`cli/commands/watch.ts`): 0%, Not started
 - [ ] File-system watcher on the project, using the discovery ignore rules and debounced
@@ -232,7 +233,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 5 | Project profiling | 5 | 90% | Partial | 4.5 |
 | 6 | `.tyr/` state and storage | 8 | 55% | Partial | 4.4 |
 | 7 | User configuration | 4 | 15% | Partial | 0.6 |
-| 8 | Background process (`start`/`stop`) | 9 | 0% | Not started | 0 |
+| 8 | Background process (`start`/`stop`) | 9 | 90% | Partial | 8.1 |
 | 9 | Observation (`watch`, Claude Code, fs, git events) | 9 | 0% | Not started | 0 |
 | 10 | Core engine / orchestration | 9 | 0% | Not started | 0 |
 | 11 | Problem detection / review | 7 | 0% | Not started | 0 |

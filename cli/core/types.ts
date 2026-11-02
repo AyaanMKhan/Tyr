@@ -296,6 +296,14 @@ export interface TyrState {
     /** Incremented on every Tyr run. */
     runCount: number;
     lastRunAt: string | null;
+    /**
+     * Pid of the background process while `status` is "running", else null.
+     * Optional because states written by `tyr init` never set it; the
+     * authoritative liveness check is `.tyr/state/daemon.pid` (daemon.ts).
+     */
+    pid?: number | null;
+    /** When the current (or last) background process started. */
+    startedAt?: string | null;
 }
 
 /* -------------------------------------------------------------------------
