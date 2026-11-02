@@ -21,6 +21,7 @@ import { countPatterns, readTyrIgnore, TYR_IGNORE_FILE } from "../core/ignore.js
 import { buildScanManifest, saveScanManifest } from "../core/scan-diff.js";
 import { verifyCommands } from "../core/verify-commands.js";
 import { CLEAR_TOKEN, COMMAND_SLOTS, editCommands } from "../core/edit-commands.js";
+import { applyGitignorePolicy, TYR_GITIGNORE_ENTRY, type GitignoreOutcome } from "../core/root-gitignore.js";
 import { TYR_VERSION } from "../core/version.js";
 import { printJson, readGlobals, verbosityOf, type GlobalOptions } from "../core/globals.js";
 import { createReporter } from "../ui/reporter.js";
@@ -45,6 +46,8 @@ interface InitOptions {
     /** False under `--no-verify`. */
     verify?: boolean;
     interactive?: boolean;
+    /** True under `--gitignore`, false under `--no-gitignore`, otherwise unset. */
+    gitignore?: boolean;
 }
 
 export function registerInitCommand(program: Command) {
@@ -56,6 +59,8 @@ export function registerInitCommand(program: Command) {
         .option("--no-color", "Disable colored output")
         .option("--no-verify", "Skip checking that detected commands are runnable")
         .option("-i, --interactive", "Review and edit detected commands before writing")
+        .option("--gitignore", "Add /.tyr/ to the project's root .gitignore without asking")
+        .option("--no-gitignore", "Never touch the root .gitignore, and do not ask")
         .addHelpText("after", `
 Finds the project root (the git toplevel, or the nearest directory with a
 manifest), scans files, detects the toolchain and writes .tyr/ there.
@@ -69,6 +74,11 @@ it. Typed commands are recorded with evidence "user". Declining the final
 confirmation writes nothing. Without a terminal (piped, CI, --json) the
 flag is ignored with a warning.
 
+In a git repo whose root .gitignore does not already ignore .tyr/, init asks
+whether to add /.tyr/ (tyr.json holds a machine-specific absolute path).
+Without a terminal it only prints a hint; --gitignore / --no-gitignore decide
+up front.
+
 Examples:
   $ tyr init                Initialize the current project
   $ tyr init --force        Re-initialize, overwriting .tyr/
@@ -76,6 +86,8 @@ Examples:
   $ tyr init --no-color     Plain output, e.g. for logs
   $ tyr init --no-verify    Skip probing build/test/lint tools
   $ tyr init --interactive  Confirm or edit detected commands first
+  $ tyr init --gitignore    Also add /.tyr/ to the root .gitignore
+  $ tyr init --no-gitignore Leave the root .gitignore alone
   $ tyr init --verbose      Also show scan and write details
   $ tyr init --json         Print a JSON summary instead of text`)
         .action(async (options: InitOptions, command: Command) => {
@@ -106,6 +118,8 @@ type InitResult =
           commandChecks: CommandVerification | null;
           /** Null unless `--start` was given and the background process started. */
           daemon: DaemonSummary | null;
+          /** What happened to the root `.gitignore`. */
+          gitignore: GitignoreOutcome;
       }
     | { ok: false; root?: string; error: string };
 
@@ -220,6 +234,8 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
 
         await appendLog(root, "info", `tyr init completed - ${scan.files.length} files indexed`);
 
+        const gitignore = await offerRootGitignore(reporter, root, options, git.isRepo, globals.json === true);
+
         reporter.blank();
         reporter.done("Tyr initialized successfully.");
 
@@ -248,6 +264,7 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
             project,
             commandChecks: checks,
             daemon,
+            gitignore,
         };
     } catch (error) {
         // Any throw here means `.tyr` may be incomplete, so say so plainly
@@ -259,6 +276,31 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         reporter.error(`Initialization failed: ${describeError(error)}`);
         return { ok: false, root, error: describeError(error) };
     }
+}
+
+/** Adds, offers or skips the root `.gitignore` entry; the policy lives in root-gitignore.ts. */
+async function offerRootGitignore(
+    reporter: Reporter,
+    root: string,
+    options: InitOptions,
+    isRepo: boolean,
+    json: boolean,
+): Promise<GitignoreOutcome> {
+    const { outcome, suggestFlag } = await applyGitignorePolicy(root, {
+        flag: options.gitignore,
+        isRepo,
+        interactive: canPrompt({ json }),
+        ask: () => {
+            // The prompt writes to the same terminal, so no spinner may own the line.
+            reporter.stop();
+            return confirm(`Add ${TYR_GITIGNORE_ENTRY} to the project's .gitignore?`, true);
+        },
+    });
+    if (outcome === "added") reporter.success(`Added ${TYR_GITIGNORE_ENTRY} to .gitignore`);
+    else if (outcome === "present") reporter.debug(".gitignore already ignores .tyr/");
+    else if (outcome === "declined") reporter.muted(".gitignore left unchanged");
+    else if (suggestFlag) reporter.muted(`.gitignore does not ignore .tyr/ (run with --gitignore to add ${TYR_GITIGNORE_ENTRY})`);
+    return outcome;
 }
 
 /**

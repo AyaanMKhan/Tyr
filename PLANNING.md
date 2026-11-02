@@ -55,7 +55,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] `--no-color` flag. Sets `process.exitCode = 1` on failure
 - [x] `--start` really starts the background process, through the same `reportDaemonStart()` as `tyr start`. `--json` reports `daemon: { pid, alreadyRunning }` or null
 - [x] Marks the in-flight task as failed (`✗`) when an error occurs (`reporter.failActive()` in `runInit`'s `catch`)
-- [ ] Offers to add `.tyr/` entries to the project's root `.gitignore`, or documents which parts get committed
+- [x] Offers to add `.tyr/` entries to the project's root `.gitignore`, or documents which parts get committed (`cli/core/root-gitignore.ts`, `--gitignore` / `--no-gitignore`)
 - [x] Optional interactive confirmation or editing of detected commands before writing them (`tyr init --interactive`, `cli/core/edit-commands.ts`)
 - [ ] Preserves user-edited fields and state history on `--force` instead of overwriting everything
 

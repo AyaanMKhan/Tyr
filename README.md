@@ -31,6 +31,7 @@ Tyr is a command-line tool that sits **beside** your AI coding agent instead of 
   - [5. Project identification](#5-project-identification)
   - [6. Writing `.tyr/`](#6-writing-tyr)
 - [The `.tyr/` directory](#the-tyr-directory)
+  - [What gets committed](#what-gets-committed)
   - [`tyr.json` schema](#tyrjson-schema)
   - [`state/state.json` schema](#statestatejson-schema)
   - [`logs/tyr.log` format](#logstyrlog-format)
@@ -180,6 +181,8 @@ Inspects the current project and creates the `.tyr/` directory at the project ro
 |---|---|
 | `-f`, `--force` | Re-initialize even if `.tyr/tyr.json` already exists. Overwrites `tyr.json` and `state/state.json` (which resets `runCount`, `createdAt` and the other state fields) and **appends** to the existing log. |
 | `-s`, `--start` | Initialize, then start the background process. **The background process is not implemented yet.** Tyr finishes `init`, prints a warning and writes a `WARN` line to the log. |
+| `--gitignore` | Add `/.tyr/` to the project's root `.gitignore` without asking (creating the file if needed). Does nothing if `.tyr` is already ignored. |
+| `--no-gitignore` | Never read, change or ask about the root `.gitignore`. |
 | `--no-color` | Disable ANSI colours. Colour is also turned off automatically when `NO_COLOR` is set, when `TERM=dumb`, or when stdout is not a TTY. |
 | `-h`, `--help` | Show help for `init`. |
 
@@ -412,6 +415,8 @@ Both lists, sorted, are written to `tyr.json` under `scan`. A later run can then
 
 `init.ts` then appends a second `tyr init completed - N files indexed` line. Log writes are best-effort: a failed log write never fails a command.
 
+Finally `init` checks the project's root `.gitignore` (see [What gets committed](#what-gets-committed)). If it does not already ignore `.tyr` (any of `/.tyr/`, `.tyr/`, `.tyr`, `/.tyr`, optionally with `*` or `**`), then inside a git repo on an interactive terminal it asks `Add /.tyr/ to the project's .gitignore? (Y/n)`. With no terminal (piped, CI, `--json`) it only prints a hint to use `--gitignore`. Outside a git repo it stays silent. The entry is appended under a `# Tyr` comment, keeping the file's line endings, and written atomically. `--json` reports the outcome as `"gitignore": "added" | "present" | "skipped" | "declined"`.
+
 ---
 
 ## The `.tyr/` directory
@@ -420,9 +425,10 @@ Both lists, sorted, are written to `tyr.json` under `scan`. A later run can then
 <repo-root>/
 └── .tyr/
     ├── .gitignore          # ignores logs/, reports/, state/
-    ├── tyr.json            # project profile + config (commit this)
+    ├── tyr.json            # project profile + config (see "What gets committed")
     ├── state/
-    │   └── state.json      # runtime lifecycle state (per machine, ignored)
+    │   ├── state.json      # runtime lifecycle state (per machine, ignored)
+    │   └── scan.json       # scan manifest for change detection (ignored)
     ├── logs/
     │   └── tyr.log         # append-only activity log (ignored)
     └── reports/
@@ -436,6 +442,20 @@ Both lists, sorted, are written to `tyr.json` under `scan`. A later run can then
 | `logs/tyr.log` | Timestamped, append-only log of Tyr activity. | No |
 | `reports/` | Created empty. Reserved for the reports the planned reviewer will produce. *(Purpose inferred from the name and the project's stated goal. Nothing writes here yet.)* | No |
 | `.gitignore` | Keeps the per-machine runtime output above out of git. | Yes |
+| `state/scan.json` | Scan manifest (file fingerprints) that `tyr status` / `tyr watch` diff against. | No (under `state/`) |
+
+The "Committed?" column describes the design: `.tyr/.gitignore` already keeps `state/`, `logs/` and `reports/` out of git on its own, so without any root `.gitignore` entry you would commit `tyr.json` and `.tyr/.gitignore`.
+
+### What gets committed
+
+In practice `tyr.json` is **not yet portable**: `project.root` is an absolute, machine-specific path, and `git.headCommit`, `project.fileCount` and `initializedAt` change on every re-init. A committed copy goes stale with the next commit, and a teammate who clones it is refused by `tyr init` ("already initialized") until they pass `--force`. So `tyr init` recommends ignoring the **whole** directory by adding `/.tyr/` to the project's root `.gitignore`:
+
+| Choice | Root `.gitignore` | What git tracks |
+|---|---|---|
+| Ignore everything (default offer, `--gitignore`) | `/.tyr/` | Nothing under `.tyr/`. Every clone runs its own `tyr init`. |
+| Share the profile (decline, or `--no-gitignore`) | no entry | `.tyr/tyr.json` and `.tyr/.gitignore`. `state/`, `logs/` and `reports/` stay ignored by `.tyr/.gitignore`. |
+
+A narrower root entry such as `.tyr/state/` would add nothing, since `.tyr/.gitignore` already covers the runtime output. If you choose to share `tyr.json`, expect to re-run `tyr init --force` after cloning and to see it change in diffs.
 
 ### `tyr.json` schema
 
@@ -625,7 +645,7 @@ npx tsc --noEmit              # type-check only (the command Tyr detects for its
 - Only `init` does real work. `start`, `watch`, `status` and `run` are placeholders, and `--start` only warns.
 - The ASCII banner prints on every invocation, including `--version` and `--help`, and before machine-readable output.
 - The help header reads `Usage: Tyr` (the program name is set to `"Tyr"`), while the installed binary is `tyr`.
-- `tyr.json` stores an **absolute** `project.root`, which differs between machines even though the file is meant to be committed. For example, the committed copy in this repo contains `/home/ayaan/Tyr`.
+- `tyr.json` stores an **absolute** `project.root`, which differs between machines even though the file is meant to be committed. For example, the committed copy in this repo contains `/home/ayaan/Tyr`. This is why `tyr init` offers to ignore all of `/.tyr/` (see [What gets committed](#what-gets-committed)).
 - `project.name` is the root directory's basename, not the `name` from `package.json`.
 - Ignore lists are fixed and do not read `.gitignore`. Because they match directory names at any depth, a source folder named `bin`, `build`, `out` or `vendor` is skipped.
 - A `scaffold.ts` comment still carries a `TODO` saying the ignore lists are not passed through. They are now: `init.ts` attaches them to `DiscoveryResult`, and they appear in `tyr.json`.
