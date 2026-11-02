@@ -54,7 +54,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Writes `.tyr/` through `scaffold()` and logs completion
 - [x] `--no-color` flag. Sets `process.exitCode = 1` on failure
 - [ ] `--start` really starts the background process. Today it only warns "not implemented" (`init.ts:129-133`)
-- [ ] Marks the in-flight task as failed (`✗`) when an error occurs. Today `reporter.stop()` drops it silently (`init.ts:137-143`)
+- [x] Marks the in-flight task as failed (`✗`) when an error occurs (`reporter.failActive()` in `runInit`'s `catch`)
 - [ ] Offers to add `.tyr/` entries to the project's root `.gitignore`, or documents which parts get committed
 - [ ] Optional interactive confirmation or editing of detected commands before writing them
 - [ ] Preserves user-edited fields and state history on `--force` instead of overwriting everything

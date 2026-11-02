@@ -381,6 +381,13 @@ export interface Reporter {
     blank(): void;
     /** Final summary line. */
     done(text: string): void;
+    /**
+     * Resolve the in-flight task, if any, as `✗ <text>` (defaults to its own
+     * label). Used on error paths so the user sees *which* step was running
+     * when things went wrong, instead of the spinner silently vanishing.
+     * A no-op when no task is active.
+     */
+    failActive(text?: string): void;
     /** Tear down any active spinner; safe to call twice. */
     stop(): void;
 }

@@ -222,6 +222,8 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
     } catch (error) {
         // Any throw here means `.tyr` may be incomplete, so say so plainly
         // rather than reporting a success the user does not actually have.
+        // Fail the in-flight task first so the output names the step that broke.
+        reporter.failActive();
         reporter.stop();
         reporter.blank();
         reporter.error(`Initialization failed: ${describeError(error)}`);

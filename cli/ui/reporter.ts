@@ -154,6 +154,8 @@ export interface ReporterOptions {
     color?: boolean;
     /** Force spinner animation on/off. Defaults to auto-detection. */
     animate?: boolean;
+    /** Force Unicode glyphs on/off. Defaults to auto-detection. */
+    unicode?: boolean;
     /**
      * `quiet` keeps only warnings, errors and failed tasks; `verbose` also
      * prints `debug()` lines. Defaults to `normal`.
@@ -181,7 +183,7 @@ class ConsoleReporter implements Reporter {
         this.color = options.color ?? detectColor(this.stream);
         // A spinner is progress chatter, which quiet mode exists to remove.
         this.animate = this.verbosity !== "quiet" && (options.animate ?? detectAnimation(this.stream));
-        this.glyphs = detectUnicode() ? UNICODE_GLYPHS : ASCII_GLYPHS;
+        this.glyphs = (options.unicode ?? detectUnicode()) ? UNICODE_GLYPHS : ASCII_GLYPHS;
     }
 
     /* ----- public API ---------------------------------------------------- */
@@ -250,6 +252,13 @@ class ConsoleReporter implements Reporter {
         this.current?.succeed();
         if (this.quiet) return;
         this.emit(this.paint(text, SGR.bold));
+    }
+
+    failActive(text?: string): void {
+        // Resolving through the task itself (rather than writing a line here)
+        // reuses the one code path that tears the spinner down, honours quiet
+        // mode and guards against a second resolution of the same handle.
+        this.current?.fail(text);
     }
 
     stop(): void {
