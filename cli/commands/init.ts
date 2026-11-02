@@ -16,7 +16,7 @@ import {
 } from "../core/discovery.js";
 import { collectGitInfo } from "../core/git.js";
 import { profileProject } from "../core/project.js";
-import { scaffold, readConfig, appendLog } from "../core/scaffold.js";
+import { scaffold, readConfig, appendLog, type ScaffoldPreserved } from "../core/scaffold.js";
 import { countPatterns, readTyrIgnore, TYR_IGNORE_FILE } from "../core/ignore.js";
 import { buildScanManifest, saveScanManifest } from "../core/scan-diff.js";
 import { verifyCommands } from "../core/verify-commands.js";
@@ -42,6 +42,8 @@ import type {
 interface InitOptions {
     start?: boolean;
     force?: boolean;
+    /** Re-initialize from scratch instead of merging; implies --force. */
+    reset?: boolean;
     color?: boolean;
     /** False under `--no-verify`. */
     verify?: boolean;
@@ -55,7 +57,8 @@ export function registerInitCommand(program: Command) {
         .command("init")
         .description("Initialize Tyr in the current project")
         .option("-s, --start", "Initialize, then start the background process")
-        .option("-f, --force", "Re-initialize even if .tyr already exists")
+        .option("-f, --force", "Re-initialize even if .tyr already exists, keeping your edits")
+        .option("--reset", "Re-initialize from scratch, discarding edits and state history (implies --force)")
         .option("--no-color", "Disable colored output")
         .option("--no-verify", "Skip checking that detected commands are runnable")
         .option("-i, --interactive", "Review and edit detected commands before writing")
@@ -79,9 +82,15 @@ whether to add /.tyr/ (tyr.json holds a machine-specific absolute path).
 Without a terminal it only prints a hint; --gitignore / --no-gitignore decide
 up front.
 
+--force re-runs detection but keeps what you changed: commands you edited
+in tyr.json (or marked "source": "user"), keys Tyr does not know about, and
+state history (createdAt, runCount, lastRunAt, status). --reset discards all
+of that and writes tyr.json and state.json from scratch.
+
 Examples:
   $ tyr init                Initialize the current project
-  $ tyr init --force        Re-initialize, overwriting .tyr/
+  $ tyr init --force        Re-detect, keeping edited commands and history
+  $ tyr init --reset        Re-initialize from scratch, overwriting .tyr/
   $ tyr init --start        Initialize, then start the background process
   $ tyr init --no-color     Plain output, e.g. for logs
   $ tyr init --no-verify    Skip probing build/test/lint tools
@@ -146,14 +155,18 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         rootTask.succeed(`Project root: ${root}`);
 
         if (await isInitialized(root)) {
-            if (!options.force) {
+            if (!options.force && !options.reset) {
                 reporter.blank();
                 reporter.warn("Project is already initialized (.tyr/tyr.json exists).");
-                reporter.info("Re-run with --force to overwrite the existing configuration.");
+                reporter.info("Re-run with --force to re-detect (keeping your edits), or --reset to start over.");
                 reporter.stop();
                 return { ok: false, root, error: "Project is already initialized (.tyr/tyr.json exists)" };
             }
-            reporter.info("Existing configuration found - overwriting (--force).");
+            reporter.info(
+                options.reset
+                    ? "Existing configuration found - overwriting (--reset)."
+                    : "Existing configuration found - re-detecting, keeping your edits (--force).",
+            );
         }
 
         const git = await reportGit(reporter, root);
@@ -219,8 +232,9 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         reporter.header("Creating .tyr...");
 
         const writeTask = reporter.task("Writing configuration...");
-        const paths = await scaffold(snapshot, TYR_VERSION);
+        const paths = await scaffold(snapshot, TYR_VERSION, { reset: options.reset });
         writeTask.succeed("Configuration created");
+        reportPreserved(reporter, paths.preserved);
         reporter.debug(`Wrote ${paths.configFile}`);
         reporter.debug(`Wrote ${paths.stateFile}`);
 
@@ -339,6 +353,18 @@ async function loadExtraIgnore(
     );
 
     return { patterns: [...fromConfig, ...fromFile], fromConfig };
+}
+
+/** Says what a `--force` re-init carried over; silent on a fresh init. */
+function reportPreserved(reporter: Reporter, preserved: ScaffoldPreserved): void {
+    const { commands, configKeys, stateFields } = preserved;
+    if (commands.length) {
+        reporter.info(
+            `Kept ${commands.length} user-edited command${commands.length === 1 ? "" : "s"}: ${commands.join(", ")}`,
+        );
+    }
+    if (configKeys.length) reporter.debug(`Kept tyr.json keys: ${configKeys.join(", ")}`);
+    if (stateFields.length) reporter.debug(`Kept state fields: ${stateFields.join(", ")}`);
 }
 
 /** Runs git detection and prints the repository, branch, commit, status, remote. */

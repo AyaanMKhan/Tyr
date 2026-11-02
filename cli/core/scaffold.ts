@@ -8,7 +8,8 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { ConfigCommand, InitSnapshot, ProjectCommand, TyrConfig, TyrState } from "./types.js";
+import { CommandKind, ConfigCommand, InitSnapshot, ProjectCommand, TyrConfig, TyrState } from "./types.js";
+import { COMMAND_KINDS, mergeConfig, mergeState } from "./reinit-merge.js";
 
 /** Name of the directory Tyr owns inside a project root. */
 export const TYR_DIR_NAME = ".tyr";
@@ -78,7 +79,29 @@ export function resolveTyrPaths(root: string): TyrPaths {
  */
 function commandOf(command: ProjectCommand | null): ConfigCommand | null {
     if (command === null) return null;
-    return { command: command.command, tool: command.tool, evidence: command.evidence };
+    const entry: ConfigCommand = { command: command.command, tool: command.tool, evidence: command.evidence };
+    // Only the user marker is written; detected is the default and stays implicit.
+    if (isUserProvided(command)) entry.source = "user";
+    return entry;
+}
+
+/** Interactive editing tags the commands it collected; see reinit-merge.ts. */
+function isUserProvided(command: ProjectCommand): boolean {
+    return (command as { source?: unknown }).source === "user";
+}
+
+/**
+ * The detection baseline written next to `commands`, so a later `--force` can
+ * tell a hand edit from a detection change. User-provided commands are not
+ * detection output, so their slot records null.
+ */
+function detectedCommandsOf(snapshot: InitSnapshot): Record<CommandKind, string | null> {
+    const detected = {} as Record<CommandKind, string | null>;
+    for (const kind of COMMAND_KINDS) {
+        const command = snapshot.project[kind];
+        detected[kind] = command === null || isUserProvided(command) ? null : command.command;
+    }
+    return detected;
 }
 
 /** Defensive: accept an array or a Set, keep only strings, never throw. */
@@ -151,6 +174,9 @@ export function buildConfig(snapshot: InitSnapshot, tyrVersion: string): TyrConf
             // User patterns, preserved across `--force` re-inits. Always written,
             // even when empty, so the knob is discoverable in tyr.json.
             extraIgnore: toStringList(scanSource.extraIgnore),
+        },
+        detected: {
+            commands: detectedCommandsOf(snapshot),
         },
     };
 }
@@ -225,8 +251,49 @@ export async function readJsonObject<T>(file: string): Promise<T | null> {
  * Scaffold + accessors
  * ---------------------------------------------------------------------- */
 
-export async function scaffold(snapshot: InitSnapshot, tyrVersion: string): Promise<TyrPaths> {
+export interface ScaffoldOptions {
+    /**
+     * Discard the existing tyr.json and state.json instead of merging with
+     * them (`tyr init --reset`). `scan.extraIgnore` still arrives through the
+     * snapshot, exactly as before merging existed.
+     */
+    reset?: boolean;
+}
+
+/** What scaffold() carried over from an existing `.tyr/`; empty on a fresh init. */
+export interface ScaffoldPreserved {
+    /** Command slots whose user-edited value survived re-detection. */
+    commands: CommandKind[];
+    /** Unknown tyr.json keys carried over, as dotted paths. */
+    configKeys: string[];
+    /** state.json fields carried over (history, counters, extra keys). */
+    stateFields: string[];
+}
+
+export interface ScaffoldResult extends TyrPaths {
+    preserved: ScaffoldPreserved;
+}
+
+/**
+ * Write `.tyr/`. When a previous tyr.json / state.json exists (a `--force`
+ * re-init) they are merged rather than overwritten — see reinit-merge.ts —
+ * unless `options.reset` is set. Files in `state/` other than state.json
+ * (scan manifest, a daemon PID file) are never touched here.
+ */
+export async function scaffold(
+    snapshot: InitSnapshot,
+    tyrVersion: string,
+    options: ScaffoldOptions = {},
+): Promise<ScaffoldResult> {
     const paths = resolveTyrPaths(snapshot.discovery.root);
+
+    // Read before anything is written. Missing or malformed files read as
+    // null and simply produce a fresh config/state.
+    const [previousConfig, previousState] = options.reset
+        ? [null, null]
+        : await Promise.all([readJsonObject<unknown>(paths.configFile), readJsonObject<unknown>(paths.stateFile)]);
+    const config = mergeConfig(buildConfig(snapshot, tyrVersion), previousConfig);
+    const state = mergeState(buildInitialState(snapshot), previousState);
 
     // `recursive` also makes re-running init over a partial tree harmless.
     await fs.mkdir(paths.tyrDir, { recursive: true });
@@ -236,8 +303,8 @@ export async function scaffold(snapshot: InitSnapshot, tyrVersion: string): Prom
         fs.mkdir(paths.reportsDir, { recursive: true }),
     ]);
 
-    await writeFileAtomic(paths.configFile, toJsonDocument(buildConfig(snapshot, tyrVersion)));
-    await writeFileAtomic(paths.stateFile, toJsonDocument(buildInitialState(snapshot)));
+    await writeFileAtomic(paths.configFile, toJsonDocument(config.config));
+    await writeFileAtomic(paths.stateFile, toJsonDocument(state.state));
 
     await fs.writeFile(path.join(paths.tyrDir, ".gitignore"), TYR_GITIGNORE, "utf8");
     // Git will not track an empty directory; .gitkeep keeps reports/ in the tree.
@@ -253,7 +320,10 @@ export async function scaffold(snapshot: InitSnapshot, tyrVersion: string): Prom
         "utf8",
     );
 
-    return paths;
+    return {
+        ...paths,
+        preserved: { commands: config.keptCommands, configKeys: config.keptKeys, stateFields: state.keptFields },
+    };
 }
 
 export async function readConfig(root: string): Promise<TyrConfig | null> {

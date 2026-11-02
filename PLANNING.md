@@ -45,7 +45,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 ### 2.2 `tyr init` (`cli/commands/init.ts`): 90%, Partial
 - [x] Finds the project root, with git toplevel preferred and manifest markers as fallback (`findProjectRoot`, `cli/core/discovery.ts`)
 - [x] Puts `.tyr/` at the absolute repo root
-- [x] Refuses to re-init when `.tyr/tyr.json` is readable. `--force` overwrites (`isInitialized`)
+- [x] Refuses to re-init when `.tyr/tyr.json` is readable. `--force` re-initializes, `--reset` overwrites (`isInitialized`)
 - [x] Treats an empty or corrupt `.tyr/` as not initialized
 - [x] Git detection report: branch (including detached), HEAD commit, working-tree summary, remote (`reportGit`, `describeStatus`)
 - [x] File scan with directory and extension ignore lists (`scanProject`, `IGNORED_DIRS`, `IGNORED_EXTENSIONS`)
@@ -57,7 +57,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Marks the in-flight task as failed (`✗`) when an error occurs (`reporter.failActive()` in `runInit`'s `catch`)
 - [x] Offers to add `.tyr/` entries to the project's root `.gitignore`, or documents which parts get committed (`cli/core/root-gitignore.ts`, `--gitignore` / `--no-gitignore`)
 - [x] Optional interactive confirmation or editing of detected commands before writing them (`tyr init --interactive`, `cli/core/edit-commands.ts`)
-- [ ] Preserves user-edited fields and state history on `--force` instead of overwriting everything
+- [x] Preserves user-edited fields and state history on `--force` instead of overwriting everything. Commands are diffed against a `detected` baseline stored in `tyr.json` (or marked `source: "user"`); unknown keys and state history (`createdAt`, `runCount`, `lastRunAt`, `status`, extra fields) survive. `--reset` restores the full overwrite (`cli/core/reinit-merge.ts`)
 
 ### 2.3 Discovery / file scanning (`cli/core/discovery.ts`): 85%, Partial
 - [x] `findProjectRoot()`: tries git first, then climbs looking for markers, never throws

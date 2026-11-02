@@ -221,6 +221,12 @@ export interface ConfigCommand {
     tool: string;
     /** File that proved it, relative to root. */
     evidence: string;
+    /**
+     * Who chose this command. Absent means detected. `"user"` marks a command
+     * the user typed (e.g. through interactive editing); `tyr init --force`
+     * always keeps those. See reinit-merge.ts.
+     */
+    source?: "detected" | "user";
 }
 
 /** Shape of `.tyr/tyr.json`. */
@@ -279,6 +285,15 @@ export interface TyrConfig {
          * written before this field existed remain valid.
          */
         extraIgnore?: string[];
+    };
+    /**
+     * What detection produced for each command slot when this file was
+     * written — the baseline `tyr init --force` diffs `commands` against to
+     * tell a hand edit from a detection change (see reinit-merge.ts).
+     * Optional: absent in older tyr.json files.
+     */
+    detected?: {
+        commands: Record<CommandKind, string | null>;
     };
 }
 

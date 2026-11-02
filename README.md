@@ -81,7 +81,7 @@ The code follows a few design principles that are already visible:
 |---|---|
 | CLI skeleton (`commander`), version flag, help | Implemented |
 | `tyr init`: root discovery, git detection, file scan, project profiling, `.tyr/` scaffolding, logging | **Implemented** |
-| `tyr init --force` / `--no-color` | Implemented |
+| `tyr init --force` / `--reset` / `--no-color` | Implemented |
 | `tyr init --start` | Flag accepted. Prints a warning that the background process is not implemented yet. |
 | `tyr start`, `tyr watch`, `tyr status`, `tyr run` | **Stubs**: each prints one placeholder line |
 | Background observer of Claude Code, problem detection, corrective agents | **Planned** |
@@ -179,7 +179,8 @@ Inspects the current project and creates the `.tyr/` directory at the project ro
 
 | Option | Description |
 |---|---|
-| `-f`, `--force` | Re-initialize even if `.tyr/tyr.json` already exists. Overwrites `tyr.json` and `state/state.json` (which resets `runCount`, `createdAt` and the other state fields) and **appends** to the existing log. |
+| `-f`, `--force` | Re-initialize even if `.tyr/tyr.json` already exists. Detection runs again and refreshes everything it owns (git snapshot, file and language counts, ignore lists, root, versions), but keeps what you changed: commands you edited in `tyr.json`, keys Tyr does not recognise, and state history (`createdAt`, `runCount`, `lastRunAt`, `status` and any extra fields). Other files in `state/` are left alone, and the log is **appended** to. |
+| `--reset` | Re-initialize from scratch (implies `--force`). Overwrites `tyr.json` and `state/state.json`, discarding command edits, extra keys and state history. `scan.extraIgnore` is still kept. |
 | `-s`, `--start` | Initialize, then start the background process. **The background process is not implemented yet.** Tyr finishes `init`, prints a warning and writes a `WARN` line to the log. |
 | `--gitignore` | Add `/.tyr/` to the project's root `.gitignore` without asking (creating the file if needed). Does nothing if `.tyr` is already ignored. |
 | `--no-gitignore` | Never read, change or ask about the root `.gitignore`. |
@@ -231,7 +232,7 @@ Initializing Tyr...
 ✓ Project root: /home/you/Tyr
 
 ! Project is already initialized (.tyr/tyr.json exists).
-Re-run with --force to overwrite the existing configuration.
+Re-run with --force to re-detect (keeping your edits), or --reset to start over.
 $ echo $?
 1
 ```
@@ -243,7 +244,7 @@ $ tyr init --force --start
 Initializing Tyr...
 
 ✓ Project root: /home/you/Tyr
-Existing configuration found - overwriting (--force).
+Existing configuration found - re-detecting, keeping your edits (--force).
 ✓ Git repository detected
 ...
 Tyr initialized successfully.
@@ -499,6 +500,8 @@ Defined as `TyrConfig` in `cli/core/types.ts`. Below is an abridged example from
   }
 }
 ```
+
+Newer files also carry a `detected.commands` section: the command string detection produced for each slot when the file was written. Leave it alone. `tyr init --force` compares `commands` against it to tell your hand edits (kept) apart from detection changes (refreshed). A command entry with `"source": "user"` is always kept. Configs without the section keep any command that differs from fresh detection.
 
 ### `state/state.json` schema
 
