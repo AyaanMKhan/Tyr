@@ -96,20 +96,21 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Keep each command's `tool` and `evidence` in `tyr.json` (`ConfigCommand`, `commandOf`)
 - [x] Check that detected commands actually run: script lookup or `--version` probe, skippable with `--no-verify` (`cli/core/verify-commands.ts`)
 
-### 2.6 `.tyr/` state and storage (`cli/core/scaffold.ts`, `cli/core/types.ts`): 55%, Partial
+### 2.6 `.tyr/` state and storage (`cli/core/scaffold.ts`, `cli/core/types.ts`): 95%, Done
 - [x] Layout `.tyr/{tyr.json, state/state.json, logs/tyr.log, reports/, .gitignore}` (`resolveTyrPaths`, `scaffold`)
 - [x] Atomic writes through a temp file and rename in the same directory (`writeFileAtomic`)
 - [x] Safe readers that return `null` on missing or malformed JSON (`readConfig`, `readState`)
 - [x] `writeState()` stamps `updatedAt`. Best-effort `appendLog()`
-- [x] Typed schemas `TyrConfig` (v1) and `TyrState` (v1)
-- [ ] Validate loaded config and state against the schema. Today it is a blind `as T` cast
-- [ ] Schema version migration (`version` exists, but nothing reads or upgrades it)
-- [ ] Code that updates state: `status` changes between `running`, `stopped` and `error`, plus `runCount` and `lastRunAt`. Nothing calls `writeState` today
-- [ ] A lock or PID file so two daemons or commands cannot race on `.tyr/`. Two daemons cannot (`.tyr/state/daemon.pid`, see 2.8); commands still can
-- [ ] Report writer for `reports/` (format, naming, retention)
-- [ ] Log rotation or size cap, and a `--log-level`
-- [ ] Event/history store (what Claude Code did, what Tyr detected, what actions were taken)
-- [ ] Decide what is committed. `tyr.json` is tracked but contains an absolute, machine-specific `project.root`
+- [x] Typed schemas `TyrConfig` (v2) and `TyrState` (v1)
+- [x] Validate loaded config and state against the schema (`cli/core/schema.ts`: `validateConfig`, `validateState`; `loadConfig`/`loadState` expose errors and warnings)
+- [x] Schema version migration (`cli/core/migrate.ts`: ordered steps, missing version = v1, newer versions refused; config v1 -> v2 makes `project.root` relative)
+- [x] Code that updates state: locked, guarded transitions in `cli/core/state-store.ts` (`updateState`, `markRunning`, `markStopped`, `markError`, `recordRun`), used by the daemon
+- [x] A lock so commands cannot race on `.tyr/` (`cli/core/lock.ts`: `withTyrLock`, `.tyr/state/tyr.lock`, stale-lock breaking, re-entrant). Daemons stay exclusive via `daemon.pid` (2.8)
+- [x] Report writer for `reports/` (`cli/core/reports.ts`: `<yyyyMMdd-HHmmss>-<kind>-<slug>.{json,md}`, retention by count/age, `reports` key in tyr.json)
+- [x] Log rotation and `--log-level` (`cli/core/log.ts`: 1 MiB cap, 3 kept; `--log-level`, `TYR_LOG_LEVEL`; daemon inherits the level, `daemon.log` rotated on start)
+- [x] Event/history store (`cli/core/events.ts`: `.tyr/state/events.jsonl`, rotated; daemon start/stop/crash, git events and `tyr init` recorded). Claude Code events arrive with 2.9
+- [x] Decide what is committed: `tyr.json` (root stored as `"."`) and `.tyr/.gitignore` are committed; `state/`, `logs/`, `reports/` are not. The root `/.tyr/` entry stays an opt-in
+- [ ] Follow-ups: put `saveScanManifest` under the lock; reword the init `/.tyr/` gitignore offer now that tyr.json is portable; guard events.jsonl against a crash-truncated last line
 
 ### 2.7 User configuration: 15%, Partial
 - [x] `tyr.json` exists and stores detected commands that a user could hand-edit

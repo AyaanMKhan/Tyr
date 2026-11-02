@@ -1,16 +1,18 @@
-// Options accepted by every command: `--cwd`, `--verbose` / `--quiet` and
-// `--json`. They are declared once on the root program and read by each
+// Options accepted by every command: `--cwd`, `--verbose` / `--quiet`,
+// `--json` and `--log-level`. They are declared once on the root program and read by each
 // command through `optsWithGlobals()`, so no command re-declares them.
 
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { Command, Option } from "commander";
+import { LOG_LEVEL_ENV, LOG_THRESHOLDS, setLogLevel, type LogThreshold } from "./log.js";
 
 export interface GlobalOptions {
     cwd?: string;
     verbose?: boolean;
     quiet?: boolean;
     json?: boolean;
+    logLevel?: LogThreshold;
 }
 
 export type Verbosity = "quiet" | "normal" | "verbose";
@@ -21,10 +23,18 @@ export function registerGlobalOptions(program: Command): void {
         .addOption(new Option("--verbose", "Show extra detail").conflicts("quiet"))
         .addOption(new Option("-q, --quiet", "Only print warnings and errors"))
         .option("--json", "Print machine-readable JSON to stdout instead of text")
+        .addOption(
+            new Option(
+                "--log-level <level>",
+                `Minimum level written to .tyr/logs/tyr.log (default: $${LOG_LEVEL_ENV} or "info"; --verbose implies "debug")`,
+            ).choices(LOG_THRESHOLDS),
+        )
         // Applied before any action runs, so every command (and
         // `findProjectRoot()`'s `process.cwd()` default) sees the new directory.
         .hook("preAction", async (_root, action) => {
-            const { cwd } = readGlobals(action);
+            const options = readGlobals(action);
+            const { cwd } = options;
+            setLogLevel(logLevelOf(options));
             if (cwd !== undefined) {
                 await changeDirectory(program, cwd);
             }
@@ -41,6 +51,18 @@ export function verbosityOf(options: GlobalOptions): Verbosity {
         return "quiet";
     }
     return options.verbose ? "verbose" : "normal";
+}
+
+/**
+ * The log threshold the command line asks for: `--log-level`, else "debug"
+ * under `--verbose`, else undefined so log.ts falls back to TYR_LOG_LEVEL and
+ * then "info". `--quiet` / `--json` only affect terminal output, not the log.
+ */
+export function logLevelOf(options: GlobalOptions): LogThreshold | undefined {
+    if (options.logLevel !== undefined) {
+        return options.logLevel;
+    }
+    return options.verbose ? "debug" : undefined;
 }
 
 /** Writes one JSON document to stdout. */

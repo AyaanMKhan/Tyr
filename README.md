@@ -412,7 +412,9 @@ Both lists, sorted, are written to `tyr.json` under `scan`. A later run can then
 2. Writes `tyr.json` **atomically** (temp file `.<name>.<pid>.<timestamp>.tmp` in the same directory, then `rename`).
 3. Writes `state/state.json` atomically.
 4. Writes `.tyr/.gitignore` and `reports/.gitkeep`.
-5. **Appends** a line to `logs/tyr.log`. The log is never truncated, so history survives `--force`.
+5. **Appends** a line to `logs/tyr.log`. Init never truncates the log, so history survives `--force`; size is capped by rotation instead (see [`logs/tyr.log` format](#logstyrlog-format)).
+
+Before merging, any existing `tyr.json` / `state.json` is run through the schema migration chain (`cli/core/migrate.ts`). A file written by a *newer* Tyr is never overwritten: init stops and asks you to upgrade Tyr or pass `--reset`. The write itself runs under the `.tyr/` lock (`cli/core/lock.ts`), so two concurrent inits, or an init racing a daemon state update, serialize instead of losing each other's changes.
 
 `init.ts` then appends a second `tyr init completed - N files indexed` line. Log writes are best-effort: a failed log write never fails a command.
 
@@ -429,19 +431,25 @@ Finally `init` checks the project's root `.gitignore` (see [What gets committed]
     ├── tyr.json            # project profile + config (see "What gets committed")
     ├── state/
     │   ├── state.json      # runtime lifecycle state (per machine, ignored)
-    │   └── scan.json       # scan manifest for change detection (ignored)
+    │   ├── scan.json       # scan manifest for change detection (ignored)
+    │   ├── events.jsonl    # append-only event history, rotated (ignored)
+    │   ├── tyr.lock        # short-lived write lock, present only while held
+    │   └── daemon.pid      # present while the background process runs
     ├── logs/
-    │   └── tyr.log         # append-only activity log (ignored)
+    │   ├── tyr.log         # activity log, rotated at 1 MiB (ignored)
+    │   └── daemon.log      # daemon stdout/stderr, rotated at start (ignored)
     └── reports/
-        └── .gitkeep        # reserved for review/problem reports (ignored)
+        ├── .gitkeep
+        └── <yyyyMMdd-HHmmss>-<kind>-<slug>.{json,md}   # reports (ignored)
 ```
 
 | Path | Purpose | Committed? |
 |---|---|---|
 | `tyr.json` | The project's identity: languages, frameworks, package manager, the exact build/test/lint/format/typecheck commands, git snapshot, docs and the scan rules used. This is the shared, machine-readable source of truth that every later Tyr command reads. | **Yes**, so the team shares one profile |
 | `state/state.json` | Tyr's lifecycle on this machine: status, last indexed commit, last file count and run counters. Used for change detection between runs. | No |
-| `logs/tyr.log` | Timestamped, append-only log of Tyr activity. | No |
-| `reports/` | Created empty. Reserved for the reports the planned reviewer will produce. *(Purpose inferred from the name and the project's stated goal. Nothing writes here yet.)* | No |
+| `logs/tyr.log` | Timestamped log of Tyr activity, filtered by `--log-level` and rotated at 1 MiB (3 old files kept). | No |
+| `state/events.jsonl` | Structured event history, one JSON object per line: daemon start/stop/crash, git events, `tyr init`, and later Claude Code activity and actions taken. Written by `cli/core/events.ts`, rotated at 5 MiB. | No |
+| `reports/` | Review/check reports written by `cli/core/reports.ts`: a JSON document plus a rendered Markdown copy per report. Pruned to 100 reports / 30 days by default; override with `"reports": { "maxCount": N, "maxAgeDays": N }` in `tyr.json`. | No |
 | `.gitignore` | Keeps the per-machine runtime output above out of git. | Yes |
 | `state/scan.json` | Scan manifest (file fingerprints) that `tyr status` / `tyr watch` diff against. | No (under `state/`) |
 
@@ -449,14 +457,14 @@ The "Committed?" column describes the design: `.tyr/.gitignore` already keeps `s
 
 ### What gets committed
 
-In practice `tyr.json` is **not yet portable**: `project.root` is an absolute, machine-specific path, and `git.headCommit`, `project.fileCount` and `initializedAt` change on every re-init. A committed copy goes stale with the next commit, and a teammate who clones it is refused by `tyr init` ("already initialized") until they pass `--force`. So `tyr init` recommends ignoring the **whole** directory by adding `/.tyr/` to the project's root `.gitignore`:
+Since config schema v2, `tyr.json` is **portable**: `project.root` is stored as `"."` (the directory containing `.tyr/`) and resolved to the absolute path only in memory when Tyr reads the file, so the committed copy is identical on every machine. Sharing `tyr.json` and `.tyr/.gitignore` is the intended setup. The remaining churn is `git.headCommit`, `project.fileCount` and `initializedAt`, which change when someone re-runs `tyr init --force`; separating that detection snapshot from user settings is planned (PLANNING.md §2.7). Teams that want Tyr purely local can still ignore the whole directory:
 
 | Choice | Root `.gitignore` | What git tracks |
 |---|---|---|
 | Ignore everything (default offer, `--gitignore`) | `/.tyr/` | Nothing under `.tyr/`. Every clone runs its own `tyr init`. |
 | Share the profile (decline, or `--no-gitignore`) | no entry | `.tyr/tyr.json` and `.tyr/.gitignore`. `state/`, `logs/` and `reports/` stay ignored by `.tyr/.gitignore`. |
 
-A narrower root entry such as `.tyr/state/` would add nothing, since `.tyr/.gitignore` already covers the runtime output. If you choose to share `tyr.json`, expect to re-run `tyr init --force` after cloning and to see it change in diffs.
+A narrower root entry such as `.tyr/state/` would add nothing, since `.tyr/.gitignore` already covers the runtime output. If you share `tyr.json`, expect it to change in diffs when someone re-runs `tyr init --force`.
 
 ### `tyr.json` schema
 
@@ -464,12 +472,12 @@ Defined as `TyrConfig` in `cli/core/types.ts`. Below is an abridged example from
 
 ```jsonc
 {
-  "version": 1,                       // config schema version
+  "version": 2,                       // config schema version (see "Schema versions")
   "tyrVersion": "1.0.0",              // Tyr version that wrote it
   "initializedAt": "2026-09-14T16:50:02.050Z",
   "project": {
     "name": "Tyr",                    // basename of the root directory
-    "root": "/home/ayaan/Tyr",        // absolute path
+    "root": ".",                      // relative to the directory containing .tyr/
     "primaryLanguage": "TypeScript",
     "languages": [
       { "name": "TypeScript", "fileCount": 12, "percentage": 60 },
@@ -480,12 +488,12 @@ Defined as `TyrConfig` in `cli/core/types.ts`. Below is an abridged example from
     "packageManager": "npm",
     "fileCount": 23
   },
-  "commands": {                       // full shell commands, or null
-    "build": "npm run build",
+  "commands": {                       // { command, tool, evidence }, or null
+    "build": { "command": "npm run build", "tool": "tsc", "evidence": "package.json" },
     "test": null,
     "lint": null,
     "format": null,
-    "typecheck": "npx tsc --noEmit"
+    "typecheck": { "command": "npx tsc --noEmit", "tool": "tsc", "evidence": "tsconfig.json" }
   },
   "git": {
     "isRepo": true,
@@ -502,6 +510,14 @@ Defined as `TyrConfig` in `cli/core/types.ts`. Below is an abridged example from
 ```
 
 Newer files also carry a `detected.commands` section: the command string detection produced for each slot when the file was written. Leave it alone. `tyr init --force` compares `commands` against it to tell your hand edits (kept) apart from detection changes (refreshed). A command entry with `"source": "user"` is always kept. Configs without the section keep any command that differs from fresh detection.
+
+### Schema versions and validation
+
+Every read of `tyr.json` and `state.json` goes through migrate, then validate (`cli/core/migrate.ts`, `cli/core/schema.ts`) instead of a blind cast:
+
+- **Migration.** A missing `version` counts as v1. Older documents are upgraded step by step in memory; config v1 to v2 makes `project.root` relative and converts old bare-string commands to the object form. A document from a *newer* Tyr is refused, never downgraded. Config is upgraded on disk only by `tyr init`, so a read-only command never dirties a tracked file. State is written back after a migration.
+- **Validation.** Required fields with the wrong type are errors that name the path (`commands.test.command: expected non-empty string, got number`). Missing fields that detection can refill get defaults plus a warning. Unknown keys are preserved, so hand-added settings survive `--force`.
+- `readConfig` / `readState` return `null` for missing, malformed, newer or invalid files. `loadConfig` / `loadState` return the same value plus `errors`, `warnings` and the migrations applied, for commands that need to explain a problem.
 
 ### `state/state.json` schema
 
@@ -522,10 +538,11 @@ Defined as `TyrState`:
 
 | Field | Meaning |
 |---|---|
-| `status` | `"initialized"` \| `"running"` \| `"stopped"` \| `"error"`. Only `initialized` is ever written today. The other values are reserved for the background process. |
+| `status` | `"initialized"` \| `"running"` \| `"stopped"` \| `"error"`. Set by `tyr init`, then by the background process through the locked transitions in `cli/core/state-store.ts` (`markRunning`, `markStopped`, `markError`). Guards ensure a late-exiting daemon never overwrites a newer daemon's `running`. |
 | `lastIndexedCommit` | Full HEAD hash at the last index, for detecting new commits. |
 | `lastScanFileCount` | File count at the last scan. |
-| `runCount` / `lastRunAt` | Incremented and stamped on each Tyr run. Reserved; nothing increments them yet. |
+| `runCount` / `lastRunAt` | Incremented and stamped each time the background process starts (`markRunning`). Updates are read-modify-write under the `.tyr/` lock, so concurrent writers never lose an increment. |
+| `pid` / `startedAt` | Pid and start time of the running background process; `pid` is cleared on stop. |
 | `updatedAt` | Stamped automatically by `writeState()` on every write. |
 
 ### `logs/tyr.log` format
@@ -537,10 +554,13 @@ Defined as `TyrState`:
 ```
 [2026-10-04T19:29:37.921Z] INFO tyr init — scaffolded .tyr/ with Tyr 1.0.0 (23 files scanned)
 [2026-10-04T19:29:37.922Z] INFO tyr init completed - 23 files indexed
-[2026-10-04T19:31:02.114Z] WARN --start requested but background process is unimplemented
+[2026-10-04T19:31:02.114Z] INFO Background process started (pid 4242); watching git (fs-watch)
 ```
 
-Levels are `INFO`, `WARN` and `ERROR`.
+Levels are `DEBUG`, `INFO`, `WARN` and `ERROR`. Continuation lines of multi-line messages (stack traces) are indented so every record still starts with a timestamp.
+
+- **Level.** `--log-level <debug|info|warn|error|silent>` on any command, else `--verbose` (debug), else the `TYR_LOG_LEVEL` environment variable, else `info`. The background process inherits the level of the `tyr start` that launched it. `--quiet` and `--json` affect terminal output only, never the log.
+- **Rotation.** Before each append, a `tyr.log` of 1 MiB or more is rotated to `tyr.log.1`, `tyr.log.2`, `tyr.log.3` (oldest dropped). `daemon.log` is rotated the same way each time the daemon starts. Concurrent rotation by two processes is safe and loses no lines.
 
 ---
 

@@ -75,6 +75,9 @@ test("staged and unstaged scopes separate index and working-tree changes", async
     }
 });
 
+// Windows forbids tab (and newline, quote) in file names.
+const FRESH_FILE = process.platform === "win32" ? "dir with space/fresh file.txt" : "dir with space/fresh\tfile.txt";
+
 test("renames, deletions, additions, spaces and unicode paths parse from -z output", async () => {
     const root = await makeRepo({
         "old name.txt": "alpha\nbeta\ngamma\ndelta\nepsilon\n",
@@ -83,7 +86,7 @@ test("renames, deletions, additions, spaces and unicode paths parse from -z outp
     try {
         git(root, "mv", "old name.txt", "new näme → ünïcode.txt");
         git(root, "rm", "-q", "gone.txt");
-        await write(root, "dir with space/fresh\tfile.txt", "hi\n");
+        await write(root, FRESH_FILE, "hi\n");
         git(root, "add", ".");
 
         const stat = await getDiffStat(root, { kind: "staged" });
@@ -99,7 +102,7 @@ test("renames, deletions, additions, spaces and unicode paths parse from -z outp
 
         assert.equal(byPath.get("gone.txt")?.status, "D");
         assert.equal(byPath.get("gone.txt")?.deletions, 1);
-        assert.equal(byPath.get("dir with space/fresh\tfile.txt")?.status, "A");
+        assert.equal(byPath.get(FRESH_FILE)?.status, "A");
         assert.equal(stat.totals.files, 3);
 
         // With rename detection off, the rename is a delete plus an add.

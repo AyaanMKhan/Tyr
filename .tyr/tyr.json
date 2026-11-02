@@ -1,10 +1,10 @@
 {
-  "version": 1,
+  "version": 2,
   "tyrVersion": "1.0.0",
   "initializedAt": "2026-09-14T16:50:02.050Z",
   "project": {
     "name": "Tyr",
-    "root": "/home/ayaan/Tyr",
+    "root": ".",
     "primaryLanguage": "TypeScript",
     "languages": [
       {
@@ -28,11 +28,19 @@
     "fileCount": 23
   },
   "commands": {
-    "build": "npm run build",
+    "build": {
+      "command": "npm run build",
+      "tool": "tsc",
+      "evidence": "package.json"
+    },
     "test": null,
     "lint": null,
     "format": null,
-    "typecheck": "npx tsc --noEmit"
+    "typecheck": {
+      "command": "npx tsc --noEmit",
+      "tool": "tsc",
+      "evidence": "tsconfig.json"
+    }
   },
   "git": {
     "isRepo": true,

@@ -5,16 +5,23 @@
 // prompt and the output; everything here is either pure string work or a
 // single read/atomic write of `<root>/.gitignore`.
 //
-// Which entry: the whole directory, `/.tyr/`. The obvious alternative is to
-// commit `tyr.json` and ignore only the runtime output, but tyr.json is not
-// portable today: `project.root` is an absolute, machine-specific path, and
-// `git.headCommit`, `project.fileCount` and `initializedAt` change on every
-// re-init. A committed copy goes stale on the next commit, and a teammate who
-// clones it is refused by `tyr init` ("already initialized") until they pass
-// `--force`. Runtime output under state/, logs/ and reports/ is already
-// covered by the generated `.tyr/.gitignore`, so a narrower entry would add
-// nothing. Teams that do want to share one tyr.json can simply decline (or
-// pass `--no-gitignore`) and commit it alongside `.tyr/.gitignore`.
+// Which entry: the whole directory, `/.tyr/`, and only when the user agrees.
+//
+// What is committed (PLANNING.md 2.6): since config schema v2, tyr.json is
+// machine-independent. `project.root` is stored as "." (relative to the
+// directory holding `.tyr/`) and rehydrated on read, so a teammate's clone
+// resolves to their own checkout. Runtime output under state/, logs/ and
+// reports/ is per-machine and already excluded by the generated
+// `.tyr/.gitignore`. The intended setup is therefore to commit `.tyr/tyr.json`
+// and `.tyr/.gitignore` so a team shares one config (including user-edited
+// commands and `scan.extraIgnore`).
+//
+// The `/.tyr/` entry stays as an opt-in for projects that want Tyr to be
+// purely local: tyr.json still records a detection snapshot
+// (`git.headCommit`, `project.fileCount`, `initializedAt` on first init) that
+// changes when `tyr init --force` runs, which some teams will not want in
+// their history. A narrower entry (only the runtime directories) would add
+// nothing over `.tyr/.gitignore`, so the choice is all or tyr.json.
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";

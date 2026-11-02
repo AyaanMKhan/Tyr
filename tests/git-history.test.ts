@@ -136,7 +136,9 @@ test("forward commits report added, modified, deleted and renamed files", async 
     }
 });
 
-test("odd file names survive intact", async () => {
+test("odd file names survive intact", {
+    skip: process.platform === "win32" && "Windows forbids quote, tab and newline in file names",
+}, async () => {
     const root = await makeRepo();
     try {
         const base = head(root);

@@ -17,6 +17,8 @@ import {
 import { collectGitInfo } from "../core/git.js";
 import { profileProject } from "../core/project.js";
 import { scaffold, readConfig, appendLog, type ScaffoldPreserved } from "../core/scaffold.js";
+import { withTyrLock } from "../core/lock.js";
+import { appendEvent } from "../core/events.js";
 import { countPatterns, readTyrIgnore, TYR_IGNORE_FILE } from "../core/ignore.js";
 import { buildScanManifest, saveScanManifest } from "../core/scan-diff.js";
 import { verifyCommands } from "../core/verify-commands.js";
@@ -232,7 +234,9 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         reporter.header("Creating .tyr...");
 
         const writeTask = reporter.task("Writing configuration...");
-        const paths = await scaffold(snapshot, TYR_VERSION, { reset: options.reset });
+        // Under the .tyr lock: scaffold() merges with the existing state.json,
+        // so a concurrent init or daemon update must not interleave with it.
+        const paths = await withTyrLock(root, "tyr init", () => scaffold(snapshot, TYR_VERSION, { reset: options.reset }));
         writeTask.succeed("Configuration created");
         reportPreserved(reporter, paths.preserved);
         reporter.debug(`Wrote ${paths.configFile}`);
@@ -247,6 +251,19 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         reporter.success("Logging initialized");
 
         await appendLog(root, "info", `tyr init completed - ${scan.files.length} files indexed`);
+        await appendEvent(root, {
+            source: "tyr",
+            kind: "init.completed",
+            message: options.reset ? "Re-initialized from scratch (--reset)" : options.force ? "Re-initialized (--force)" : "Initialized",
+            data: {
+                force: options.force === true,
+                reset: options.reset === true,
+                tyrVersion: TYR_VERSION,
+                primaryLanguage: project.primaryLanguage,
+                fileCount: scan.files.length,
+                headCommit: git.headCommit?.hash ?? null,
+            },
+        });
 
         const gitignore = await offerRootGitignore(reporter, root, options, git.isRepo, globals.json === true);
 

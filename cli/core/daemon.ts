@@ -21,8 +21,12 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { appendLog, readState, resolveTyrPaths, toJsonDocument, writeFileAtomic, writeState } from "./scaffold.js";
+import { appendLog, readState, resolveTyrPaths, toJsonDocument, writeFileAtomic } from "./scaffold.js";
+import { isProcessAlive } from "./lock.js";
+import { markError, markRunning, markStopped } from "./state-store.js";
 import { watchGit, type GitWatchEvent, type GitWatcher } from "./git-watch.js";
+import { appendEvent, gitEventToTyrEvent } from "./events.js";
+import { getLogLevel, LOG_LEVEL_ENV, rotateFileIfLarge } from "./log.js";
 
 /* -------------------------------------------------------------------------
  * Paths and the PID file
@@ -82,20 +86,9 @@ async function removePidFileIfOwned(root: string, pid: number): Promise<void> {
     }
 }
 
-/**
- * Signal 0 checks existence without delivering anything. EPERM means the
- * process exists but belongs to someone else, which is still "alive" for the
- * purpose of not starting a second daemon. PID reuse after a crash can give a
- * false positive; `tyr stop` then clears it.
- */
-export function isProcessAlive(pid: number): boolean {
-    try {
-        process.kill(pid, 0);
-        return true;
-    } catch (error) {
-        return (error as NodeJS.ErrnoException).code === "EPERM";
-    }
-}
+// Lives in lock.ts (which must not import this module); re-exported so
+// existing `isProcessAlive` imports from daemon.ts keep working.
+export { isProcessAlive };
 
 /* -------------------------------------------------------------------------
  * Status
@@ -212,8 +205,14 @@ async function claimPidFile(pidFile: string): Promise<boolean> {
  * (Windows) so it outlives the terminal; `windowsHide` stops Windows from
  * flashing a console window for it. stdout/stderr go to a log file because
  * an inherited pipe would hold the parent open and die with the terminal.
+ *
+ * The child writes that file through raw descriptors, so it cannot be
+ * rotated while the daemon runs; it is rotated here, just before opening.
+ * The resolved log level is passed down through TYR_LOG_LEVEL so the daemon
+ * honours `--log-level` too.
  */
-function spawnDetached(root: string, outputFile: string): Promise<number> {
+async function spawnDetached(root: string, outputFile: string): Promise<number> {
+    await rotateFileIfLarge(outputFile);
     const out = fsSync.openSync(outputFile, "a");
     return new Promise<number>((resolve, reject) => {
         const child = spawn(process.execPath, [daemonEntry(), root], {
@@ -221,6 +220,7 @@ function spawnDetached(root: string, outputFile: string): Promise<number> {
             detached: true,
             windowsHide: true,
             stdio: ["ignore", out, out],
+            env: { ...process.env, [LOG_LEVEL_ENV]: getLogLevel() },
         });
         // The child holds its own copy of the descriptor.
         fsSync.closeSync(out);
@@ -287,7 +287,7 @@ export async function stopDaemon(root: string, options: { timeoutMs?: number } =
         await waitForExit(pid, 2000);
         // A hard kill skipped the daemon's own cleanup, so do it here.
         await removePidFileIfOwned(absRoot, pid);
-        await markStoppedIfRunning(absRoot, `Background process (pid ${pid}) did not stop in time and was killed`);
+        await markStoppedIfRunning(absRoot, `Background process (pid ${pid}) did not stop in time and was killed`, pid);
     }
 
     await fs.rm(daemonPaths.stopFile, { force: true }).catch(() => undefined);
@@ -303,12 +303,12 @@ async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
     return !isProcessAlive(pid);
 }
 
-/** Cleanup for a daemon that died without saying so (crash or hard kill). */
-async function markStoppedIfRunning(root: string, message: string): Promise<void> {
-    const state = await readState(root);
-    if (state?.status === "running") {
-        await writeState(root, { ...state, status: "stopped", pid: null });
-    }
+/**
+ * Cleanup for a daemon that died without saying so (crash or hard kill).
+ * With `pid`, a running state that belongs to some other daemon is left alone.
+ */
+async function markStoppedIfRunning(root: string, message: string, pid?: number): Promise<void> {
+    await markStopped(root, { onlyIfRunning: true, ownerPid: pid });
     await appendLog(root, "warn", message);
 }
 
@@ -336,14 +336,19 @@ export async function runDaemon(root: string): Promise<void> {
         if (timer !== null) clearInterval(timer);
         watcher?.close();
         try {
-            const state = await readState(absRoot);
-            if (state !== null) {
-                await writeState(absRoot, { ...state, status, pid: null });
-            }
+            // Guarded on our pid: never overwrite a newer daemon's "running".
+            const guard = { ownerPid: process.pid };
+            await (status === "error" ? markError(absRoot, guard) : markStopped(absRoot, guard));
         } catch {
             // Still remove the PID file and exit; a stuck daemon is worse.
         }
         await appendLog(absRoot, status === "error" ? "error" : "info", message);
+        await appendEvent(absRoot, {
+            source: "tyr",
+            kind: status === "error" ? "daemon.crashed" : "daemon.stopped",
+            message,
+            data: { pid: process.pid },
+        });
         await removePidFileIfOwned(absRoot, process.pid);
         await fs.rm(daemonPaths.stopFile, { force: true }).catch(() => undefined);
         process.exit(code);
@@ -364,25 +369,25 @@ export async function runDaemon(root: string): Promise<void> {
         process.on(signal, () => void finish("stopped", `Background process stopped (${signal})`, 0));
     }
 
-    const state = await readState(absRoot);
+    // Also the readiness signal: startDaemon() polls for status "running" with our pid.
+    const state = await markRunning(absRoot, process.pid);
     if (state === null) {
         await appendLog(absRoot, "error", "Background process cannot start: .tyr/state/state.json is missing or unreadable");
         await removePidFileIfOwned(absRoot, process.pid);
         process.exit(1);
     }
 
-    const startedAt = new Date().toISOString();
-    await writeState(absRoot, {
-        ...state,
-        status: "running",
-        pid: process.pid,
-        startedAt,
-        runCount: (typeof state.runCount === "number" ? state.runCount : 0) + 1,
-        lastRunAt: startedAt,
-    });
-
     watcher = await watchGit(absRoot, {
-        onEvent: (event) => void appendLog(absRoot, "info", `git: ${describeGitEvent(event)}`),
+        onEvent: (event) => {
+            void appendLog(absRoot, "info", `git: ${describeGitEvent(event)}`);
+            void appendEvent(absRoot, gitEventToTyrEvent(event));
+        },
+    });
+    await appendEvent(absRoot, {
+        source: "tyr",
+        kind: "daemon.started",
+        message: `Background process started (pid ${process.pid})`,
+        data: { pid: process.pid, runCount: state.runCount, gitWatch: watcher?.mode ?? null },
     });
     await appendLog(
         absRoot,

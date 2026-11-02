@@ -229,9 +229,16 @@ export interface ConfigCommand {
     source?: "detected" | "user";
 }
 
-/** Shape of `.tyr/tyr.json`. */
+/**
+ * Shape of `.tyr/tyr.json` (schema v2, `CURRENT_CONFIG_VERSION` in
+ * migrate.ts). Loaded through loadConfig/readConfig (scaffold.ts), which
+ * migrate older versions and validate against this shape (schema.ts);
+ * unknown keys are preserved. tyr.json is machine-independent and meant to be
+ * committed; runtime output (state/, logs/, reports/) is excluded by the
+ * generated `.tyr/.gitignore`.
+ */
 export interface TyrConfig {
-    /** Schema version of this config file. */
+    /** Schema version of this config file (see migrate.ts for the history). */
     version: number;
     /** Tyr version that wrote it. */
     tyrVersion: string;
@@ -239,6 +246,15 @@ export interface TyrConfig {
     initializedAt: string;
     project: {
         name: string;
+        /**
+         * Project root. Two representations:
+         * - On disk: relative to the directory that contains `.tyr/`. Tyr
+         *   always writes "." (buildConfig), which keeps tyr.json portable.
+         *   v1 files held an absolute path; migration turns it into ".".
+         * - In memory, as returned by loadConfig/readConfig: rehydrated to the
+         *   absolute path, so consumers can use it directly.
+         * Anything that writes a TyrConfig to disk must store the relative form.
+         */
         root: string;
         primaryLanguage: string | null;
         languages: LanguageStat[];
@@ -297,8 +313,14 @@ export interface TyrConfig {
     };
 }
 
-/** Shape of `.tyr/state/state.json`. */
+/**
+ * Shape of `.tyr/state/state.json` (schema v1, `CURRENT_STATE_VERSION` in
+ * migrate.ts). Loaded through loadState/readState (scaffold.ts), which
+ * migrate and validate it; unknown keys are preserved. Per-machine runtime
+ * data, never committed.
+ */
 export interface TyrState {
+    /** Schema version of this state file. */
     version: number;
     /** Lifecycle of the project as Tyr sees it. */
     status: "initialized" | "running" | "stopped" | "error";

@@ -34,6 +34,7 @@ Global options work with every command:
   $ tyr --cwd ../api status       Act on another directory
   $ tyr init --quiet              Only print warnings and errors
   $ tyr init --json | jq .root    Machine-readable output
+  $ tyr start --log-level debug   Write debug detail to .tyr/logs/tyr.log
 
 Run "tyr <command> --help" for details and examples for a command.`)
     // Help is written to stderr when it accompanies an error, so check

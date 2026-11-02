@@ -1,8 +1,10 @@
 // Re-init merge: what `tyr init --force` keeps from the previous `.tyr/`.
 //
 // A forced re-init re-runs detection, so everything detection owns (git
-// snapshot, file counts, language stats, ignore lists, root, versions) is
-// refreshed. What it must not do is throw away the user's own work:
+// snapshot, file counts, language stats, ignore lists, versions) is
+// refreshed. `project.root` always comes from the fresh config, which stores
+// the portable "." (config schema v2), so a previous absolute root is never
+// carried over. What it must not do is throw away the user's own work:
 //
 // - Commands the user edited in tyr.json. An entry counts as user-edited when
 //   it is marked `source: "user"` (interactive editing writes that), or when
@@ -20,7 +22,10 @@
 // - State history: `createdAt`, `runCount`, `lastRunAt`, `status`, and any
 //   extra fields such as history or event arrays.
 //
-// Pure functions only: scaffold.ts reads the old files and writes the result.
+// Pure functions only: scaffold.ts reads the old files, migrates them to the
+// current schema version (migrate.ts) and writes the result. The previous
+// documents are migrated but intentionally not validated, which is why
+// everything here treats them as loosely typed.
 
 import type { CommandKind, ConfigCommand, TyrConfig, TyrState } from "./types.js";
 
@@ -115,8 +120,9 @@ function isUserEdited(kind: CommandKind, previous: JsonObject, fresh: TyrConfig)
 }
 
 /**
- * Merge a freshly built config with the previous tyr.json. `previous` is
- * whatever readConfig returned — typed loosely because it may be hand-edited.
+ * Merge a freshly built config with the previous tyr.json. `previous` is the
+ * migrated (not validated) previous document — typed loosely because it may
+ * be hand-edited. `version` and `project.root` always come from `fresh`.
  */
 export function mergeConfig(fresh: TyrConfig, previous: unknown): ConfigMergeResult {
     const keptCommands: CommandKind[] = [];
