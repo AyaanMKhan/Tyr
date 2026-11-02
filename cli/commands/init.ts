@@ -20,10 +20,13 @@ import { scaffold, readConfig, appendLog } from "../core/scaffold.js";
 import { countPatterns, readTyrIgnore, TYR_IGNORE_FILE } from "../core/ignore.js";
 import { buildScanManifest, saveScanManifest } from "../core/scan-diff.js";
 import { verifyCommands } from "../core/verify-commands.js";
+import { CLEAR_TOKEN, COMMAND_SLOTS, editCommands } from "../core/edit-commands.js";
 import { TYR_VERSION } from "../core/version.js";
 import { printJson, readGlobals, verbosityOf, type GlobalOptions } from "../core/globals.js";
 import { createReporter } from "../ui/reporter.js";
+import { ask, canPrompt, confirm } from "../ui/prompt.js";
 import type {
+    CommandKind,
     CommandProbe,
     CommandVerification,
     DiscoveryResult,
@@ -40,6 +43,7 @@ interface InitOptions {
     color?: boolean;
     /** False under `--no-verify`. */
     verify?: boolean;
+    interactive?: boolean;
 }
 
 export function registerInitCommand(program: Command) {
@@ -50,6 +54,7 @@ export function registerInitCommand(program: Command) {
         .option("-f, --force", "Re-initialize even if .tyr already exists")
         .option("--no-color", "Disable colored output")
         .option("--no-verify", "Skip checking that detected commands are runnable")
+        .option("-i, --interactive", "Review and edit detected commands before writing")
         .addHelpText("after", `
 Finds the project root (the git toplevel, or the nearest directory with a
 manifest), scans files, detects the toolchain and writes .tyr/ there.
@@ -57,12 +62,19 @@ Detected commands are checked without running them: the tool must resolve
 (node_modules/.bin, then PATH) and answer --version, and npm scripts must
 exist in package.json.
 
+With --interactive, each command slot is shown before anything is written:
+press Enter to keep it, type a command to replace it, or type "${CLEAR_TOKEN}" to clear
+it. Typed commands are recorded with evidence "user". Declining the final
+confirmation writes nothing. Without a terminal (piped, CI, --json) the
+flag is ignored with a warning.
+
 Examples:
   $ tyr init                Initialize the current project
   $ tyr init --force        Re-initialize, overwriting .tyr/
   $ tyr init --start        Initialize, then start the background process
   $ tyr init --no-color     Plain output, e.g. for logs
   $ tyr init --no-verify    Skip probing build/test/lint tools
+  $ tyr init --interactive  Confirm or edit detected commands first
   $ tyr init --verbose      Also show scan and write details
   $ tyr init --json         Print a JSON summary instead of text`)
         .action(async (options: InitOptions, command: Command) => {
@@ -139,7 +151,7 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         reporter.debug(`Ignored file names: ${[...IGNORED_FILES].sort().join(", ")}`);
 
         const profileTask = reporter.task("Identifying project...");
-        const project = await profileProject(root, scan.files);
+        let project = await profileProject(root, scan.files);
         profileTask.succeed(`Project type: ${project.primaryLanguage ?? "unknown"}`);
 
         // Probing spawns `<tool> --version` for each detected command, which
@@ -152,6 +164,17 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         }
 
         reportProject(reporter, project, checks);
+
+        if (options.interactive) {
+            const reviewed = await reviewCommands(reporter, root, project, checks, globals);
+            if (reviewed === null) {
+                reporter.blank();
+                reporter.warn("Configuration not written.");
+                reporter.stop();
+                return { ok: false, root, error: "Aborted: configuration not written" };
+            }
+            ({ project, checks } = reviewed);
+        }
 
         const discovery: DiscoveryResult = {
             root,
@@ -395,6 +418,61 @@ function reportCommand(
     if (probe) {
         reporter.debug(`${label} (${command.command}): ${probe.status} - ${probe.detail}`);
     }
+}
+
+/**
+ * `--interactive`: let the user keep, replace or clear each command, then
+ * re-verify only what they typed. Returns null when they decline to write.
+ * Falls back to the detected commands, with a warning, when nobody can answer.
+ */
+async function reviewCommands(
+    reporter: Reporter,
+    root: string,
+    project: ProjectProfile,
+    checks: CommandVerification | null,
+    globals: GlobalOptions,
+): Promise<{ project: ProjectProfile; checks: CommandVerification | null } | null> {
+    if (!canPrompt({ json: globals.json })) {
+        reporter.warn("--interactive needs a terminal; keeping the detected commands.");
+        return { project, checks };
+    }
+
+    // No spinner may share the line with a question.
+    reporter.stop();
+    reporter.blank();
+    const edit = await editCommands(project, {
+        ask: (question, current) => ask(question, current),
+        confirm: (question, defaultYes) => confirm(question, defaultYes),
+        checks,
+        say: (line) => reporter.info(line),
+    });
+    if (!edit.confirmed) return null;
+
+    if (checks) {
+        checks = { ...checks };
+        for (const kind of edit.cleared) checks[kind] = null;
+        if (edit.changed.length) {
+            // Probe only what the user typed; kept commands keep their result.
+            const only: Pick<ProjectProfile, CommandKind> = {
+                build: null, test: null, lint: null, format: null, typecheck: null,
+            };
+            for (const kind of edit.changed) only[kind] = edit.project[kind];
+            const verifyTask = reporter.task("Verifying edited commands...");
+            const fresh = await verifyCommands(root, only);
+            for (const kind of edit.changed) checks[kind] = fresh[kind];
+            verifyTask.succeed(`Edited commands checked: ${describeChecks(fresh)}`);
+        }
+    }
+
+    if (edit.changed.length || edit.cleared.length) {
+        reporter.blank();
+        for (const { kind, label } of COMMAND_SLOTS) {
+            if (edit.changed.includes(kind) || edit.cleared.includes(kind)) {
+                reportCommand(reporter, label, edit.project[kind], checks?.[kind] ?? null);
+            }
+        }
+    }
+    return { project: edit.project, checks };
 }
 
 /** e.g. "3 ok, 1 missing" over the slots that had a command. */

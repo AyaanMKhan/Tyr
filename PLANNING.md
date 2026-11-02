@@ -56,7 +56,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [ ] `--start` really starts the background process. Today it only warns "not implemented" (`init.ts:129-133`)
 - [x] Marks the in-flight task as failed (`✗`) when an error occurs (`reporter.failActive()` in `runInit`'s `catch`)
 - [ ] Offers to add `.tyr/` entries to the project's root `.gitignore`, or documents which parts get committed
-- [ ] Optional interactive confirmation or editing of detected commands before writing them
+- [x] Optional interactive confirmation or editing of detected commands before writing them (`tyr init --interactive`, `cli/core/edit-commands.ts`)
 - [ ] Preserves user-edited fields and state history on `--force` instead of overwriting everything
 
 ### 2.3 Discovery / file scanning (`cli/core/discovery.ts`): 85%, Partial
