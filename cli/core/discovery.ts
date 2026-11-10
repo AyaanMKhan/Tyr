@@ -167,6 +167,48 @@ export function isIgnoredDirName(name: string): boolean {
     return IGNORED_DIRS.has(name) || name === TYR_DIR;
 }
 
+/**
+ * Name of the entry that marks a nested repository: a `.git` directory (a
+ * plain clone, `git init`) or a `.git` file (a linked worktree, a submodule).
+ */
+export const NESTED_REPO_MARKER = ".git";
+
+/**
+ * True when a directory's listing contains a `.git` entry of either kind,
+ * i.e. the directory is the top of a repository of its own. The scanner and
+ * the file watcher both skip such a directory (below the project root) with
+ * everything in it: a nested clone or worktree — like the ones Claude Code
+ * creates under `.claude/worktrees/` — is someone else's checkout, and its
+ * churn (another agent's edits, its own branch switches) is not a change to
+ * this project. Submodules count too: their contents are versioned by their
+ * own repository, the outer one only records which commit they are at.
+ */
+export function hasNestedRepoMarker(entryNames: Iterable<string>): boolean {
+    for (const name of entryNames) {
+        if (name === NESTED_REPO_MARKER) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * True when root-relative `relPath` is one of `nestedRepos` (root-relative
+ * directories, `/`-separated) or lies below one. A plain ancestor walk, so it
+ * stays cheap however many nested repositories there are.
+ */
+export function isInsideNestedRepo(relPath: string, nestedRepos: ReadonlySet<string>): boolean {
+    if (nestedRepos.size === 0) {
+        return false;
+    }
+    for (let slash = relPath.indexOf("/"); slash > 0; slash = relPath.indexOf("/", slash + 1)) {
+        if (nestedRepos.has(relPath.slice(0, slash))) {
+            return true;
+        }
+    }
+    return nestedRepos.has(relPath);
+}
+
 /** True for a file name the scanner always drops (OS junk, binary extensions). */
 export function isIgnoredFileName(name: string): boolean {
     return IGNORED_FILES.has(name) || IGNORED_EXTENSIONS.has(path.extname(name).toLowerCase());
@@ -239,7 +281,10 @@ interface GitFileFilter {
     /**
      * Directories git reports as a single opaque entry — submodules and nested,
      * untracked repositories. The outer repo's ignore rules say nothing about
-     * their contents, so they are walked with the hard-coded rules only.
+     * their contents, so they are not pruned by git's say. In practice the
+     * walk then skips them anyway once it lists their `.git` entry (see
+     * hasNestedRepoMarker); this only matters for one whose `.git` vanished
+     * after `git ls-files` ran.
      */
     opaqueDirs: Set<string>;
 }
@@ -386,6 +431,15 @@ function toGitKey(relPath: string): string {
     return relPath.split(path.sep).join("/").normalize("NFC");
 }
 
+export interface ScanResult {
+    /** Absolute paths of every file that survived the ignore rules, sorted. */
+    files: string[];
+    /** Root-relative directories not walked: ignored, unreadable, too deep, or nested repositories. */
+    skippedDirs: string[];
+    /** Root-relative, `/`-separated nested repositories that were skipped (also in skippedDirs). */
+    nestedRepos: string[];
+}
+
 /**
  * Walk the project, collecting absolute file paths. Symlinks are skipped
  * outright so the walk cannot loop or wander outside `root`.
@@ -398,10 +452,11 @@ function toGitKey(relPath: string): string {
 export async function scanProject(
     root: string,
     options: ScanOptions = {},
-): Promise<{ files: string[]; skippedDirs: string[] }> {
+): Promise<ScanResult> {
     const absRoot = path.resolve(root);
     const files: string[] = [];
     const skippedDirs: string[] = [];
+    const nestedRepos: string[] = [];
 
     const gitFilter = options.respectGitignore === false ? null : await loadGitFileFilter(absRoot);
 
@@ -433,6 +488,15 @@ export async function scanProject(
         } catch {
             // Unreadable directory (EACCES, ENOENT after a race, ...): note it and move on.
             recordSkip(dir);
+            return;
+        }
+
+        // A nested repository (see hasNestedRepoMarker) is skipped whole. It
+        // is only recognizable once listed, so this costs no extra I/O. The
+        // root itself is exempt: it may well be a worktree with a `.git` file.
+        if (depth > 0 && hasNestedRepoMarker(entries.map((entry) => entry.name))) {
+            recordSkip(dir);
+            nestedRepos.push(toPosixRelative(dir));
             return;
         }
 
@@ -500,8 +564,9 @@ export async function scanProject(
     // Sorted so repeated scans of an unchanged tree produce identical output.
     files.sort();
     skippedDirs.sort();
+    nestedRepos.sort();
 
-    return { files, skippedDirs };
+    return { files, skippedDirs, nestedRepos };
 }
 
 /** Everything the discovery phase knows, in one pass. */

@@ -87,6 +87,23 @@ export interface WatchGitOptions {
      * false when watching is incidental to some other work.
      */
     persistent?: boolean;
+    /**
+     * Called (synchronously, from the fs.watch callback) whenever a
+     * notification arrives for a file that may matter — HEAD, the index,
+     * refs, an operation marker, or their `.lock` files — *before* the burst
+     * is debounced and verified. Only a hint that git is busy right now: it
+     * fires for read-only commands that refresh the index stat cache too,
+     * and never in polling mode. The daemon uses it to tell a checkout's
+     * working-tree writes from hand edits (see observe.ts). Exceptions are
+     * swallowed.
+     */
+    onActivity?: () => void;
+    /**
+     * Called once if the watcher falls back from fs.watch to polling, at
+     * startup (fs.watch unavailable) or later (a watcher error), with a short
+     * reason. Not called for `forcePolling`. Exceptions are swallowed.
+     */
+    onFallback?: (reason: string) => void;
 }
 
 export interface GitWatcher {
@@ -217,11 +234,34 @@ export async function watchGit(root: string, options: WatchGitOptions): Promise<
         }
     };
 
-    const startPolling = (): void => {
+    /** fs.watch notifications: the activity hint first, then the debounced check. */
+    const notify = (kinds: readonly GitWatchKind[]): void => {
+        if (closed || kinds.length === 0) {
+            return; // Noise (logs/, objects/, FETCH_HEAD …) is not activity.
+        }
+        if (options.onActivity !== undefined) {
+            try {
+                options.onActivity();
+            } catch {
+                // A hint consumer must not break the watcher.
+            }
+        }
+        schedule(kinds);
+    };
+
+    /** `reason` is undefined for forcePolling, which is a choice, not a fallback. */
+    const startPolling = (reason?: string): void => {
         if (closed || pollTimer !== null) {
             return;
         }
         mode = "poll";
+        if (reason !== undefined && options.onFallback !== undefined) {
+            try {
+                options.onFallback(reason);
+            } catch {
+                // Reporting the fallback must not prevent it.
+            }
+        }
         for (const watcher of watchers.splice(0)) {
             closeQuietly(watcher);
         }
@@ -238,8 +278,13 @@ export async function watchGit(root: string, options: WatchGitOptions): Promise<
 
     // Watchers go up before the baseline read so that nothing slips through
     // the gap; anything they catch meanwhile waits for the baseline.
-    if (options.forcePolling === true || !startWatchers(dirs, persistent, watchers, schedule, startPolling)) {
+    if (options.forcePolling === true) {
         startPolling();
+    } else {
+        const failure = startWatchers(dirs, persistent, watchers, notify, startPolling);
+        if (failure !== null) {
+            startPolling(failure);
+        }
     }
 
     snapshot = await readSnapshot(root, dirs.gitDir);
@@ -325,14 +370,20 @@ function kindsForGitDirEntry(name: string, includePackedRefs: boolean): GitWatch
     return [];
 }
 
+/**
+ * Start the fs.watch watchers. Returns null when all of them are up, or why
+ * not (the caller then polls); a watcher that errors later calls `fallBack`
+ * with the reason.
+ */
 function startWatchers(
     dirs: { gitDir: string; commonDir: string },
     persistent: boolean,
     watchers: fs.FSWatcher[],
-    schedule: (kinds: Iterable<GitWatchKind>) => void,
-    fallBack: () => void,
-): boolean {
+    schedule: (kinds: readonly GitWatchKind[]) => void,
+    fallBack: (reason: string) => void,
+): string | null {
     const shared = dirs.gitDir === dirs.commonDir;
+    let failure = "fs.watch could not start";
 
     // Any watcher error (the directory vanished, too many watches) degrades
     // the whole thing to polling rather than leaving a silent blind spot.
@@ -341,12 +392,13 @@ function startWatchers(
             const watcher = fs.watch(target, { persistent, recursive }, (_event, filename) => {
                 onName(filename === null ? null : filename.toString());
             });
-            watcher.on("error", () => fallBack());
+            watcher.on("error", (error) => fallBack(`fs.watch failed: ${describeError(error)}`));
             watchers.push(watcher);
             return true;
-        } catch {
+        } catch (error) {
             // Includes ERR_FEATURE_UNAVAILABLE_ON_PLATFORM for recursive watch
             // on platforms/Node versions without it (Linux before Node 20).
+            failure = `fs.watch could not start: ${describeError(error)}`;
             return false;
         }
     };
@@ -372,7 +424,15 @@ function startWatchers(
             closeQuietly(watcher);
         }
     }
-    return ok;
+    return ok ? null : failure;
+}
+
+/** "EMFILE: too many open files, watch" — Node's messages already lead with the code. */
+export function describeError(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+    return String(error);
 }
 
 function closeQuietly(watcher: fs.FSWatcher): void {

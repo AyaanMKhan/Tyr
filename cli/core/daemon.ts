@@ -28,9 +28,10 @@ import { fileURLToPath } from "node:url";
 import { appendLog, readState, resolveTyrPaths, toJsonDocument, writeFileAtomic } from "./scaffold.js";
 import { isProcessAlive } from "./lock.js";
 import { markError, markRunning, markStopped } from "./state-store.js";
-import { watchGit, type GitWatchEvent, type GitWatcher } from "./git-watch.js";
-import { appendEvent, fsBatchToTyrEvent, gitEventToTyrEvent } from "./events.js";
+import { describeError, watchGit, type GitWatchEvent, type GitWatcher } from "./git-watch.js";
+import { appendEvent, type TyrEventInput } from "./events.js";
 import { watchFiles, type FileWatcher } from "./fs-watch.js";
+import { createObserver, DEFAULT_OBSERVE_WINDOW_MS } from "./observe.js";
 import { clearDaemonRequests, serviceDaemonRequests } from "./daemon-requests.js";
 import { getLogLevel, LOG_LEVEL_ENV, rotateFileIfLarge } from "./log.js";
 
@@ -327,9 +328,29 @@ async function markStoppedIfRunning(root: string, message: string, pid?: number)
 const STOP_POLL_MS = 500;
 
 /**
+ * Polling-fallback intervals, passed to the watchers explicitly (they are
+ * their defaults) because the observer's timing and the fallback warning
+ * both depend on them.
+ */
+const GIT_POLL_INTERVAL_MS = 2000;
+const FS_POLL_INTERVAL_MS = 5000;
+
+/**
  * Body of the background process. Marks state.json running, follows git
  * events and project file changes into tyr.log and the event journal, and
  * stays alive until asked to stop.
+ *
+ * Order matters for responsiveness: the stop/request poll starts right after
+ * the process claims state.json, *before* the watchers, whose baseline scans
+ * can take seconds on a big repository. `tyr stop` during startup is then
+ * honoured within one poll instead of waiting for the SIGTERM fallback.
+ * finish() closes whichever watchers exist by then, and a watcher that
+ * finishes starting after finish() ran is closed on arrival.
+ *
+ * Both watchers feed one observer (observe.ts), which journals git events at
+ * once and attributes the working-tree writes of a checkout, merge, rebase,
+ * pull or stash to the git event that caused them instead of reporting them
+ * as hand edits.
  */
 export async function runDaemon(root: string): Promise<void> {
     const absRoot = resolveTyrPaths(root).root;
@@ -339,12 +360,51 @@ export async function runDaemon(root: string): Promise<void> {
     let timer: NodeJS.Timeout | null = null;
     let exiting = false;
 
+    // Appends still in flight; finish() waits for them so nothing observed
+    // before the stop lands after `daemon.stopped` (or is lost to exit()).
+    const pending = new Set<Promise<unknown>>();
+    const track = (promise: Promise<unknown>): void => {
+        pending.add(promise);
+        void promise.finally(() => pending.delete(promise));
+    };
+    const journal = (event: TyrEventInput): void => track(appendEvent(absRoot, event));
+
+    const observer = createObserver({
+        emit: (event) => {
+            journal(event);
+            if (event.source === "fs") {
+                // Debug only: an active editing session would otherwise flood tyr.log.
+                void appendLog(absRoot, "debug", `fs: ${event.message ?? "files changed"}`);
+            }
+        },
+    });
+
+    /** One daemon.warning per watcher fallback; also adapts the observer's timing. */
+    const onFallback = (which: "git" | "fs", reason: string): void => {
+        if (exiting) return;
+        if (which === "git") {
+            // No more activity hints, and events arrive up to a poll late.
+            observer.configure({ idleHoldMs: GIT_POLL_INTERVAL_MS + 1000 });
+        } else {
+            // Batches now arrive up to a rescan interval after the change.
+            observer.configure({ windowMs: Math.max(DEFAULT_OBSERVE_WINDOW_MS, FS_POLL_INTERVAL_MS + 1000) });
+        }
+        const what = which === "git" ? "Git watcher" : "File watcher";
+        const every = which === "git" ? GIT_POLL_INTERVAL_MS : FS_POLL_INTERVAL_MS;
+        const message = `${what} fell back to polling every ${every / 1000}s (${reason}); changes will show up later`;
+        void appendLog(absRoot, "warn", message);
+        journal({ source: "tyr", kind: "daemon.warning", message, data: { watcher: which, mode: "poll", reason } });
+    };
+
     const finish = async (status: "stopped" | "error", message: string, code: number): Promise<void> => {
         if (exiting) return;
         exiting = true;
         if (timer !== null) clearInterval(timer);
         watcher?.close();
         fileWatcher?.close();
+        // Held batches go out now rather than vanish with the process.
+        observer.close();
+        await Promise.allSettled([...pending]);
         try {
             // Guarded on our pid: never overwrite a newer daemon's "running".
             const guard = { ownerPid: process.pid };
@@ -379,6 +439,10 @@ export async function runDaemon(root: string): Promise<void> {
         process.on(signal, () => void finish("stopped", `Background process stopped (${signal})`, 0));
     }
 
+    // Taken before we report ready: anything written after `tyr start`
+    // returns is newer, and watchFiles reports it even if its baseline scan
+    // (which runs well after this) would otherwise swallow it.
+    const observingSince = Date.now();
     // Also the readiness signal: startDaemon() polls for status "running" with our pid.
     const state = await markRunning(absRoot, process.pid);
     if (state === null) {
@@ -387,37 +451,8 @@ export async function runDaemon(root: string): Promise<void> {
         process.exit(1);
     }
 
-    watcher = await watchGit(absRoot, {
-        onEvent: (event) => {
-            void appendLog(absRoot, "info", `git: ${describeGitEvent(event)}`);
-            void appendEvent(absRoot, gitEventToTyrEvent(event));
-        },
-    });
-    // Project files: one batch per debounced burst, to the journal (where
-    // `fs.changed` events are rendered) and to tyr.log at debug level only,
-    // since an active editing session would otherwise flood it.
-    fileWatcher = await watchFiles(absRoot, {
-        onBatch: (batch) => {
-            const event = fsBatchToTyrEvent(batch);
-            void appendLog(absRoot, "debug", `fs: ${event.message ?? "files changed"}`);
-            void appendEvent(absRoot, event);
-        },
-    });
-    await appendEvent(absRoot, {
-        source: "tyr",
-        kind: "daemon.started",
-        message: `Background process started (pid ${process.pid})`,
-        data: { pid: process.pid, runCount: state.runCount, gitWatch: watcher?.mode ?? null, fsWatch: fileWatcher.mode },
-    });
-    await appendLog(
-        absRoot,
-        "info",
-        `Background process started (pid ${process.pid}); ` +
-            (watcher ? `watching git (${watcher.mode})` : "not a git repository") +
-            `, watching files (${fileWatcher.mode})`,
-    );
-
-    // Doubles as the keep-alive when there is no git watcher holding the loop open.
+    // Before the watchers (see above). Doubles as the keep-alive, so the
+    // process stays up even with no watcher holding the loop open.
     timer = setInterval(() => {
         fs.access(daemonPaths.stopFile).then(
             () => void finish("stopped", "Background process stopped (tyr stop)", 0),
@@ -428,6 +463,52 @@ export async function runDaemon(root: string): Promise<void> {
             if (requests.stop) void finish("stopped", "Background process stopped (stop request)", 0);
         });
     }, STOP_POLL_MS);
+
+    // Both baseline scans run concurrently. Neither watcher rejects, but a
+    // bug there must cost a warning, not the daemon.
+    const startFailed = (which: "git" | "fs") => (error: unknown): null => {
+        onFallback(which, `could not start: ${describeError(error)}`);
+        return null;
+    };
+    const [git, files] = await Promise.all([
+        watchGit(absRoot, {
+            pollIntervalMs: GIT_POLL_INTERVAL_MS,
+            onEvent: (event) => {
+                void appendLog(absRoot, "info", `git: ${describeGitEvent(event)}`);
+                observer.gitEvent(event);
+            },
+            onActivity: () => observer.gitActivity(),
+            onFallback: (reason) => onFallback("git", reason),
+        }).catch(startFailed("git")),
+        watchFiles(absRoot, {
+            pollIntervalMs: FS_POLL_INTERVAL_MS,
+            since: observingSince,
+            onBatch: (batch) => observer.fsBatch(batch),
+            onFallback: (reason) => onFallback("fs", reason),
+        }).catch(startFailed("fs")),
+    ]);
+    if (exiting) {
+        // finish() ran during startup and closed nothing it could not see.
+        git?.close();
+        files?.close();
+        return;
+    }
+    watcher = git;
+    fileWatcher = files;
+
+    journal({
+        source: "tyr",
+        kind: "daemon.started",
+        message: `Background process started (pid ${process.pid})`,
+        data: { pid: process.pid, runCount: state.runCount, gitWatch: watcher?.mode ?? null, fsWatch: fileWatcher?.mode ?? null },
+    });
+    await appendLog(
+        absRoot,
+        "info",
+        `Background process started (pid ${process.pid}); ` +
+            (watcher ? `watching git (${watcher.mode})` : "not a git repository") +
+            (fileWatcher ? `, watching files (${fileWatcher.mode})` : ", not watching files"),
+    );
 }
 
 /** One log line per git event, e.g. "HEAD moved to 1a2b3c4 on main". */

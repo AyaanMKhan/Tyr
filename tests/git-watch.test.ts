@@ -237,6 +237,47 @@ test("the polling fallback reports the same changes", async () => {
     }
 });
 
+test("onActivity hints that git is busy before the verified event; never when polling", async () => {
+    const root = await makeRepo();
+    const order: string[] = [];
+    const fallbacks: string[] = [];
+    const recorder = new Recorder();
+    const watcher = await watchGit(root, {
+        onEvent: (event) => {
+            order.push(`event:${event.kind}`);
+            recorder.onEvent(event);
+        },
+        onActivity: () => order.push("activity"),
+        onFallback: (reason) => fallbacks.push(reason),
+        debounceMs: 50,
+    });
+    const polled = await watchGit(root, {
+        onEvent: () => {},
+        onActivity: () => order.push("polled-activity"),
+        onFallback: (reason) => fallbacks.push(`forced: ${reason}`),
+        forcePolling: true,
+        pollIntervalMs: 100,
+    });
+    assert.ok(watcher !== null && polled !== null);
+    try {
+        if (watcher.mode === "poll") {
+            return; // fs.watch unavailable here; nothing to hint with.
+        }
+        await fs.writeFile(path.join(root, "b.txt"), "b\n");
+        git(root, "add", "b.txt");
+        await recorder.waitFor("index");
+        await delay(SETTLE_MS);
+        assert.equal(order[0], "activity", order.join(","));
+        assert.ok(order.includes("event:index"));
+        assert.ok(!order.includes("polled-activity"));
+        assert.deepEqual(fallbacks, [], "forcePolling is not a fallback");
+    } finally {
+        watcher.close();
+        polled.close();
+        await removeProject(root);
+    }
+});
+
 test("a linked worktree watches its own HEAD and the shared refs", async () => {
     const root = await makeRepo();
     const worktree = `${root}-wt`;

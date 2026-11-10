@@ -37,6 +37,18 @@
 // and so is `.tyr/` — the daemon writes its log and journal there, and
 // reporting those writes would feed back into itself.
 //
+// Nested repositories — any directory below the root holding a `.git` entry,
+// e.g. the worktrees Claude Code creates under `.claude/worktrees/` — are
+// skipped whole, by the same rule as the scanner (hasNestedRepoMarker in
+// discovery.ts). The set of them comes from each full scan; between scans a
+// notification for `<dir>/.git` itself (a `git init`, `git worktree add` or
+// `rm -rf <dir>/.git`) is probed at flush time and, when it changes the set,
+// resolved by a rescan. Files that enter a nested repository leave the
+// baseline silently (they were not edited, they changed owner), and files of
+// one that stops being a repository come back as added. A directory walk or
+// a newly seen file also checks its ancestors for a `.git` entry, in case the
+// platform reported the files but not the marker.
+//
 // Storm guards (`npm install` into a directory nothing ignores, a big
 // checkout): a burst touching more than `maxPendingPaths` paths stops
 // collecting individual paths and is resolved by one full rescan instead,
@@ -53,8 +65,16 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { createPathIgnoreFilter, scanProject, type PathIgnoreFilter } from "./discovery.js";
+import {
+    createPathIgnoreFilter,
+    hasNestedRepoMarker,
+    isInsideNestedRepo,
+    NESTED_REPO_MARKER,
+    scanProject,
+    type PathIgnoreFilter,
+} from "./discovery.js";
 import { runGit } from "./git-exec.js";
+import { describeError } from "./git-watch.js";
 import { loadUserIgnorePatterns, TYR_IGNORE_FILE } from "./ignore.js";
 import { buildScanManifest } from "./scan-diff.js";
 import type { FileFingerprint } from "./types.js";
@@ -105,6 +125,23 @@ export interface WatchFilesOptions {
      * instead of path by path. Default 10000.
      */
     maxPendingPaths?: number;
+    /**
+     * Called once if the watcher falls back from fs.watch to polling, at
+     * startup (recursive watch unavailable) or later (a watcher error), with
+     * a short reason. Not called for `forcePolling`. Exceptions are swallowed.
+     */
+    onFallback?: (reason: string) => void;
+    /**
+     * Epoch ms from which changes count as observed. Files the baseline scan
+     * finds with an mtime at or after it are reported in a first batch
+     * instead of being silently absorbed into the baseline (see the startup
+     * note in watchFiles). The daemon passes the time it started, so a file
+     * written right after `tyr start` returns is reported however long the
+     * scan takes. Default: none, the baseline is taken as found — callers
+     * that create files and start watching in the same breath (tests) would
+     * otherwise see their own setup reported.
+     */
+    since?: number;
 }
 
 export interface FileWatcher {
@@ -132,6 +169,11 @@ const ALWAYS_IGNORED_SEGMENTS: ReadonlySet<string> = new Set([".git", ".tyr"]);
 /** tyr.json as seen from the root; its `scan.extraIgnore` feeds the rules. */
 const TYR_CONFIG_PATH = ".tyr/tyr.json";
 
+/** How far past "now" a baseline mtime may lie and still count as a startup change. */
+const FUTURE_MTIME_SLACK_MS = 2000;
+/** How far an mtime may lag Date.now() for the same instant (see the startup note). */
+const COARSE_CLOCK_SLACK_MS = 20;
+
 /** Paths per `git check-ignore` call, so one stuck batch cannot hit the output cap. */
 const CHECK_IGNORE_CHUNK = 2000;
 
@@ -151,6 +193,7 @@ interface Changes {
  * that cannot be read starts empty, and a watcher that cannot start polls.
  */
 export async function watchFiles(root: string, options: WatchFilesOptions): Promise<FileWatcher> {
+    const since = options.since;
     const absRoot = path.resolve(root);
     const debounceMs = Math.max(0, options.debounceMs ?? DEFAULT_DEBOUNCE_MS);
     const maxWaitMs = Math.max(debounceMs, options.maxWaitMs ?? DEFAULT_MAX_WAIT_MS);
@@ -166,6 +209,10 @@ export async function watchFiles(root: string, options: WatchFilesOptions): Prom
     let gitAware = false;
     /** Baseline: every reportable file and its fingerprint. Null until the first scan. */
     let known: Map<string, FileFingerprint> | null = null;
+    /** Root-relative nested repositories, skipped whole (see the header). */
+    let nestedRepos = new Set<string>();
+    /** Directories whose `.git` entry was touched; checked at the next flush. */
+    const nestedProbes = new Set<string>();
 
     let watcher: fs.FSWatcher | null = null;
     const dirty = new Set<string>();
@@ -201,12 +248,27 @@ export async function watchFiles(root: string, options: WatchFilesOptions): Prom
         }
     };
 
+    const dropNestedFromBaseline = (): void => {
+        if (known === null || nestedRepos.size === 0) {
+            return;
+        }
+        for (const rel of [...known.keys()]) {
+            if (isInsideNestedRepo(rel, nestedRepos)) {
+                known.delete(rel);
+            }
+        }
+    };
+
     /** Full scan diffed against the baseline, which it then replaces. */
     const rescan = async (): Promise<Changes> => {
         const changes: Changes = { added: [], modified: [], removed: [] };
         try {
-            const { files } = await scanProject(absRoot, { extraIgnore: patterns, respectGitignore });
-            const manifest = await buildScanManifest(absRoot, files);
+            const scan = await scanProject(absRoot, { extraIgnore: patterns, respectGitignore });
+            const manifest = await buildScanManifest(absRoot, scan.files);
+            nestedRepos = new Set(scan.nestedRepos);
+            // Files now inside a nested repository changed owner, not
+            // content: dropped silently rather than reported as removed.
+            dropNestedFromBaseline();
             const next = new Map<string, FileFingerprint>();
             for (const [rel, fingerprint] of Object.entries(manifest.files)) {
                 if (isAlwaysIgnored(rel)) {
@@ -243,7 +305,11 @@ export async function watchFiles(root: string, options: WatchFilesOptions): Prom
         // was there before).
         const dirs = new Set<string>();
 
+        const nestedBefore = nestedRepos.size;
         for (const rel of paths) {
+            if (isInsideNestedRepo(rel, nestedRepos)) {
+                continue; // Became nested since the event was queued.
+            }
             candidates.add(rel);
             const stats = await lstatOrNull(path.join(absRoot, rel));
             if (stats?.isDirectory()) {
@@ -251,7 +317,7 @@ export async function watchFiles(root: string, options: WatchFilesOptions): Prom
                     continue;
                 }
                 dirs.add(rel);
-                if (!(await walkDirectory(absRoot, rel, filter, candidates, maxPendingPaths))) {
+                if (!(await walkDirectory(absRoot, rel, filter, nestedRepos, candidates, maxPendingPaths))) {
                     return "rescan";
                 }
             } else if (stats === null && !baseline.has(rel)) {
@@ -282,9 +348,25 @@ export async function watchFiles(root: string, options: WatchFilesOptions): Prom
 
         // Files the baseline already knows passed every ignore rule when they
         // were scanned; only newcomers need checking.
-        const newcomers = Object.keys(fresh).filter(
+        let newcomers = Object.keys(fresh).filter(
             (rel) => !baseline.has(rel) && !isAlwaysIgnored(rel) && !filter.ignores(rel, false),
         );
+        // A newcomer may sit in a repository whose `.git` the platform never
+        // reported (macOS coalescing, a clone moved in whole). One check per
+        // distinct ancestor directory, so a big burst stays cheap.
+        if (newcomers.length > 0 && (await findNestedAncestors(absRoot, newcomers, nestedRepos))) {
+            newcomers = newcomers.filter((rel) => !isInsideNestedRepo(rel, nestedRepos));
+        }
+        if (nestedRepos.size !== nestedBefore) {
+            // New nested repositories: their files leave quietly (see rescan).
+            for (const rel of [...candidates]) {
+                if (isInsideNestedRepo(rel, nestedRepos)) {
+                    candidates.delete(rel);
+                    baseline.delete(rel);
+                }
+            }
+            dropNestedFromBaseline();
+        }
         const gitIgnored = gitAware && newcomers.length > 0 ? await checkGitIgnored(absRoot, newcomers) : new Set<string>();
         const admitted = new Set(newcomers.filter((rel) => !gitIgnored.has(rel)));
 
@@ -314,12 +396,26 @@ export async function watchFiles(root: string, options: WatchFilesOptions): Prom
         try {
             // Events that land while we are working re-dirty paths; loop until
             // a full pass finds nothing new. Each pass is its own batch.
-            while ((needsRescan || dirty.size > 0 || reloadPatterns) && !closed) {
+            while ((needsRescan || dirty.size > 0 || reloadPatterns || nestedProbes.size > 0) && !closed) {
                 if (reloadPatterns) {
                     reloadPatterns = false;
                     await refreshPatterns();
                     needsRescan = true;
                 }
+                if (nestedProbes.size > 0 && !needsRescan) {
+                    const probes = [...nestedProbes];
+                    nestedProbes.clear();
+                    for (const dir of probes) {
+                        // Only a change to the set needs the (costly) rescan;
+                        // churn inside an existing nested repo does not.
+                        const isRepo = await hasGitEntry(path.join(absRoot, dir));
+                        if (isRepo !== nestedRepos.has(dir)) {
+                            needsRescan = true;
+                            break;
+                        }
+                    }
+                }
+                nestedProbes.clear();
                 let changes: Changes | "rescan" = "rescan";
                 const baseline = known;
                 if (!needsRescan && baseline !== null) {
@@ -396,10 +492,22 @@ export async function watchFiles(root: string, options: WatchFilesOptions): Prom
             return;
         }
         // Cheap pruning so a busy ignored directory (node_modules, .git, the
-        // daemon's own .tyr/logs) never fills the dirty set. Only ancestors
-        // are judged here: whether the entry itself is a file or a directory
-        // is not known until it is stat'ed at flush time.
+        // daemon's own .tyr/logs, a nested worktree) never fills the dirty
+        // set. Only ancestors are judged here: whether the entry itself is a
+        // file or a directory is not known until it is stat'ed at flush time.
         const parent = path.posix.dirname(rel);
+        if (isInsideNestedRepo(rel, nestedRepos)) {
+            return;
+        }
+        if (path.posix.basename(rel) === NESTED_REPO_MARKER && parent !== ".") {
+            // `<dir>/.git` itself appeared or vanished: <dir> may have
+            // become (or stopped being) a nested repository.
+            if (!isAlwaysIgnored(parent) && !filter.ignores(parent, true)) {
+                nestedProbes.add(parent);
+                schedule();
+            }
+            return;
+        }
         if (isAlwaysIgnored(rel) || (parent !== "." && filter.ignores(parent, true))) {
             return;
         }
@@ -415,11 +523,19 @@ export async function watchFiles(root: string, options: WatchFilesOptions): Prom
         schedule();
     };
 
-    const startPolling = (): void => {
+    /** `reason` is undefined for forcePolling, which is a choice, not a fallback. */
+    const startPolling = (reason?: string): void => {
         if (closed || pollTimer !== null) {
             return;
         }
         mode = "poll";
+        if (reason !== undefined && options.onFallback !== undefined) {
+            try {
+                options.onFallback(reason);
+            } catch {
+                // Reporting the fallback must not prevent it.
+            }
+        }
         if (watcher !== null) {
             closeQuietly(watcher);
             watcher = null;
@@ -433,17 +549,10 @@ export async function watchFiles(root: string, options: WatchFilesOptions): Prom
         }
     };
 
-    if (!pinnedPatterns) {
-        patterns = (await loadUserIgnorePatterns(absRoot)).patterns;
-        filter = createPathIgnoreFilter(patterns);
-    }
-    if (respectGitignore) {
-        const inside = await runGit(absRoot, ["rev-parse", "--is-inside-work-tree"]);
-        gitAware = inside.ok && inside.stdout.trim() === "true";
-    }
-
-    // The watcher goes up before the baseline scan so that nothing slips
-    // through the gap; anything it catches meanwhile waits for the baseline.
+    // The watcher goes up first — before the ignore rules are loaded and
+    // before the baseline scan — so that nothing slips through the gap;
+    // anything it catches meanwhile waits in `dirty` for the baseline (and
+    // is judged by the real rules at flush time).
     if (options.forcePolling === true) {
         startPolling();
     } else {
@@ -453,16 +562,44 @@ export async function watchFiles(root: string, options: WatchFilesOptions): Prom
             });
             // Any watcher error degrades to polling rather than leaving a
             // silent blind spot.
-            watcher.on("error", () => startPolling());
-        } catch {
+            watcher.on("error", (error) => startPolling(`fs.watch failed: ${describeError(error)}`));
+        } catch (error) {
             // ERR_FEATURE_UNAVAILABLE_ON_PLATFORM (recursive watch on an old
             // Node), EMFILE/ENOSPC, or a root that does not exist.
-            startPolling();
+            startPolling(`fs.watch could not start: ${describeError(error)}`);
         }
+    }
+
+    if (!pinnedPatterns) {
+        patterns = (await loadUserIgnorePatterns(absRoot)).patterns;
+        filter = createPathIgnoreFilter(patterns);
+    }
+    if (respectGitignore) {
+        const inside = await runGit(absRoot, ["rev-parse", "--is-inside-work-tree"]);
+        gitAware = inside.ok && inside.stdout.trim() === "true";
     }
 
     await rescan();
     known ??= new Map();
+
+    // A file written while the baseline scan runs is a race: if the walk
+    // lists it after the write, the write is folded into the baseline, and
+    // its fs.watch event then classifies as "unchanged" and is dropped. The
+    // same happens to a write between `since` (e.g. the daemon reporting
+    // itself running) and the watcher attaching. So, by definition, every
+    // baseline file whose mtime is at or after `since` changed while we were
+    // watching and is reported in a first batch: as added when it was born
+    // after `since` too (where the platform records a birth time), else as
+    // modified. Its fs.watch event, if any, then finds it unchanged. What
+    // this cannot recover is a *removal* in that window (there was no
+    // earlier baseline to miss it from).
+    if (since !== undefined) {
+        // File-system timestamps can come from a coarser clock than
+        // Date.now() (Linux stamps with the kernel tick), so a write just
+        // after `since` may carry an mtime a few ms before it.
+        emit(await changedSince(absRoot, known, since - COARSE_CLOCK_SLACK_MS, Date.now() + FUTURE_MTIME_SLACK_MS));
+    }
+
     if (needsRescan || dirty.size > 0 || reloadPatterns) {
         schedule();
     }
@@ -503,13 +640,15 @@ function isAlwaysIgnored(rel: string): boolean {
 
 /**
  * Add every reportable file below `relDir` to `out`, applying the same rules
- * as the scanner (ignore filter, symlinks skipped). Returns false once `out`
- * grows past `limit`, which the caller turns into a full rescan.
+ * as the scanner (ignore filter, symlinks skipped, nested repositories
+ * skipped and added to `nestedRepos`). Returns false once `out` grows past
+ * `limit`, which the caller turns into a full rescan.
  */
 async function walkDirectory(
     absRoot: string,
     relDir: string,
     filter: PathIgnoreFilter,
+    nestedRepos: Set<string>,
     out: Set<string>,
     limit: number,
 ): Promise<boolean> {
@@ -521,6 +660,10 @@ async function walkDirectory(
             entries = await fs.promises.readdir(path.join(absRoot, dir), { withFileTypes: true });
         } catch {
             continue; // Vanished or unreadable: nothing to add from it.
+        }
+        if (hasNestedRepoMarker(entries.map((entry) => entry.name))) {
+            nestedRepos.add(dir);
+            continue;
         }
         for (const entry of entries) {
             const rel = `${dir}/${entry.name}`;
@@ -564,6 +707,62 @@ async function checkGitIgnored(absRoot: string, paths: readonly string[]): Promi
         }
     }
     return ignored;
+}
+
+/**
+ * Baseline files with `since <= mtime <= until`, split into added (born at
+ * or after `since`, where the platform keeps a birth time) and modified.
+ * `until` guards against files with mtimes in the future (an archive
+ * extracted with bogus dates), which would otherwise show up on every start.
+ */
+async function changedSince(
+    absRoot: string,
+    baseline: Map<string, FileFingerprint>,
+    since: number,
+    until: number,
+): Promise<Changes> {
+    const changes: Changes = { added: [], modified: [], removed: [] };
+    for (const [rel, fingerprint] of baseline) {
+        if (fingerprint.mtimeMs < since || fingerprint.mtimeMs > until) {
+            continue;
+        }
+        const stats = await lstatOrNull(path.join(absRoot, rel));
+        // Linux without statx reports a birth time of 0, i.e. "modified".
+        if (stats !== null && stats.birthtimeMs >= since) {
+            changes.added.push(rel);
+        } else {
+            changes.modified.push(rel);
+        }
+    }
+    return changes;
+}
+
+/** True when `absDir` holds a `.git` entry (directory or file). */
+async function hasGitEntry(absDir: string): Promise<boolean> {
+    return (await lstatOrNull(path.join(absDir, NESTED_REPO_MARKER))) !== null;
+}
+
+/**
+ * Add to `nestedRepos` every ancestor directory of `paths` (below the root)
+ * that holds a `.git` entry. Returns true when any was added.
+ */
+async function findNestedAncestors(absRoot: string, paths: readonly string[], nestedRepos: Set<string>): Promise<boolean> {
+    const checked = new Set<string>();
+    let found = false;
+    for (const rel of paths) {
+        for (let slash = rel.indexOf("/"); slash > 0; slash = rel.indexOf("/", slash + 1)) {
+            const dir = rel.slice(0, slash);
+            if (checked.has(dir)) {
+                continue;
+            }
+            checked.add(dir);
+            if (!nestedRepos.has(dir) && (await hasGitEntry(path.join(absRoot, dir)))) {
+                nestedRepos.add(dir);
+                found = true;
+            }
+        }
+    }
+    return found;
 }
 
 async function lstatOrNull(target: string): Promise<fs.Stats | null> {

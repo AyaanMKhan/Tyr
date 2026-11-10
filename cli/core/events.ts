@@ -29,9 +29,11 @@
 //
 // Kinds are dotted strings, "<area>.<what>". Conventional ones:
 //   daemon.started / daemon.stopped / daemon.crashed   (source "tyr")
+//   daemon.warning                                     (source "tyr", e.g. a watcher fell back to polling)
 //   init.completed                                     (source "tyr")
 //   git.head / git.index / git.refs / git.merge-state  (source "git", see gitEventToTyrEvent)
-//   fs.changed                                         (source "fs", see fsBatchToTyrEvent)
+//   fs.changed                                         (source "fs", see fsBatchToTyrEvent; files git
+//                                                       rewrote carry data.cause "git", see observe.ts)
 //   claude.tool_use / claude.session_*                 (source "claude")
 //   check.passed / check.failed                        (source "check")
 //   action.taken                                       (source "tyr" or "user")
@@ -77,6 +79,12 @@ export interface TyrEventInput {
     data?: Record<string, unknown>;
     /** Override the timestamp (Date or ISO string). Default: now. */
     ts?: Date | string;
+    /**
+     * Use this id instead of a fresh UUID. For a writer that must refer to
+     * an event before its append has finished (observe.ts links git-driven
+     * fs.changed events to their git event this way). Must be unique.
+     */
+    id?: string;
 }
 
 export interface AppendEventOptions {
@@ -146,7 +154,7 @@ export async function appendEvent(
 
         const event: TyrEvent = {
             v: EVENT_VERSION,
-            id: randomUUID(),
+            id: typeof input.id === "string" && input.id.length > 0 ? input.id : randomUUID(),
             ts: toIso(input.ts),
             source: EVENT_SOURCES.includes(input.source) ? input.source : "tyr",
             kind: String(input.kind),

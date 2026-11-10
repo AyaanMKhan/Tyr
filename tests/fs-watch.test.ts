@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { FileChangeBatch, FileWatcher, watchFiles, WatchFilesOptions } from "../cli/core/fs-watch.js";
-import { createPathIgnoreFilter } from "../cli/core/discovery.js";
+import { createPathIgnoreFilter, hasNestedRepoMarker, isInsideNestedRepo, scanProject } from "../cli/core/discovery.js";
 import { fsBatchToTyrEvent, FS_EVENT_MAX_PATHS } from "../cli/core/events.js";
 import { makeProject, removeProject } from "./helpers.js";
 
@@ -310,6 +310,139 @@ test("a missing root still resolves, polls, and reports nothing", async () => {
         assert.deepEqual(recorder.batches, []);
     } finally {
         watcher.close();
+        await removeProject(path.dirname(root));
+    }
+});
+
+/* -------------------------------------------------------------------------
+ * Nested repositories
+ * ---------------------------------------------------------------------- */
+
+test("scanProject skips nested repositories (a .git dir or file) but not the root", async () => {
+    const root = await makeProject({
+        "a.ts": "a\n",
+        ".git": "gitdir: /elsewhere\n", // The root may itself be a worktree.
+        "clone/.git/HEAD": "ref: refs/heads/main\n",
+        "clone/src/x.ts": "x\n",
+        ".claude/worktrees/agent-1/.git": "gitdir: /elsewhere\n",
+        ".claude/worktrees/agent-1/a.ts": "a\n",
+        ".claude/settings.json": "{}\n",
+        "plain/y.ts": "y\n",
+    });
+    try {
+        const scan = await scanProject(root, { respectGitignore: false });
+        assert.deepEqual(
+            scan.files.map((file) => path.relative(root, file).split(path.sep).join("/")),
+            [".claude/settings.json", ".git", "a.ts", "plain/y.ts"],
+        );
+        assert.deepEqual(scan.nestedRepos, [".claude/worktrees/agent-1", "clone"]);
+        assert.ok(scan.skippedDirs.includes("clone"));
+    } finally {
+        await removeProject(root);
+    }
+});
+
+test("scanProject skips an untracked nested repository inside a git work tree", async () => {
+    const root = await makeProject({ "a.ts": "a\n", "inner/b.ts": "b\n" });
+    try {
+        execFileSync("git", ["init", "-q"], { cwd: root });
+        execFileSync("git", ["init", "-q"], { cwd: path.join(root, "inner") });
+        const scan = await scanProject(root);
+        assert.deepEqual(scan.files.map((file) => path.basename(file)), ["a.ts"]);
+        assert.deepEqual(scan.nestedRepos, ["inner"]);
+    } finally {
+        await removeProject(root);
+    }
+});
+
+test("isInsideNestedRepo matches the repo and everything below it, nothing else", () => {
+    const nested = new Set([".claude/worktrees/a", "clone"]);
+    assert.equal(isInsideNestedRepo("clone", nested), true);
+    assert.equal(isInsideNestedRepo("clone/src/x.ts", nested), true);
+    assert.equal(isInsideNestedRepo(".claude/worktrees/a/b.ts", nested), true);
+    assert.equal(isInsideNestedRepo(".claude/worktrees/ab/b.ts", nested), false);
+    assert.equal(isInsideNestedRepo("clones/x.ts", nested), false);
+    assert.equal(isInsideNestedRepo(".claude/settings.json", nested), false);
+    assert.equal(hasNestedRepoMarker(["src", ".git"]), true);
+    assert.equal(hasNestedRepoMarker(["src", ".gitignore"]), false);
+});
+
+bothModes("churn inside a nested repository is never reported", async (root, recorder) => {
+    // An existing nested worktree, edited like another agent would.
+    await write(root, ".claude/worktrees/agent-1/a.ts", "edited by someone else\n");
+    await write(root, ".claude/worktrees/agent-1/new.ts", "n\n");
+    await fs.rm(path.join(root, ".claude/worktrees/agent-1/b.ts"));
+    // A clone moved in whole, its `.git` included.
+    const staging = await makeProject({ "repo/.git/HEAD": "ref: refs/heads/main\n", "repo/src/x.ts": "x\n" });
+    try {
+        await fs.rename(path.join(staging, "repo"), path.join(root, "clone"));
+    } finally {
+        await removeProject(staging);
+    }
+    await write(root, "marker.ts", "m\n");
+
+    await recorder.waitFor(mentions("marker.ts"));
+    await delay(SETTLE_MS);
+    assert.deepEqual(recorder.allPaths(), ["marker.ts"]);
+}, {
+    "a.ts": "a\n",
+    ".claude/worktrees/agent-1/.git": "gitdir: /elsewhere\n",
+    ".claude/worktrees/agent-1/a.ts": "a\n",
+    ".claude/worktrees/agent-1/b.ts": "b\n",
+});
+
+bothModes("a directory that becomes a repository leaves the watched set quietly", async (root, recorder) => {
+    execFileSync("git", ["init", "-q"], { cwd: path.join(root, "sub") });
+    await delay(SETTLE_MS);
+    await write(root, "sub/x.ts", "changed inside the new repository\n");
+    await write(root, "marker.ts", "m\n");
+
+    await recorder.waitFor(mentions("marker.ts"));
+    await delay(SETTLE_MS);
+    assert.deepEqual(recorder.allPaths(), ["marker.ts"], "sub/x.ts is neither removed nor modified");
+}, { "a.ts": "a\n", "sub/x.ts": "x\n" });
+
+for (const forcePolling of [false, true]) {
+    test(`since: writes between since and the baseline scan are reported, not absorbed (${forcePolling ? "poll" : "watch"})`, async () => {
+        const root = await makeProject({ "a.ts": "a\n", "b.ts": "b\n" });
+        const recorder = new Recorder();
+        try {
+            await delay(100); // Well clear of the coarse-clock slack.
+            const since = Date.now();
+            await delay(5);
+            // The gap a daemon has between "running" and its scan finishing.
+            await write(root, "a.ts", "a changed\n");
+            await write(root, "early.ts", "e\n");
+            const watcher = await start(root, recorder, { since, forcePolling });
+            try {
+                const first = await recorder.waitFor(mentions("early.ts"));
+                assert.ok(first.modified.includes("a.ts"), JSON.stringify(first));
+                // Added where the platform records birth times, else modified.
+                assert.ok([...first.added, ...first.modified].includes("early.ts"));
+                await delay(SETTLE_MS);
+                assert.deepEqual(recorder.allPaths().sort(), ["a.ts", "early.ts"], "reported once, b.ts untouched");
+            } finally {
+                watcher.close();
+            }
+        } finally {
+            await removeProject(root);
+        }
+    });
+}
+
+test("onFallback reports a watcher that could not start; forcePolling does not", async () => {
+    const root = path.join(await makeProject({}), "does-not-exist");
+    const reasons: string[] = [];
+    const recorder = new Recorder();
+    const watcher = await start(root, recorder, { onFallback: (reason) => reasons.push(reason) });
+    const forced = await start(root, recorder, { forcePolling: true, onFallback: (reason) => reasons.push(`forced: ${reason}`) });
+    try {
+        assert.equal(watcher.mode, "poll");
+        assert.equal(reasons.length, 1);
+        assert.match(reasons[0], /^fs\.watch could not start: /);
+    } finally {
+        watcher.close();
+        forced.close();
         await removeProject(path.dirname(root));
     }
 });
