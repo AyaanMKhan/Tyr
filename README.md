@@ -600,6 +600,7 @@ Finally `init` checks the project's root `.gitignore` (see [What gets committed]
     │   ├── scan.json       # scan manifest for change detection (ignored)
     │   ├── events.jsonl    # append-only event history, rotated (ignored)
     │   ├── tyr.lock        # short-lived write lock, present only while held
+    │   ├── requests/       # pending CLI -> daemon requests (short-lived)
     │   └── daemon.pid      # present while the background process runs
     ├── logs/
     │   ├── tyr.log         # activity log, rotated at 1 MiB (ignored)
@@ -921,6 +922,8 @@ findProjectRoot ──► isInitialized? ──► collectGitInfo ──► scan
                                                                                  ▼
                                                               scaffold() ──► .tyr/  (+ appendLog)
 ```
+
+**How the CLI talks to the daemon:** there is no socket or named pipe. Daemon to CLI, the channel is the event journal `.tyr/state/events.jsonl`: the daemon (and the CLI, and later Claude Code hooks) append to it, and `followEvents()` in `cli/core/event-stream.ts` tails it live, using `fs.watch` on `state/` with a polling fallback, buffering half-written lines and following rotation by inode so no event is lost or duplicated. It can replay history first (`backlog` / `since`), so a reader that attaches late misses nothing. CLI to daemon, `cli/core/daemon-requests.ts` drops small JSON request files into `.tyr/state/requests/` (written atomically, consumed by deletion) that the daemon services from its poll timer: `stop`, and `ping`, which the daemon answers with a `daemon.pong` event that `pingDaemon()` waits for. A journal works identically on Windows, needs no daemon to be running for writers to record history, and lets several writers that are not the daemon share one ordered stream. The price is up to one poll period (500 ms) of request latency. `tyr stop` still uses its original `state/daemon.stop` file, which the daemon also polls.
 
 **Rules the code keeps:**
 

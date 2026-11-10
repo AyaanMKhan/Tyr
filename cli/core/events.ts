@@ -22,6 +22,10 @@
 //   gitEventToTyrEvent(gitEvent)     -> TyrEventInput             for git-watch.ts events
 //   fsBatchToTyrEvent(batch)         -> TyrEventInput             for fs-watch.ts batches
 //   eventsFile(root)                 -> string                    absolute path of events.jsonl
+//   parseEventLine / compileEventFilter / kindMatches              shared with event-stream.ts
+//
+// For following the journal live (tail -f with rotation handling) see
+// event-stream.ts.
 //
 // Kinds are dotted strings, "<area>.<what>". Conventional ones:
 //   daemon.started / daemon.stopped / daemon.crashed   (source "tyr")
@@ -86,7 +90,8 @@ export const DEFAULT_EVENTS_MAX_BYTES = 5 * 1024 * 1024;
 export const DEFAULT_EVENTS_KEEP = 3;
 
 const EVENTS_BASENAME = "events";
-const ROTATED_FILE = /^events\.(\d+)\.jsonl$/;
+/** Basename of a rotated history file; group 1 is its index (1 = newest). */
+export const ROTATED_EVENTS_FILE = /^events\.(\d+)\.jsonl$/;
 
 /** Absolute path of the live history file, `.tyr/state/events.jsonl`. */
 export function eventsFile(root: string): string {
@@ -199,12 +204,18 @@ function boundOf(value: Date | string | undefined): number | null {
     return Number.isNaN(ms) ? null : ms;
 }
 
-function kindMatches(kind: string, pattern: string): boolean {
+/** Does `kind` match one kind filter pattern? See ReadEventsOptions.kinds. */
+export function kindMatches(kind: string, pattern: string): boolean {
     if (pattern.endsWith(".")) return kind.startsWith(pattern);
     return kind === pattern || kind.startsWith(`${pattern}.`);
 }
 
-function parseLine(line: string): TyrEvent | null {
+/**
+ * Parse one JSONL line into an event, or null when it is blank, malformed or
+ * not an event. Exported for the live reader in event-stream.ts, which must
+ * accept exactly what readEvents accepts.
+ */
+export function parseEventLine(line: string): TyrEvent | null {
     if (line.trim() === "") return null;
     try {
         const value: unknown = JSON.parse(line);
@@ -227,6 +238,31 @@ function parseLine(line: string): TyrEvent | null {
     }
 }
 
+/** The filtering half of ReadEventsOptions (everything but limit/order). */
+export type EventFilter = Pick<ReadEventsOptions, "since" | "until" | "sources" | "kinds">;
+
+/**
+ * Turn filter options into a predicate, resolving bounds and the source set
+ * once. Shared by readEvents and event-stream.ts so a live follower and a
+ * one-shot read can never disagree about what a filter means.
+ */
+export function compileEventFilter(filter: EventFilter = {}): (event: TyrEvent) => boolean {
+    const since = boundOf(filter.since);
+    const until = boundOf(filter.until);
+    const sources = filter.sources !== undefined ? new Set<string>(filter.sources) : null;
+    const kinds = filter.kinds;
+    return (event) => {
+        if (since !== null || until !== null) {
+            const ms = Date.parse(event.ts);
+            if (since !== null && ms < since) return false;
+            if (until !== null && ms > until) return false;
+        }
+        if (sources !== null && !sources.has(event.source)) return false;
+        if (kinds !== undefined && !kinds.some((pattern) => kindMatches(event.kind, pattern))) return false;
+        return true;
+    };
+}
+
 /** History files oldest first: events.N … events.1, then events.jsonl. */
 async function historyFiles(stateDir: string): Promise<string[]> {
     let names: string[];
@@ -236,7 +272,7 @@ async function historyFiles(stateDir: string): Promise<string[]> {
         return [];
     }
     const rotated = names
-        .map((name) => ROTATED_FILE.exec(name))
+        .map((name) => ROTATED_EVENTS_FILE.exec(name))
         .filter((match): match is RegExpExecArray => match !== null)
         .map((match) => ({ name: match[0], index: Number(match[1]) }))
         .sort((a, b) => b.index - a.index)
@@ -253,10 +289,7 @@ async function historyFiles(stateDir: string): Promise<string[]> {
  */
 export async function readEvents(root: string, options: ReadEventsOptions = {}): Promise<TyrEvent[]> {
     const { stateDir } = resolveTyrPaths(root);
-    const since = boundOf(options.since);
-    const until = boundOf(options.until);
-    const sources = options.sources !== undefined ? new Set<string>(options.sources) : null;
-    const kinds = options.kinds;
+    const matches = compileEventFilter(options);
 
     const events: TyrEvent[] = [];
     for (const file of await historyFiles(stateDir)) {
@@ -267,14 +300,8 @@ export async function readEvents(root: string, options: ReadEventsOptions = {}):
             continue; // Rotated away between readdir and read.
         }
         for (const line of contents.split("\n")) {
-            const event = parseLine(line);
-            if (event === null) continue;
-            const ms = Date.parse(event.ts);
-            if (since !== null && ms < since) continue;
-            if (until !== null && ms > until) continue;
-            if (sources !== null && !sources.has(event.source)) continue;
-            if (kinds !== undefined && !kinds.some((pattern) => kindMatches(event.kind, pattern))) continue;
-            events.push(event);
+            const event = parseEventLine(line);
+            if (event !== null && matches(event)) events.push(event);
         }
     }
 

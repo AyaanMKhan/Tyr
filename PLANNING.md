@@ -133,7 +133,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] File-system watcher on the project, using the discovery ignore rules and debounced (`cli/core/fs-watch.ts`, wired into `runDaemon`): recursive `fs.watch` with a polling fallback, the same ignore rules as discovery (built-ins, `.tyrignore`, `scan.extraIgnore`, `.gitignore`), one `fs.changed` event per burst, classified by stat against a startup snapshot
 - [ ] Git event watcher: the module is done (`watchGit`, see 2.4) but is not yet wired into the daemon or `tyr watch`
 - [x] Claude Code session observation: `tyr hooks install|uninstall|status` installs Claude Code hooks (all 10 events) that run the hidden `tyr hook`, which normalizes the payload into `claude.*` events in `.tyr/state/events.jsonl` (prompt previews truncated, secrets redacted, never blocks Claude: always exit 0, no output). Transcript discovery and summaries in `cli/core/claude-transcripts.ts`
-- [ ] IPC channel between the daemon and the CLI (Unix socket or named pipe, or a polled file in `.tyr/state/`)
+- [x] IPC channel between the daemon and the CLI: the event journal `.tyr/state/events.jsonl` is the daemon → CLI channel, followed live by `followEvents()` (`cli/core/event-stream.ts`: byte-offset tail, partial lines, rotation without loss or duplicates, backlog replay, fs.watch + poll). CLI → daemon requests are atomic files in `.tyr/state/requests/` (`stop`, `ping` answered by a `daemon.pong` event; `pingDaemon()`, `cli/core/daemon-requests.ts`)
 - [ ] `tyr watch` live view: stream daemon events and progress through the reporter
 
 ### 2.10 Core engine / orchestration (`core/`, currently only `core/CORE.md`): 0%, Not started

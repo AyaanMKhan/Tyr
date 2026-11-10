@@ -13,6 +13,10 @@
 // wherever the platform delivers them, and `stopDaemon()` falls back to a hard
 // kill plus its own cleanup if the daemon does not exit in time.
 //
+// Other CLI -> daemon requests (`stop`, `ping`) go through the request files
+// of daemon-requests.ts, serviced from the same poll timer; answers come back
+// through the event journal (see event-stream.ts for why not a socket).
+//
 // Like scaffold.ts, the parent-side functions never print. The daemon side
 // writes only to `.tyr/logs/` and `state.json`, since it has no terminal.
 
@@ -27,6 +31,7 @@ import { markError, markRunning, markStopped } from "./state-store.js";
 import { watchGit, type GitWatchEvent, type GitWatcher } from "./git-watch.js";
 import { appendEvent, fsBatchToTyrEvent, gitEventToTyrEvent } from "./events.js";
 import { watchFiles, type FileWatcher } from "./fs-watch.js";
+import { clearDaemonRequests, serviceDaemonRequests } from "./daemon-requests.js";
 import { getLogLevel, LOG_LEVEL_ENV, rotateFileIfLarge } from "./log.js";
 
 /* -------------------------------------------------------------------------
@@ -168,6 +173,7 @@ export async function startDaemon(root: string, options: StartDaemonOptions = {}
 
     // A leftover stop request would make the new daemon exit immediately.
     await fs.rm(daemonPaths.stopFile, { force: true });
+    await clearDaemonRequests(absRoot);
 
     let pid: number;
     try {
@@ -417,6 +423,10 @@ export async function runDaemon(root: string): Promise<void> {
             () => void finish("stopped", "Background process stopped (tyr stop)", 0),
             () => undefined,
         );
+        // Request files (ping, stop); pings are answered with a daemon.pong event.
+        void serviceDaemonRequests(absRoot).then((requests) => {
+            if (requests.stop) void finish("stopped", "Background process stopped (stop request)", 0);
+        });
     }, STOP_POLL_MS);
 }
 
