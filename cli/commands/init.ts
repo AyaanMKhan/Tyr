@@ -131,6 +131,8 @@ type InitResult =
           daemon: DaemonSummary | null;
           /** What happened to the root `.gitignore`. */
           gitignore: GitignoreOutcome;
+          /** Whether `.tyr/settings.json` was created now or already existed (never overwritten). */
+          settings: "created" | "kept";
       }
     | { ok: false; root?: string; error: string };
 
@@ -241,6 +243,7 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         reportPreserved(reporter, paths.preserved);
         reporter.debug(`Wrote ${paths.configFile}`);
         reporter.debug(`Wrote ${paths.stateFile}`);
+        if (paths.settings === "created") reporter.info("Created .tyr/settings.json for your preferences (commit it with tyr.json)");
 
         // Baseline for change detection: `tyr status` / `tyr watch` diff
         // later scans against this manifest.
@@ -296,6 +299,7 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
             commandChecks: checks,
             daemon,
             gitignore,
+            settings: paths.settings,
         };
     } catch (error) {
         // Any throw here means `.tyr` may be incomplete, so say so plainly

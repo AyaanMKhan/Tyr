@@ -13,6 +13,9 @@ import { COMMAND_KINDS, mergeConfig, mergeState } from "./reinit-merge.js";
 import { CURRENT_CONFIG_VERSION, CURRENT_STATE_VERSION, migrateConfig, migrateState, type MigrationResult } from "./migrate.js";
 import { validateConfig, validateState, type ValidationResult } from "./schema.js";
 import { writeLog, type LogLevel } from "./log.js";
+// Import cycle (project-settings.ts uses this module's file primitives) is
+// safe: neither module touches the other's bindings at load time.
+import { initialProjectSettings, writeInitialProjectSettings } from "./project-settings.js";
 
 /** Name of the directory Tyr owns inside a project root. */
 export const TYR_DIR_NAME = ".tyr";
@@ -23,6 +26,11 @@ export interface TyrPaths {
     root: string;
     tyrDir: string;
     configFile: string;
+    /**
+     * User preferences (`settings.json`), committed next to tyr.json. Created
+     * once by `tyr init` and never rewritten by it; see project-settings.ts.
+     */
+    settingsFile: string;
     stateDir: string;
     stateFile: string;
     /** Scan manifest used for change detection; see scan-diff.ts. */
@@ -34,7 +42,8 @@ export interface TyrPaths {
 
 /**
  * `.tyr/.gitignore` — Tyr's volatile output is per-machine noise, but tyr.json
- * stays tracked so a team shares one config.
+ * and settings.json stay tracked so a team shares one profile and one set of
+ * preferences. Keep settings.json off this list.
  */
 const TYR_GITIGNORE = [
     "# Tyr runtime output — not meant to be committed.",
@@ -61,6 +70,7 @@ export function resolveTyrPaths(root: string): TyrPaths {
         root: absRoot,
         tyrDir,
         configFile: path.join(tyrDir, "tyr.json"),
+        settingsFile: path.join(tyrDir, "settings.json"),
         stateDir,
         stateFile: path.join(stateDir, "state.json"),
         // Lives under state/ so the generated .gitignore already covers it.
@@ -301,6 +311,12 @@ export interface ScaffoldPreserved {
 
 export interface ScaffoldResult extends TyrPaths {
     preserved: ScaffoldPreserved;
+    /**
+     * `created`: settings.json was absent and a starter file was written.
+     * `kept`: one already existed and was left untouched (always, even under
+     * `--force` and `--reset`).
+     */
+    settings: "created" | "kept";
 }
 
 /**
@@ -308,6 +324,11 @@ export interface ScaffoldResult extends TyrPaths {
  * re-init) they are merged rather than overwritten — see reinit-merge.ts —
  * unless `options.reset` is set. Files in `state/` other than state.json
  * (scan manifest, a daemon PID file) are never touched here.
+ *
+ * settings.json is only ever created, never overwritten: it is user-authored
+ * preferences, not detection output, so neither `--force` nor `--reset`
+ * (which resets *detection*) may discard it. Delete it by hand to get a
+ * fresh starter file.
  */
 export async function scaffold(
     snapshot: InitSnapshot,
@@ -342,6 +363,7 @@ export async function scaffold(
 
     await writeFileAtomic(paths.configFile, toJsonDocument(config.config));
     await writeFileAtomic(paths.stateFile, toJsonDocument(state.state));
+    const settings = await writeInitialProjectSettings(paths.settingsFile, initialProjectSettings(snapshot));
 
     await fs.writeFile(path.join(paths.tyrDir, ".gitignore"), TYR_GITIGNORE, "utf8");
     // Git will not track an empty directory; .gitkeep keeps reports/ in the tree.
@@ -358,6 +380,7 @@ export async function scaffold(
     return {
         ...paths,
         preserved: { commands: config.keptCommands, configKeys: config.keptKeys, stateFields: state.keptFields },
+        settings,
     };
 }
 

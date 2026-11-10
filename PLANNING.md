@@ -114,7 +114,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 
 ### 2.7 User configuration: 15%, Partial
 - [x] `tyr.json` exists and stores detected commands that a user could hand-edit
-- [ ] Separate the detected snapshot from user preferences (enabled checks, severity thresholds, agent permissions, notification targets)
+- [x] Separate the detected snapshot from user preferences (enabled checks, severity thresholds, agent permissions, notification targets). `tyr.json` stays detection-only; preferences live in the committed `.tyr/settings.json` (`cli/core/project-settings.ts`, shared contract in `cli/core/settings-types.ts`)
 - [ ] `tyr config get/set` or documented hand-editing
 - [ ] Global, per-user config (`~/.config/tyr`) for API keys and defaults
 - [ ] Env var overrides

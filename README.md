@@ -32,6 +32,7 @@ Tyr is a command-line tool that sits **beside** your AI coding agent instead of 
   - [6. Writing `.tyr/`](#6-writing-tyr)
 - [The `.tyr/` directory](#the-tyr-directory)
   - [What gets committed](#what-gets-committed)
+  - [Settings (`settings.json`)](#settings-settingsjson)
   - [`tyr.json` schema](#tyrjson-schema)
   - [`state/state.json` schema](#statestatejson-schema)
   - [`logs/tyr.log` format](#logstyrlog-format)
@@ -70,7 +71,7 @@ The code follows a few design principles that are already visible:
 1. **Detect from evidence.** Every detected fact carries the file that proved it (`evidence` in `ProjectCommand` and `PackageManagerInfo`). If Tyr cannot prove a command, it records `null` instead of guessing. The comment in `project.ts` puts it this way: *"report null rather than inventing a command Tyr cannot run."*
 2. **Total, silent detectors.** Every detection module (`discovery`, `git`, `project`) is *total*. A missing git binary, a repo with no commits, a malformed `package.json` or an unreadable directory all return a documented empty or `null` value instead of throwing. Detectors never print. All output goes through one reporter, so `status`, `watch` and `run` can reuse the same detectors later.
 3. **Crash-safe state.** `tyr.json` and `state.json` are written atomically (temp file in the same directory, then `rename`), so an interrupted run never leaves a half-written config.
-4. **Shared config, private runtime data.** `tyr.json` is meant to be committed. `state/`, `logs/` and `reports/` are git-ignored per machine.
+4. **Shared config, private runtime data.** `tyr.json` (the detection snapshot) and `settings.json` (your preferences) are meant to be committed. `state/`, `logs/` and `reports/` are git-ignored per machine.
 5. **Minimal dependencies.** Git is driven by shelling out to the real `git` binary. The spinner, colours and terminal detection are hand-written ANSI. The only runtime dependencies are `commander` and `figlet`.
 
 ---
@@ -180,7 +181,7 @@ Inspects the current project and creates the `.tyr/` directory at the project ro
 | Option | Description |
 |---|---|
 | `-f`, `--force` | Re-initialize even if `.tyr/tyr.json` already exists. Detection runs again and refreshes everything it owns (git snapshot, file and language counts, ignore lists, root, versions), but keeps what you changed: commands you edited in `tyr.json`, keys Tyr does not recognise, and state history (`createdAt`, `runCount`, `lastRunAt`, `status` and any extra fields). Other files in `state/` are left alone, and the log is **appended** to. |
-| `--reset` | Re-initialize from scratch (implies `--force`). Overwrites `tyr.json` and `state/state.json`, discarding command edits, extra keys and state history. `scan.extraIgnore` is still kept. |
+| `--reset` | Re-initialize from scratch (implies `--force`). Overwrites `tyr.json` and `state/state.json`, discarding command edits, extra keys and state history. `scan.extraIgnore` is still kept. `.tyr/settings.json` is never touched: it holds your preferences, not detection output. |
 | `-s`, `--start` | Initialize, then start the background process. **The background process is not implemented yet.** Tyr finishes `init`, prints a warning and writes a `WARN` line to the log. |
 | `--gitignore` | Add `/.tyr/` to the project's root `.gitignore` without asking (creating the file if needed). Does nothing if `.tyr` is already ignored. |
 | `--no-gitignore` | Never read, change or ask about the root `.gitignore`. |
@@ -410,7 +411,7 @@ Both lists, sorted, are written to `tyr.json` under `scan`. A later run can then
 
 1. Creates `.tyr/`, then `state/`, `logs/` and `reports/` (recursively, so it is safe over a partial tree).
 2. Writes `tyr.json` **atomically** (temp file `.<name>.<pid>.<timestamp>.tmp` in the same directory, then `rename`).
-3. Writes `state/state.json` atomically.
+3. Writes `state/state.json` atomically, and creates `settings.json` if it does not exist yet (never overwritten, not even by `--force` or `--reset`; see [Settings](#settings-settingsjson)).
 4. Writes `.tyr/.gitignore` and `reports/.gitkeep`.
 5. **Appends** a line to `logs/tyr.log`. Init never truncates the log, so history survives `--force`; size is capped by rotation instead (see [`logs/tyr.log` format](#logstyrlog-format)).
 
@@ -428,7 +429,8 @@ Finally `init` checks the project's root `.gitignore` (see [What gets committed]
 <repo-root>/
 └── .tyr/
     ├── .gitignore          # ignores logs/, reports/, state/
-    ├── tyr.json            # project profile + config (see "What gets committed")
+    ├── tyr.json            # detection snapshot (see "What gets committed")
+    ├── settings.json       # your preferences (see "Settings")
     ├── state/
     │   ├── state.json      # runtime lifecycle state (per machine, ignored)
     │   ├── scan.json       # scan manifest for change detection (ignored)
@@ -446,6 +448,7 @@ Finally `init` checks the project's root `.gitignore` (see [What gets committed]
 | Path | Purpose | Committed? |
 |---|---|---|
 | `tyr.json` | The project's identity: languages, frameworks, package manager, the exact build/test/lint/format/typecheck commands, git snapshot, docs and the scan rules used. This is the shared, machine-readable source of truth that every later Tyr command reads. | **Yes**, so the team shares one profile |
+| `settings.json` | Your preferences: which checks run, the severity threshold, agent permission, notification targets, model. Created once by `tyr init`, then edited by you; Tyr never regenerates it. See [Settings](#settings-settingsjson). | **Yes**, so the team shares one set of preferences |
 | `state/state.json` | Tyr's lifecycle on this machine: status, last indexed commit, last file count and run counters. Used for change detection between runs. | No |
 | `logs/tyr.log` | Timestamped log of Tyr activity, filtered by `--log-level` and rotated at 1 MiB (3 old files kept). | No |
 | `state/events.jsonl` | Structured event history, one JSON object per line: daemon start/stop/crash, git events, `tyr init`, and later Claude Code activity and actions taken. Written by `cli/core/events.ts`, rotated at 5 MiB. | No |
@@ -453,18 +456,45 @@ Finally `init` checks the project's root `.gitignore` (see [What gets committed]
 | `.gitignore` | Keeps the per-machine runtime output above out of git. | Yes |
 | `state/scan.json` | Scan manifest (file fingerprints) that `tyr status` / `tyr watch` diff against. | No (under `state/`) |
 
-The "Committed?" column describes the design: `.tyr/.gitignore` already keeps `state/`, `logs/` and `reports/` out of git on its own, so without any root `.gitignore` entry you would commit `tyr.json` and `.tyr/.gitignore`.
+The "Committed?" column describes the design: `.tyr/.gitignore` already keeps `state/`, `logs/` and `reports/` out of git on its own, so without any root `.gitignore` entry you would commit `tyr.json`, `settings.json` and `.tyr/.gitignore`.
 
 ### What gets committed
 
-Since config schema v2, `tyr.json` is **portable**: `project.root` is stored as `"."` (the directory containing `.tyr/`) and resolved to the absolute path only in memory when Tyr reads the file, so the committed copy is identical on every machine. Sharing `tyr.json` and `.tyr/.gitignore` is the intended setup. The remaining churn is `git.headCommit`, `project.fileCount` and `initializedAt`, which change when someone re-runs `tyr init --force`; separating that detection snapshot from user settings is planned (PLANNING.md §2.7). Teams that want Tyr purely local can still ignore the whole directory:
+Since config schema v2, `tyr.json` is **portable**: `project.root` is stored as `"."` (the directory containing `.tyr/`) and resolved to the absolute path only in memory when Tyr reads the file, so the committed copy is identical on every machine. Sharing `tyr.json` and `.tyr/.gitignore` is the intended setup. The remaining churn is `git.headCommit`, `project.fileCount` and `initializedAt`, which change when someone re-runs `tyr init --force`. That churn is confined to the detection snapshot: preferences live in `settings.json`, which init never rewrites (see [Settings](#settings-settingsjson)). Teams that want Tyr purely local can still ignore the whole directory:
 
 | Choice | Root `.gitignore` | What git tracks |
 |---|---|---|
 | Ignore everything (default offer, `--gitignore`) | `/.tyr/` | Nothing under `.tyr/`. Every clone runs its own `tyr init`. |
-| Share the profile (decline, or `--no-gitignore`) | no entry | `.tyr/tyr.json` and `.tyr/.gitignore`. `state/`, `logs/` and `reports/` stay ignored by `.tyr/.gitignore`. |
+| Share the profile (decline, or `--no-gitignore`) | no entry | `.tyr/tyr.json`, `.tyr/settings.json` and `.tyr/.gitignore`. `state/`, `logs/` and `reports/` stay ignored by `.tyr/.gitignore`. |
 
 A narrower root entry such as `.tyr/state/` would add nothing, since `.tyr/.gitignore` already covers the runtime output. If you share `tyr.json`, expect it to change in diffs when someone re-runs `tyr init --force`.
+
+### Settings (`settings.json`)
+
+`tyr.json` is **detection only**: what `tyr init` found, refreshed by every `--force`. What Tyr should *do* about it lives in `.tyr/settings.json`, which you edit and commit. Tyr creates it on the first `tyr init` and never overwrites it afterwards, not even with `--force` or `--reset` (`--reset` resets detection, not preferences). Delete it by hand to get a fresh starter file.
+
+The starter file is just `{ "version": 1 }`: every setting follows its default (and your [global config](#global-config)) until you add it here. Tyr never writes detection-dependent values into it, because the file is not regenerated and a value frozen today (say, linting off because there is no linter yet) would silently outlive the reason for it. A check whose command was not detected simply does not run.
+
+Keys nest as dotted paths suggest (`checks.test` is `{ "checks": { "test": … } }`); `version` is the file format version (missing means 1).
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `checks.build` | boolean | `true` | Run the detected build command |
+| `checks.test` | boolean | `true` | Run the detected test command |
+| `checks.lint` | boolean | `true` | Run the detected linter |
+| `checks.format` | boolean | `false` | Run the detected formatter check |
+| `checks.typecheck` | boolean | `true` | Run the detected type checker |
+| `severity.threshold` | `info` \| `warning` \| `error` | `warning` | Lowest severity that gets reported |
+| `agent.permission` | `read-only` \| `suggest` \| `edit` | `suggest` | What the reviewing agent may do: read only, propose patches, or edit files |
+| `notifications.targets` | array of strings | `["terminal"]` | Where findings are sent, e.g. `"terminal"`, `"desktop"`, `"webhook:https://…"` |
+| `ai.model` | non-empty string | `claude-opus-5-5` | Model used for reviews |
+| `ai.apiKey` | string or null | `null` | API key. **Not allowed here**, see below |
+
+Loading is lenient but validated: an unknown key or a value of the wrong type is ignored with a warning, and the rest of the file still applies. Malformed JSON makes Tyr ignore the whole file (an error, not a crash). A file whose `version` is newer than this Tyr understands is ignored with a warning and never overwritten.
+
+**Secrets never go in `settings.json`.** It is committed, so `ai.apiKey` is refused when Tyr writes the file and ignored (with a warning) if you add it by hand. Put it in the global config or the environment.
+
+`settings.json` is the *project* layer. Settings resolve in this order, later winning: built-in defaults < global config (`~/.config/tyr/config.json`) < project `.tyr/settings.json` < `TYR_*` environment variables. The global config, environment variables and `tyr config` are described below.
 
 ### `tyr.json` schema
 
