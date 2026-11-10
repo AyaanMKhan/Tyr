@@ -20,7 +20,7 @@ It is a TypeScript/Node CLI (`commander`, `figlet`) that builds to `dist/cli/ind
 
 **What works today:** `tyr init` works end to end. It finds the root, takes a git snapshot, scans files, profiles languages, frameworks and toolchain commands, writes `.tyr/` atomically and logs the run. I verified this by building a copy of the repo and running it: `npm ci && npm run build` succeeds, and `tyr init` / `tyr init --force` both produce the full `.tyr/` tree. Every other command is a one-line `console.log` stub. None of the actual product exists yet: the background process, observing Claude Code, the problem detection, the agents and the integrations.
 
-### Overall completion: about 29%
+### Overall completion: about 37%
 
 I weighted each component by how much it contributes to an end-to-end working Tyr, multiplied the weight by that component's completion, and added up the results (see the table in section 3). The groundwork is the most polished part: init, discovery, git snapshot and project profiling are high quality. But it carries less than a third of the weight. The core product (daemon, observation, detection, agents, integrations) is about 45% of the weight and is at 0%.
 
@@ -30,7 +30,7 @@ I weighted each component by how much it contributes to an end-to-end working Ty
 
 Legend: `[x]` means the code actually implements it, `[ ]` means it is not implemented or only stubbed.
 
-### 2.1 CLI framework (`cli/index.ts`): 80%, Partial
+### 2.1 CLI framework (`cli/index.ts`): 100%, Done
 - [x] `commander` program with name and `-v, --version` (`cli/index.ts`)
 - [x] All five commands registered (`init`, `start`, `watch`, `status`, `run`)
 - [x] `bin` entry `tyr -> dist/cli/index.js` with a `#!/usr/bin/env node` shebang (survives `tsc`)
@@ -112,10 +112,10 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Decide what is committed: `tyr.json` (root stored as `"."`) and `.tyr/.gitignore` are committed; `state/`, `logs/`, `reports/` are not. The root `/.tyr/` entry stays an opt-in
 - [ ] Follow-ups: put `saveScanManifest` under the lock; reword the init `/.tyr/` gitignore offer now that tyr.json is portable; guard events.jsonl against a crash-truncated last line
 
-### 2.7 User configuration: 15%, Partial
+### 2.7 User configuration: 100%, Done
 - [x] `tyr.json` exists and stores detected commands that a user could hand-edit
 - [x] Separate the detected snapshot from user preferences (enabled checks, severity thresholds, agent permissions, notification targets). `tyr.json` stays detection-only; preferences live in the committed `.tyr/settings.json` (`cli/core/project-settings.ts`, shared contract in `cli/core/settings-types.ts`)
-- [ ] `tyr config get/set` or documented hand-editing
+- [x] `tyr config get/set` or documented hand-editing: `tyr config list|get|set|unset|path [--global]` (`cli/commands/config.ts`) on a layered resolver (`cli/core/settings.ts`: default < global < project < env, with per-key origins); secrets masked and refused in the committed project file
 - [x] Global, per-user config (`~/.config/tyr`) for API keys and defaults (`cli/core/global-config.ts`: XDG / `%APPDATA%` / `TYR_CONFIG_HOME` locations, written atomically with mode 600, warns when a file holding the API key is group/world-readable)
 - [x] Env var overrides (`cli/core/env-settings.ts`): a `TYR_*` variable per setting, `ANTHROPIC_API_KEY` as the API-key fallback, and `TYR_QUIET` / `TYR_VERBOSE` / `TYR_JSON` for the global flags (flag > env > default). Empty values count as unset; bad values warn and are ignored
 
@@ -227,13 +227,13 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 
 | # | Component | Weight | % complete | Status | Weighted |
 |---|-----------|-------:|-----------:|--------|---------:|
-| 1 | CLI framework (`cli/index.ts`) | 5 | 80% | Partial | 4.0 |
+| 1 | CLI framework (`cli/index.ts`) | 5 | 100% | Done | 5.0 |
 | 2 | `tyr init` command | 10 | 90% | Partial | 9.0 |
 | 3 | Discovery / file scanning | (in 2) | 85% | Partial | — |
 | 4 | Git integration | 8 | 100% | Done | 8.0 |
 | 5 | Project profiling | 5 | 90% | Partial | 4.5 |
 | 6 | `.tyr/` state and storage | 8 | 55% | Partial | 4.4 |
-| 7 | User configuration | 4 | 15% | Partial | 0.6 |
+| 7 | User configuration | 4 | 100% | Done | 4.0 |
 | 8 | Background process (`start`/`stop`) | 9 | 90% | Partial | 8.1 |
 | 9 | Observation (`watch`, Claude Code, fs, git events) | 9 | 0% | Not started | 0 |
 | 10 | Core engine / orchestration | 9 | 0% | Not started | 0 |
@@ -248,7 +248,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 19 | Lint / format / CI | 1 | 0% | Not started | 0 |
 | 20 | Packaging and distribution | 2 | 30% | Partial | 0.6 |
 | 21 | Documentation | 2 | 10% | Partial | 0.2 |
-| | **Total** | **100** | | | **≈ 32.6 → 33%** |
+| | **Total** | **100** | | | **≈ 37.0 → 37%** |
 
 Discovery and the reporter are counted inside the `init` and CLI weights, because their only consumer today is `init`.
 
@@ -274,7 +274,7 @@ No component is 100% done. These individual pieces are complete and work as inte
 - **Git integration:** read-only and a single snapshot. No diffs, change detection, commit history, event watching or write operations.
 - **Project profiling:** no monorepo support, the project name comes from the directory, and command `tool`/`evidence` is dropped from the config.
 - **State and storage:** no schema validation or migration, nothing updates state after init, no lock or PID file, no report writer, no log rotation.
-- **User configuration:** only the detected `tyr.json`. No user preferences, config command or global config.
+- **User configuration:** done. Detection (`tyr.json`) is separate from preferences, which resolve default < global (`~/.config/tyr`) < project (`.tyr/settings.json`) < `TYR_*` env, and `tyr config` reads and edits them. Nothing consumes the preferences yet; that arrives with the engine and agents.
 - **Error handling and logging:** no typed errors or levels, and warnings and errors go to stdout.
 - **Packaging:** the package name cannot be published, and `files`, `engines`, `prepare` and metadata are missing. `pyproject.toml` is empty.
 - **Docs:** placeholders only.

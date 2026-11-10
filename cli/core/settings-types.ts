@@ -90,7 +90,22 @@ export function findSettingKey(key: string): SettingKeySpec | undefined {
 
 export type ParseResult = { ok: true; value: unknown } | { ok: false; error: string };
 
-/** Parse a string (from the command line or an env var) into the key's typed value. */
+/**
+ * The spelling of an empty list for "string-list" keys, in every layer that
+ * parses text: `TYR_NOTIFY=none` and `tyr config set notifications.targets
+ * none` both mean `[]`. An explicit word is needed because an environment
+ * variable set to "" means "unset" (see env-settings.ts); on the command line
+ * "" is accepted as well, since there it can only mean "empty".
+ */
+export const EMPTY_LIST_TOKEN = "none";
+
+/**
+ * Parse a string (from the command line or an env var) into the key's typed value.
+ *
+ * Lists: "a, b" -> ["a", "b"] (blank entries dropped); "none" (any case) or
+ * "" -> []. Text that is not blank yet yields no entries (",", " , ") is an
+ * error rather than a silent [], since it is almost certainly a mistake.
+ */
 export function parseSettingValue(spec: SettingKeySpec, raw: string): ParseResult {
     const text = raw.trim();
     switch (spec.type) {
@@ -108,8 +123,14 @@ export function parseSettingValue(spec: SettingKeySpec, raw: string): ParseResul
             return { ok: true, value: text };
         case "nullable-string":
             return { ok: true, value: text === "" ? null : text };
-        case "string-list":
-            return { ok: true, value: text === "" ? [] : text.split(",").map((s) => s.trim()).filter((s) => s !== "") };
+        case "string-list": {
+            if (text === "" || text.toLowerCase() === EMPTY_LIST_TOKEN) return { ok: true, value: [] };
+            const items = text.split(",").map((s) => s.trim()).filter((s) => s !== "");
+            if (items.length === 0) {
+                return { ok: false, error: `${spec.key} has no entries in "${raw}" (use "${EMPTY_LIST_TOKEN}" for an empty list)` };
+            }
+            return { ok: true, value: items };
+        }
     }
 }
 
@@ -197,7 +218,8 @@ export function sanitizePatch(raw: unknown, source: string): { patch: SettingsPa
     return { patch, warnings };
 }
 
-function leafKeys(obj: unknown, prefix = ""): string[] {
+/** Dotted paths of every non-object value in `obj` (arrays count as values). */
+export function leafKeys(obj: unknown, prefix = ""): string[] {
     if (obj === null || typeof obj !== "object" || Array.isArray(obj)) return prefix ? [prefix] : [];
     return Object.entries(obj as Record<string, unknown>).flatMap(([k, v]) =>
         leafKeys(v, prefix ? `${prefix}.${k}` : k),

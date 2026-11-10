@@ -19,10 +19,13 @@
 // The one place where "empty" is a meaningful value is notifications.targets,
 // where [] means "notify nowhere". Instead of making "" special for that one
 // variable, it has an explicit spelling: TYR_NOTIFY=none. Explicit beats
-// ambiguous, and every variable keeps the same empty-means-unset rule.
+// ambiguous, and every variable keeps the same empty-means-unset rule. The
+// spelling is EMPTY_LIST_TOKEN, understood by parseSettingValue itself, so
+// `tyr config set notifications.targets none` means the same thing.
 
 import { LOG_LEVEL_ENV, LOG_THRESHOLDS, parseLogLevel, type LogThreshold } from "./log.js";
 import {
+    EMPTY_LIST_TOKEN,
     parseSettingValue,
     setAtPath,
     SETTING_KEYS,
@@ -34,7 +37,7 @@ import {
 export const ANTHROPIC_API_KEY_ENV = "ANTHROPIC_API_KEY";
 
 /** TYR_NOTIFY value meaning "no notification targets" (see the header comment). */
-export const NOTIFY_NONE = "none";
+export const NOTIFY_NONE = EMPTY_LIST_TOKEN;
 
 /** Env equivalents of global CLI flags. An explicit flag always wins over these. */
 export const QUIET_ENV = "TYR_QUIET";
@@ -173,7 +176,9 @@ export function readEnvSettings(env: NodeJS.ProcessEnv = process.env): EnvSettin
         }
         if (raw === undefined) continue;
 
-        const parsed = parseEnvValue(spec, raw);
+        // Empty values never get here (readVar), so a list's "" -> [] rule
+        // cannot fire from the environment; TYR_NOTIFY=none is the way.
+        const parsed = parseSettingValue(spec, raw);
         if (!parsed.ok) {
             // Contract errors quote the raw value, which helps spot a typo,
             // but a secret's value must never reach a terminal or a log.
@@ -189,23 +194,6 @@ export function readEnvSettings(env: NodeJS.ProcessEnv = process.env): EnvSettin
     }
 
     return { patch, sources, warnings };
-}
-
-/**
- * parseSettingValue, plus the env-only `none` spelling for lists. A
- * non-empty list value that parses to nothing (e.g. ",") is rejected: it is
- * almost certainly a mistake, and `none` is the way to ask for [].
- */
-function parseEnvValue(spec: SettingKeySpec, raw: string): { ok: true; value: unknown } | { ok: false; error: string } {
-    if (spec.type === "string-list") {
-        if (raw.trim().toLowerCase() === NOTIFY_NONE) return { ok: true, value: [] };
-        const result = parseSettingValue(spec, raw);
-        if (result.ok && Array.isArray(result.value) && result.value.length === 0) {
-            return { ok: false, error: `${spec.key} has no entries in "${raw}" (use "${NOTIFY_NONE}" for an empty list)` };
-        }
-        return result;
-    }
-    return parseSettingValue(spec, raw);
 }
 
 /* -------------------------------------------------------------------------

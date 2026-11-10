@@ -23,6 +23,8 @@ Tyr is a command-line tool that sits **beside** your AI coding agent instead of 
   - [`tyr start`](#tyr-start)
   - [`tyr watch`](#tyr-watch)
   - [`tyr status`](#tyr-status)
+  - [`tyr config`](#tyr-config)
+    - [How settings resolve](#how-settings-resolve)
   - [`tyr run <prompt>`](#tyr-run-prompt)
   - [Exit codes](#exit-codes)
 - [How `tyr init` works, step by step](#how-tyr-init-works-step-by-step)
@@ -87,6 +89,7 @@ The code follows a few design principles that are already visible:
 | `tyr init`: root discovery, git detection, file scan, project profiling, `.tyr/` scaffolding, logging | **Implemented** |
 | `tyr init --force` / `--reset` / `--no-color` | Implemented |
 | `tyr init --start` | Flag accepted. Prints a warning that the background process is not implemented yet. |
+| `tyr config` (`list`, `get`, `set`, `unset`, `path`) and the layered settings resolver | Implemented |
 | `tyr start`, `tyr watch`, `tyr status`, `tyr run` | **Stubs**: each prints one placeholder line |
 | Background observer of Claude Code, problem detection, corrective agents | **Planned** |
 | Integrations (Claude Code, GitHub, Git) | **Planned** (`integrations/INTEGRATIONS.md`) |
@@ -173,7 +176,7 @@ Commands:
 
 ### Environment variables
 
-Tyr's settings resolve in layers, lowest precedence first: built-in defaults, the global config (`~/.config/tyr/config.json`), the project's `.tyr/settings.json`, then environment variables. Each setting has a `TYR_*` variable that overrides every file. A few more variables stand in for global flags, for CI and scripts; an explicit flag always wins over them.
+Tyr's settings resolve in layers, lowest precedence first: built-in defaults, the global config (`~/.config/tyr/config.json`), the project's `.tyr/settings.json`, then environment variables (see [How settings resolve](#how-settings-resolve)). Each setting has a `TYR_*` variable that overrides every file; `tyr config list` shows when one is in effect. A few more variables stand in for global flags, for CI and scripts; an explicit flag always wins over them.
 
 | Variable | Overrides | Accepted values |
 |---|---|---|
@@ -193,7 +196,7 @@ Tyr's settings resolve in layers, lowest precedence first: built-in defaults, th
 | `TYR_JSON` | `--json` | Boolean. `TYR_JSON=0` turns an inherited `TYR_JSON=1` off |
 | `TYR_LOG_LEVEL` | `--log-level` | `debug` \| `info` \| `warn` \| `error` \| `silent`. Inherited by the background process |
 
-- **Empty means unset.** A variable set to an empty or whitespace-only value is ignored, as if it were not set. CI systems often export missing secrets as `""`, and that should never wipe a configured value. So `TYR_API_KEY=""` still falls back to `ANTHROPIC_API_KEY`. To turn notifications off from the environment, use `TYR_NOTIFY=none`.
+- **Empty means unset.** A variable set to an empty or whitespace-only value is ignored, as if it were not set. CI systems often export missing secrets as `""`, and that should never wipe a configured value. So `TYR_API_KEY=""` still falls back to `ANTHROPIC_API_KEY`. To turn notifications off from the environment, use `TYR_NOTIFY=none` (`tyr config set notifications.targets none` is the same spelling for the files).
 - **Bad values never stop Tyr.** An invalid value (`TYR_SEVERITY=fatal`) is ignored with a warning naming the variable, and the lower layers apply. Warnings never include the value of `TYR_API_KEY` or `ANTHROPIC_API_KEY`.
 - **API key.** `TYR_API_KEY` wins over `ANTHROPIC_API_KEY`, so an existing Anthropic setup works without Tyr-specific configuration.
 - `NO_COLOR` (any value) disables colored output, per [no-color.org](https://no-color.org).
@@ -316,6 +319,91 @@ tyr status
 ```
 
 Intended purpose: *"Tells user what Tyr knows / is doing"*. The building blocks already exist: `readConfig()` and `readState()` in `cli/core/scaffold.ts`, and the git and discovery detectors, which are deliberately silent so `status` can reuse them.
+
+### `tyr config`
+
+**Status: implemented.**
+
+```
+tyr config [list] [--reveal]
+tyr config get <key> [--show-origin] [--reveal]
+tyr config set <key> <value> [-g, --global]
+tyr config unset <key> [-g, --global]
+tyr config path [-g, --global]
+```
+
+Views and changes [settings](#settings-settingsjson). `set` and `unset` write the project's `.tyr/settings.json` (committed, shared with your team) unless you pass `--global`, which writes your per-user [global config](#global-config) instead. The keys are the ones in the [settings table](#settings-settingsjson). `tyr config` prints data, so it never draws the banner.
+
+| Subcommand | What it does |
+|---|---|
+| `list` (the default) | Every key with its effective value and where it came from: the layer (`default`, `global`, `project`, `env`) and the file or variable. Problems found while reading the files go to stderr. |
+| `get <key>` | The effective value as bare text on stdout, in the same spelling `set` accepts: `true`/`false`, plain strings, lists comma-joined (`terminal,desktop`). An empty list and an unset value print an empty line. `--show-origin` prefixes `<layer>:<source>` and a tab. `--json` gives the exact typed value. |
+| `set <key> <value>` | Parses the value for the key's type and stores it. Booleans accept `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`. Lists are comma-separated; `none` (or `""`) means an empty list, the same spelling as `TYR_NOTIFY=none`. A value of `-` is read from stdin, which keeps an API key out of your shell history. |
+| `unset <key>` | Removes the key from that one file, so the next layer down applies again. Unsetting a key that is not there is not an error. |
+| `path` | Prints the absolute path of the file `set` would write, for hand-editing: `$EDITOR "$(tyr config path --global)"`. |
+
+```text
+$ tyr config set checks.lint false
+✓ Set checks.lint = false in .tyr/settings.json
+
+$ echo "$MY_KEY" | tyr config set --global ai.apiKey -
+✓ Set ai.apiKey = sk-…mnop in ~/.config/tyr/config.json
+
+$ tyr config set --global notifications.targets terminal,desktop
+✓ Set notifications.targets = terminal,desktop in ~/.config/tyr/config.json
+
+$ tyr config
+KEY                    VALUE             ORIGIN
+checks.build           true              default
+checks.test            true              default
+checks.lint            false             project (.tyr/settings.json)
+checks.format          false             default
+checks.typecheck       true              default
+severity.threshold     warning           default
+agent.permission       suggest           default
+notifications.targets  terminal,desktop  global (~/.config/tyr/config.json)
+ai.model               claude-opus-5-5   default
+ai.apiKey              sk-…mnop          global (~/.config/tyr/config.json)
+
+Global config:    ~/.config/tyr/config.json
+Project settings: .tyr/settings.json
+
+$ tyr config get checks.lint
+false
+$ tyr config get --show-origin checks.lint
+project:/home/you/app/.tyr/settings.json	false
+
+$ tyr config unset checks.lint
+✓ Removed checks.lint from .tyr/settings.json
+Effective value: true (default)
+
+$ TYR_CHECKS_TEST=1 tyr config set checks.test false
+✓ Set checks.test = false in .tyr/settings.json
+! TYR_CHECKS_TEST is set in this environment and overrides checks.test, so the new value will not take effect in this shell; unset TYR_CHECKS_TEST to use it
+```
+
+**Secrets.** `ai.apiKey` is shown masked everywhere (`sk-…abcd`: a short kind prefix and the last four characters; values under 12 characters as `****`). Only `get --reveal` and `list --reveal` print it in full. `tyr config set ai.apiKey …` without `--global` is refused (exit `2`) because `.tyr/settings.json` is committed; use `--global` or `TYR_API_KEY`. `tyr config unset ai.apiKey` *is* allowed on the project file, to remove a key committed by mistake.
+
+**Safety.** Only the one key changes, and Tyr never rewrites a file it would damage. If the target file is malformed JSON, was written by a newer Tyr, or contains invalid values or (in the project file) unknown keys or a secret that a rewrite would silently drop, nothing is written and Tyr exits `4` (`CONFIG`) naming every problem, so you can fix it by hand. The global writer keeps keys it does not recognise, so unknown keys there do not block `--global`. Project writes take the `.tyr/` lock. Setting a value the file already has writes nothing.
+
+**Shadowed values.** The value is saved even when a higher layer still overrides it (a `TYR_*` variable in the current shell, or for `--global` the project's own `settings.json`); a warning says which one and how to clear it.
+
+**Exit codes.** `2` for an unknown key (with a "did you mean" suggestion and the list of valid keys), an invalid value or a secret without `--global`; `3` for `set`/`unset` without `--global` before `tyr init`; `4` as above. Reading (`list`, `get`, `path`) never fails because of a bad file: like every other command it reports the file and uses the remaining layers.
+
+**`--json` shapes:** `list` prints `{ ok, root, files: { global, project }, settings: [{ key, value, layer, source, env, secret?, masked? }], warnings, errors }`; `get` prints `{ ok, key, value, origin: { layer, source }, warnings, errors }`; `set`/`unset` print `{ ok, action, key, scope, file, changed, previous?, value?, effective: { value, origin }, shadowedBy, warnings }`; `path` prints `{ ok, scope, file, exists }`. Secrets are masked in all of them unless `--reveal` is given.
+
+#### How settings resolve
+
+Every setting is resolved key by key from four layers; the highest layer that sets a key wins outright:
+
+| Precedence | Layer | Where | Written by | May hold `ai.apiKey` |
+|---|---|---|---|---|
+| 4 (highest) | `env` | `TYR_*` variables (and `ANTHROPIC_API_KEY`), see [Environment variables](#environment-variables) | your shell or CI | Yes |
+| 3 | `project` | `.tyr/settings.json`, see [Settings](#settings-settingsjson) | `tyr config set`, or by hand | **No** (committed) |
+| 2 | `global` | `~/.config/tyr/config.json`, see [Global config](#global-config) | `tyr config set --global`, or by hand | Yes |
+| 1 (lowest) | `default` | built into Tyr (`DEFAULT_SETTINGS`) | | |
+
+Lists such as `notifications.targets` are replaced, never merged: a project that sets `[]` means "notify nowhere" whatever your global file lists. A malformed file is ignored as a whole (with an error) and an invalid value or unknown key is ignored on its own (with a warning); either way the other layers still apply. `tyr config list` shows the winning layer for every key. The resolver is `resolveSettings()` in `cli/core/settings.ts`.
 
 ### `tyr run <prompt>`
 
@@ -547,7 +635,7 @@ Loading is lenient but validated: an unknown key or a value of the wrong type is
 
 **Secrets never go in `settings.json`.** It is committed, so `ai.apiKey` is refused when Tyr writes the file and ignored (with a warning) if you add it by hand. Put it in the global config or the environment.
 
-`settings.json` is the *project* layer. Settings resolve in this order, later winning: built-in defaults < global config (`~/.config/tyr/config.json`) < project `.tyr/settings.json` < `TYR_*` environment variables. The global config, environment variables and `tyr config` are described below.
+`settings.json` is the *project* layer. Settings resolve in this order, later winning: built-in defaults < global config (`~/.config/tyr/config.json`) < project `.tyr/settings.json` < `TYR_*` environment variables; see [How settings resolve](#how-settings-resolve). Edit the file by hand (`tyr config path` prints its location) or with [`tyr config set`](#tyr-config), which changes one key at a time and refuses to rewrite a file it cannot fully understand.
 
 ### `tyr.json` schema
 
@@ -670,6 +758,8 @@ What belongs there: your API key (`ai.apiKey`) and personal defaults you want in
 
 Unknown keys and invalid values are reported as warnings and ignored; the rest of the file still applies. Malformed JSON is an error and the whole file is ignored. A file written by a newer Tyr is read best-effort with a warning but never rewritten. Implemented in `cli/core/global-config.ts`.
 
+Change it with `tyr config set --global <key> <value>` (`-` reads the value from stdin, the safe way to store an API key), or open it with `$EDITOR "$(tyr config path --global)"`. `tyr config set --global` keeps keys this Tyr does not recognise.
+
 ---
 
 ## Architecture
@@ -684,6 +774,7 @@ Tyr/
 │   │   ├── start.ts             # stub
 │   │   ├── watch.ts             # stub
 │   │   ├── status.ts            # stub
+│   │   ├── config.ts            # `tyr config` list/get/set/unset/path wiring
 │   │   └── run.ts               # stub
 │   ├── core/
 │   │   ├── types.ts             # Shared contracts: DiscoveryResult, GitInfo, ProjectProfile,
@@ -691,6 +782,12 @@ Tyr/
 │   │   ├── discovery.ts         # Root detection, init check, file walk, ignore lists
 │   │   ├── git.ts               # All git detection (branch, HEAD, status, remotes)
 │   │   ├── project.ts           # Languages, package manager, frameworks, commands, docs
+│   │   ├── settings-types.ts    # Settings contract: keys, defaults, parsing, validation
+│   │   ├── settings.ts          # resolveSettings(): default < global < project < env, masking
+│   │   ├── settings-edit.ts     # Safe one-key read-modify-write behind `tyr config set/unset`
+│   │   ├── project-settings.ts  # .tyr/settings.json (project layer)
+│   │   ├── global-config.ts     # ~/.config/tyr/config.json (global layer)
+│   │   ├── env-settings.ts      # TYR_* variables (env layer)
 │   │   └── scaffold.ts          # Writes .tyr/, atomic JSON I/O, readConfig/readState/
 │   │                            #   writeState/appendLog accessors
 │   └── ui/
@@ -766,7 +863,7 @@ npx tsc --noEmit              # type-check only (the command Tyr detects for its
 - **Adding a detector:** make it *total* (return `null` or empty on any normal failure), *silent* (no `console.log`), and record its `evidence`. Extend the contracts in `cli/core/types.ts` if needed.
 - **Persisting state:** use the accessors in `scaffold.ts` (`readConfig`, `readState`, `writeState`, `appendLog`) instead of touching `.tyr/` directly. They give you atomic writes and automatic `updatedAt` stamping.
 - **Version bumps:** the version string `1.0.0` appears in `package.json`, `cli/index.ts` and `TYR_VERSION` in `cli/commands/init.ts`. Keep all three in sync.
-- **Testing `init` safely:** this repo dogfoods `.tyr/` and commits `tyr.json`. Running `tyr init --force` here rewrites it with your machine's absolute path and current HEAD. To experiment without touching it, copy the repo elsewhere (for example `git archive HEAD | tar -x -C /tmp/tyr-test`).
+- **Testing `init` safely:** this repo dogfoods `.tyr/` and commits `tyr.json`. Running `tyr init --force` here rewrites it with the current HEAD and file count. To experiment without touching it, copy the repo elsewhere (for example `git archive HEAD | tar -x -C /tmp/tyr-test`).
 - There is no test runner, linter or formatter configured yet. Contributions that add them are welcome.
 
 ---
@@ -776,7 +873,7 @@ npx tsc --noEmit              # type-check only (the command Tyr detects for its
 - Only `init` does real work. `start`, `watch`, `status` and `run` are placeholders, and `--start` only warns.
 - The ASCII banner prints on every invocation, including `--version` and `--help`, and before machine-readable output.
 - The help header reads `Usage: Tyr` (the program name is set to `"Tyr"`), while the installed binary is `tyr`.
-- `tyr.json` stores an **absolute** `project.root`, which differs between machines even though the file is meant to be committed. For example, the committed copy in this repo contains `/home/ayaan/Tyr`. This is why `tyr init` offers to ignore all of `/.tyr/` (see [What gets committed](#what-gets-committed)).
+- `tyr.json` is portable since schema v2 (`project.root` is stored as `"."`), but it still churns when someone re-runs `tyr init --force`: `git.headCommit`, `project.fileCount` and `initializedAt` change. Preferences in `settings.json` are not affected (see [What gets committed](#what-gets-committed)).
 - `project.name` is the root directory's basename, not the `name` from `package.json`.
 - Ignore lists are fixed and do not read `.gitignore`. Because they match directory names at any depth, a source folder named `bin`, `build`, `out` or `vendor` is skipped.
 - A `scaffold.ts` comment still carries a `TODO` saying the ignore lists are not passed through. They are now: `init.ts` attaches them to `DiscoveryResult`, and they appear in `tyr.json`.

@@ -4,13 +4,14 @@ import {Command} from "commander";
 
 //import * as fs from "fs";
 //import * as path from "path";
-import { bannerText, isInteractive, printBanner } from "./ui/banner.js";
+import { bannerText, isInteractive, printBanner, wantsBanner } from "./ui/banner.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerStartCommand } from "./commands/start.js";
 import { registerStopCommand } from "./commands/stop.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerWatchCommand } from "./commands/watch.js";
 import { registerRunCommand } from "./commands/run.js";
+import { registerConfigCommand } from "./commands/config.js";
 import { TYR_VERSION } from "./core/version.js";
 import { readGlobals, registerGlobalOptions } from "./core/globals.js";
 import { runCli } from "./core/fatal.js";
@@ -29,6 +30,7 @@ Typical workflow:
   $ tyr start         Launch the background process
   $ tyr watch         Follow what Tyr is doing
   $ tyr status        See what Tyr knows
+  $ tyr config        See (and change) Tyr's settings
   $ tyr stop          Stop the background process
 
 Global options work with every command:
@@ -45,10 +47,11 @@ Run "tyr <command> --help" for details and examples for a command.`)
     )
     // Runs only once parsing succeeded and a command action is about to run,
     // so `--version` and usage errors never print the banner. `--quiet` and
-    // `--json` keep stdout free of decoration.
+    // `--json` keep stdout free of decoration, and so do commands whose
+    // stdout is data (`tyr config`).
     .hook("preAction", (_root, action) => {
         const { quiet, json } = readGlobals(action);
-        if (!quiet && !json) {
+        if (!quiet && !json && wantsBanner(action)) {
             printBanner();
         }
     });
@@ -60,6 +63,7 @@ registerStopCommand(program);
 registerWatchCommand(program);
 registerStatusCommand(program);
 registerRunCommand(program);
+registerConfigCommand(program);
 
 // parseAsync, not parse: the actions are async, and only an awaited parse
 // lets their failures reach the top-level handler instead of surfacing as

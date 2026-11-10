@@ -20,3 +20,25 @@ export function printBanner(): void {
         process.stdout.write(bannerText());
     }
 }
+
+/**
+ * Commands whose stdout is data meant for scripts (`tyr config get` inside
+ * `$(...)`, `tyr config path | xargs $EDITOR`). The banner is TTY-only
+ * already, but even on a terminal a value preceded by five lines of ASCII
+ * art is noise, and copying it out of the scrollback becomes a chore.
+ */
+const plainCommands = new WeakSet<object>();
+
+/** Never draw the banner for `command` or any of its subcommands. */
+export function withoutBanner<T extends object>(command: T): T {
+    plainCommands.add(command);
+    return command;
+}
+
+/** False when `command` or one of its ancestors opted out via withoutBanner(). */
+export function wantsBanner(command: { parent?: unknown } | null): boolean {
+    for (let current = command; current !== null && current !== undefined; current = current.parent as typeof command) {
+        if (plainCommands.has(current)) return false;
+    }
+    return true;
+}
