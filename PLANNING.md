@@ -116,7 +116,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] `tyr.json` exists and stores detected commands that a user could hand-edit
 - [x] Separate the detected snapshot from user preferences (enabled checks, severity thresholds, agent permissions, notification targets). `tyr.json` stays detection-only; preferences live in the committed `.tyr/settings.json` (`cli/core/project-settings.ts`, shared contract in `cli/core/settings-types.ts`)
 - [ ] `tyr config get/set` or documented hand-editing
-- [ ] Global, per-user config (`~/.config/tyr`) for API keys and defaults
+- [x] Global, per-user config (`~/.config/tyr`) for API keys and defaults (`cli/core/global-config.ts`: XDG / `%APPDATA%` / `TYR_CONFIG_HOME` locations, written atomically with mode 600, warns when a file holding the API key is group/world-readable)
 - [ ] Env var overrides
 
 ### 2.8 Background process: `tyr start` (`cli/commands/start.ts`, `cli/core/daemon.ts`): 90%, Partial

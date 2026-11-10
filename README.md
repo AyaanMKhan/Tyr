@@ -36,6 +36,7 @@ Tyr is a command-line tool that sits **beside** your AI coding agent instead of 
   - [`tyr.json` schema](#tyrjson-schema)
   - [`state/state.json` schema](#statestatejson-schema)
   - [`logs/tyr.log` format](#logstyrlog-format)
+- [Global config](#global-config)
 - [Architecture](#architecture)
 - [Roadmap](#roadmap)
 - [Development](#development)
@@ -591,6 +592,31 @@ Levels are `DEBUG`, `INFO`, `WARN` and `ERROR`. Continuation lines of multi-line
 
 - **Level.** `--log-level <debug|info|warn|error|silent>` on any command, else `--verbose` (debug), else the `TYR_LOG_LEVEL` environment variable, else `info`. The background process inherits the level of the `tyr start` that launched it. `--quiet` and `--json` affect terminal output only, never the log.
 - **Rotation.** Before each append, a `tyr.log` of 1 MiB or more is rotated to `tyr.log.1`, `tyr.log.2`, `tyr.log.3` (oldest dropped). `daemon.log` is rotated the same way each time the daemon starts. Concurrent rotation by two processes is safe and loses no lines.
+
+---
+
+## Global config
+
+Settings that belong to *you* rather than to a repository live in one per-user file, `config.json`, outside every project:
+
+| Platform | Location |
+|---|---|
+| Linux, macOS | `~/.config/tyr/config.json` (or `$XDG_CONFIG_HOME/tyr/config.json` when `XDG_CONFIG_HOME` is set to an absolute path) |
+| Windows | `%APPDATA%\tyr\config.json` (or `$XDG_CONFIG_HOME\tyr\config.json` as above) |
+
+Set `TYR_CONFIG_HOME` to use a different directory on any platform (the file is then `$TYR_CONFIG_HOME/config.json`); handy for tests and portable setups.
+
+What belongs there: your API key (`ai.apiKey`) and personal defaults you want in every project, such as `ai.model`, `notifications.targets` or which `checks` to run. Project settings in `.tyr/settings.json` override it, and `TYR_*` environment variables override both. Unlike the project file, the global file may hold secrets, so Tyr creates its directory with mode `700` and the file with mode `600`, and warns on every load if a file holding a key is readable by other users (fix with `chmod 600 ~/.config/tyr/config.json`).
+
+```json
+{
+  "version": 1,
+  "ai": { "model": "claude-opus-5-5", "apiKey": "sk-..." },
+  "notifications": { "targets": ["terminal", "desktop"] }
+}
+```
+
+Unknown keys and invalid values are reported as warnings and ignored; the rest of the file still applies. Malformed JSON is an error and the whole file is ignored. A file written by a newer Tyr is read best-effort with a warning but never rewritten. Implemented in `cli/core/global-config.ts`.
 
 ---
 
