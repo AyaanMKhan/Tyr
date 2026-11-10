@@ -8,6 +8,7 @@ import { findProjectRoot } from "../core/discovery.js";
 import { stopDaemon, type StopDaemonResult } from "../core/daemon.js";
 import { printJson, readGlobals, verbosityOf } from "../core/globals.js";
 import { createReporter } from "../ui/reporter.js";
+import { EXIT_CODES } from "../core/errors.js";
 
 type StopResult = ({ ok: true; root: string } & StopDaemonResult) | { ok: false; root?: string; error: string };
 
@@ -57,7 +58,7 @@ Examples:
                 printJson(result);
             }
             if (!result.ok) {
-                process.exitCode = 1;
+                process.exitCode = EXIT_CODES.FAILURE;
             }
         });
 }

@@ -24,6 +24,7 @@ Tyr is a command-line tool that sits **beside** your AI coding agent instead of 
   - [`tyr watch`](#tyr-watch)
   - [`tyr status`](#tyr-status)
   - [`tyr run <prompt>`](#tyr-run-prompt)
+  - [Exit codes](#exit-codes)
 - [How `tyr init` works, step by step](#how-tyr-init-works-step-by-step)
   - [1. Locating the project root](#1-locating-the-project-root)
   - [2. Already-initialized check](#2-already-initialized-check)
@@ -330,6 +331,27 @@ Running the user command... fix the failing tests
 ```
 
 Intended purpose: *"Explicitly tell Tyr to perform something"*, an on-demand instruction to Tyr instead of waiting for it to act on its own. `TyrState.runCount` and `lastRunAt` exist to track these runs.
+
+### Exit codes
+
+Every command exits with one of these codes (defined in `cli/core/errors.ts`), so scripts can branch on `$?` without parsing output:
+
+| Code | Name | Meaning |
+|---|---|---|
+| `0` | `OK` | Success, including `--help` and `--version`. |
+| `1` | `FAILURE` | The command ran and failed (for example the background process would not start), or an unexpected error. |
+| `2` | `USAGE` | The command line is wrong: unknown command or option, missing argument, invalid option value, or a `--cwd` directory that does not exist. Running `tyr` with no command also exits `2`. |
+| `3` | `NOT_INITIALIZED` | The project has no `.tyr/` yet (for example `tyr start` before `tyr init`). |
+| `4` | `CONFIG` | `.tyr/` or a settings file is invalid or was written by a newer Tyr. Fix the file rather than re-running `tyr init`. |
+| `130` | `INTERRUPTED` | Stopped with `Ctrl-C`. The hidden cursor is restored first. |
+
+Errors are printed to stderr as `error: <message>`, sometimes followed by a `hint:` line. An unexpected error (a bug) also says how to see its stack trace: rerun with `--verbose` or set `TYR_DEBUG=1`. If the project already has a `.tyr/` directory, the stack is also appended to `.tyr/logs/tyr.log`. With `--json`, a failure that stops a command before it can print its own result writes a single object to stdout instead, so stdout is always JSON:
+
+```json
+{ "ok": false, "error": { "message": "unknown option '--bogus'", "code": "USAGE", "exitCode": 2 } }
+```
+
+Commands that report their own `--json` result, such as `tyr start` and `tyr stop`, keep that shape on failure, and the process still exits with the matching code.
 
 ---
 

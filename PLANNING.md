@@ -39,7 +39,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Single source of truth for the version: read from `package.json` by `cli/core/version.ts` (`TYR_VERSION`), used by `cli/index.ts` and `cli/commands/init.ts`
 - [x] Show the figlet banner only for interactive or help output (`cli/ui/banner.ts`). Skipped for `--version`, usage errors, piped output and `TERM=dumb`
 - [x] Global options: `--verbose`/`--quiet`, `--cwd <dir>` (`-C`), `--json` (`cli/core/globals.ts`). `init` supports all of them. The stub commands honor `--quiet` and `--json`
-- [ ] Top-level handler for uncaught errors and unhandled rejections, with consistent exit codes
+- [x] Top-level handler for uncaught errors and unhandled rejections, with consistent exit codes (`cli/core/errors.ts`, `cli/core/fatal.ts`): 0 ok, 1 failure, 2 usage, 3 not initialized, 4 config, 130 interrupted; `--json` / `TYR_JSON` always get a JSON error object
 - [x] `tyr --help` text and examples for each command
 
 ### 2.2 `tyr init` (`cli/commands/init.ts`): 90%, Partial

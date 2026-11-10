@@ -25,6 +25,7 @@ import { verifyCommands } from "../core/verify-commands.js";
 import { CLEAR_TOKEN, COMMAND_SLOTS, editCommands } from "../core/edit-commands.js";
 import { applyGitignorePolicy, TYR_GITIGNORE_ENTRY, type GitignoreOutcome } from "../core/root-gitignore.js";
 import { TYR_VERSION } from "../core/version.js";
+import { EXIT_CODES } from "../core/errors.js";
 import { printJson, readGlobals, verbosityOf, type GlobalOptions } from "../core/globals.js";
 import { createReporter } from "../ui/reporter.js";
 import { ask, canPrompt, confirm } from "../ui/prompt.js";
@@ -110,7 +111,7 @@ Examples:
             if (!result.ok) {
                 // Signal failure to shells and CI without killing the process
                 // mid-write, which process.exit() would risk.
-                process.exitCode = 1;
+                process.exitCode = EXIT_CODES.FAILURE;
             }
         });
 }
@@ -279,7 +280,7 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         if (options.start) {
             reporter.blank();
             daemon = await reportDaemonStart(reporter, root);
-            if (daemon === null) process.exitCode = 1;
+            if (daemon === null) process.exitCode = EXIT_CODES.FAILURE;
         }
 
         reporter.stop();

@@ -11,6 +11,7 @@ import { resolveDaemonPaths, startDaemon } from "../core/daemon.js";
 import { printJson, readGlobals, verbosityOf } from "../core/globals.js";
 import { createReporter } from "../ui/reporter.js";
 import type { Reporter } from "../core/types.js";
+import { EXIT_CODES, type ExitCode } from "../core/errors.js";
 
 /** What `--json` reports about the daemon: also embedded in `tyr init --json`. */
 export interface DaemonSummary {
@@ -20,7 +21,7 @@ export interface DaemonSummary {
 
 type StartResult =
     | { ok: true; root: string; daemon: DaemonSummary }
-    | { ok: false; root?: string; error: string };
+    | { ok: false; root?: string; error: string; exitCode: ExitCode };
 
 export function registerStartCommand(program: Command) {
     program
@@ -48,7 +49,7 @@ Examples:
                 printJson(result);
             }
             if (!result.ok) {
-                process.exitCode = 1;
+                process.exitCode = result.exitCode;
             }
         });
 }
@@ -59,11 +60,12 @@ async function runStart(reporter: Reporter): Promise<StartResult> {
         const error = `Tyr is not initialized in ${root}`;
         reporter.error(error);
         reporter.info('Run "tyr init" first (or "tyr init --start" to do both).');
-        return { ok: false, root, error };
+        // Its own exit code, so scripts can tell "run tyr init" from a real failure.
+        return { ok: false, root, error, exitCode: EXIT_CODES.NOT_INITIALIZED };
     }
     const daemon = await reportDaemonStart(reporter, root);
     if (daemon === null) {
-        return { ok: false, root, error: "Failed to start the background process" };
+        return { ok: false, root, error: "Failed to start the background process", exitCode: EXIT_CODES.FAILURE };
     }
     return { ok: true, root, daemon };
 }

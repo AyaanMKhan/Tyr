@@ -13,6 +13,7 @@ import { registerWatchCommand } from "./commands/watch.js";
 import { registerRunCommand } from "./commands/run.js";
 import { TYR_VERSION } from "./core/version.js";
 import { readGlobals, registerGlobalOptions } from "./core/globals.js";
+import { runCli } from "./core/fatal.js";
 
 const program = new Command();
 
@@ -60,4 +61,8 @@ registerWatchCommand(program);
 registerStatusCommand(program);
 registerRunCommand(program);
 
-program.parse();
+// parseAsync, not parse: the actions are async, and only an awaited parse
+// lets their failures reach the top-level handler instead of surfacing as
+// unhandled rejections. runCli also turns commander's usage errors, uncaught
+// exceptions and Ctrl-C into the exit codes documented in core/errors.ts.
+await runCli(program, { proc: process });
