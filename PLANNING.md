@@ -132,7 +132,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 ### 2.9 Observation of Claude Code and the repo: `tyr watch` (`cli/commands/watch.ts`): 0%, Not started
 - [x] File-system watcher on the project, using the discovery ignore rules and debounced (`cli/core/fs-watch.ts`, wired into `runDaemon`): recursive `fs.watch` with a polling fallback, the same ignore rules as discovery (built-ins, `.tyrignore`, `scan.extraIgnore`, `.gitignore`), one `fs.changed` event per burst, classified by stat against a startup snapshot
 - [ ] Git event watcher: the module is done (`watchGit`, see 2.4) but is not yet wired into the daemon or `tyr watch`
-- [ ] Claude Code session observation: read the session transcripts or JSONL logs and/or install Claude Code hooks (PreToolUse/PostToolUse/Stop) that report to Tyr
+- [x] Claude Code session observation: `tyr hooks install|uninstall|status` installs Claude Code hooks (all 10 events) that run the hidden `tyr hook`, which normalizes the payload into `claude.*` events in `.tyr/state/events.jsonl` (prompt previews truncated, secrets redacted, never blocks Claude: always exit 0, no output). Transcript discovery and summaries in `cli/core/claude-transcripts.ts`
 - [ ] IPC channel between the daemon and the CLI (Unix socket or named pipe, or a polled file in `.tyr/state/`)
 - [ ] `tyr watch` live view: stream daemon events and progress through the reporter
 

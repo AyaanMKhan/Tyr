@@ -12,6 +12,7 @@ import { registerStatusCommand } from "./commands/status.js";
 import { registerWatchCommand } from "./commands/watch.js";
 import { registerRunCommand } from "./commands/run.js";
 import { registerConfigCommand } from "./commands/config.js";
+import { registerHooksCommand } from "./commands/hooks.js";
 import { TYR_VERSION } from "./core/version.js";
 import { readGlobals, registerGlobalOptions } from "./core/globals.js";
 import { runCli } from "./core/fatal.js";
@@ -31,6 +32,7 @@ Typical workflow:
   $ tyr watch         Follow what Tyr is doing
   $ tyr status        See what Tyr knows
   $ tyr config        See (and change) Tyr's settings
+  $ tyr hooks install Record what Claude Code does in this repo
   $ tyr stop          Stop the background process
 
 Global options work with every command:
@@ -64,6 +66,7 @@ registerWatchCommand(program);
 registerStatusCommand(program);
 registerRunCommand(program);
 registerConfigCommand(program);
+registerHooksCommand(program);
 
 // parseAsync, not parse: the actions are async, and only an awaited parse
 // lets their failures reach the top-level handler instead of surfacing as

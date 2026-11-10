@@ -26,6 +26,7 @@ Tyr is a command-line tool that sits **beside** your AI coding agent instead of 
   - [`tyr config`](#tyr-config)
     - [How settings resolve](#how-settings-resolve)
   - [`tyr run <prompt>`](#tyr-run-prompt)
+  - [`tyr hooks`](#tyr-hooks)
   - [Exit codes](#exit-codes)
 - [How `tyr init` works, step by step](#how-tyr-init-works-step-by-step)
   - [1. Locating the project root](#1-locating-the-project-root)
@@ -40,6 +41,12 @@ Tyr is a command-line tool that sits **beside** your AI coding agent instead of 
   - [`tyr.json` schema](#tyrjson-schema)
   - [`state/state.json` schema](#statestatejson-schema)
   - [`logs/tyr.log` format](#logstyrlog-format)
+- [Claude Code integration](#claude-code-integration)
+  - [Install](#install)
+  - [What is recorded](#what-is-recorded)
+  - [Privacy](#privacy)
+  - [Uninstall](#uninstall)
+  - [Transcripts](#transcripts)
 - [Global config](#global-config)
 - [Architecture](#architecture)
 - [Roadmap](#roadmap)
@@ -91,6 +98,7 @@ The code follows a few design principles that are already visible:
 | `tyr init --start` | Flag accepted. Prints a warning that the background process is not implemented yet. |
 | `tyr config` (`list`, `get`, `set`, `unset`, `path`) and the layered settings resolver | Implemented |
 | `tyr start`, `tyr watch`, `tyr status`, `tyr run` | **Stubs**: each prints one placeholder line |
+| Claude Code session observation (`tyr hooks`, see [Claude Code integration](#claude-code-integration)) | Implemented |
 | Background observer of Claude Code, problem detection, corrective agents | **Planned** |
 | Integrations (Claude Code, GitHub, Git) | **Planned** (`integrations/INTEGRATIONS.md`) |
 | Python component (`pyproject.toml`) | Placeholder (empty file) |
@@ -425,6 +433,16 @@ Running the user command... fix the failing tests
 
 Intended purpose: *"Explicitly tell Tyr to perform something"*, an on-demand instruction to Tyr instead of waiting for it to act on its own. `TyrState.runCount` and `lastRunAt` exist to track these runs.
 
+### `tyr hooks`
+
+```
+tyr hooks install [--shared] [--command <cmd>]
+tyr hooks uninstall [--shared | --local]
+tyr hooks status
+```
+
+Connects Tyr to Claude Code by adding hook entries to `.claude/settings.local.json` (or `.claude/settings.json` with `--shared`), so every session start, prompt, tool call and stop is recorded in `.tyr/state/events.jsonl`. All three honour `--json`, `--quiet` and `--cwd`. See [Claude Code integration](#claude-code-integration).
+
 ### Exit codes
 
 Every command exits with one of these codes (defined in `cli/core/errors.ts`), so scripts can branch on `$?` without parsing output:
@@ -740,6 +758,88 @@ Levels are `DEBUG`, `INFO`, `WARN` and `ERROR`. Continuation lines of multi-line
 
 ---
 
+## Claude Code integration
+
+Tyr observes Claude Code sessions through [Claude Code hooks](https://code.claude.com/docs/en/hooks): Claude Code runs a command at each session start, prompt, tool call and stop, and passes it a JSON description of what is happening on stdin. Tyr's command (`tyr hook`, hidden from `--help`) turns each one into an event in `.tyr/state/events.jsonl`, where `tyr watch` and the background process pick it up. No daemon has to be running for events to be recorded.
+
+### Install
+
+```text
+$ tyr init                       # events are only recorded in an initialized project
+$ tyr hooks install
+✓ Installed Claude Code hooks in .claude/settings.local.json (10 events)
+New Claude Code sessions pick this up; in a running one, review it under /hooks.
+$ tyr hooks status
+✓ .claude/settings.local.json: installed for all 10 events
+- .claude/settings.json: not installed
+```
+
+`tyr hooks install` adds one entry for each of `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `SubagentStop`, `Notification`, `PreCompact` and `SessionEnd`, merged into whatever the file already holds: your own hooks and other settings are never changed. Running it again is a no-op. A settings file that is not valid JSON is left alone and the command exits 4 (`CONFIG`). Each entry looks like this:
+
+```json
+{
+  "matcher": "*",
+  "hooks": [
+    {
+      "type": "command",
+      "command": "node /path/to/Tyr/dist/cli/index.js hook # tyr:claude-hook",
+      "timeout": 10
+    }
+  ]
+}
+```
+
+The `# tyr:claude-hook` comment is how Tyr finds its own entries again. `matcher` is only written for the tool events.
+
+**Where:** by default `.claude/settings.local.json`, which is personal (Claude Code keeps it out of version control; Tyr warns if your `.gitignore` does not). `--shared` writes `.claude/settings.json`, which is committed and applies to everyone working on the repository.
+
+**Which command:** by default the absolute path of the Tyr you ran, as `node "<path>/dist/cli/index.js" hook`. That works from a development checkout and when `tyr` is not on the `PATH` Claude Code sees, but the path only exists on your machine, so with `--shared` Tyr warns unless you choose a portable command: `tyr hooks install --shared --command "npx tyr hook"` (or `"tyr hook"`).
+
+### What is recorded
+
+One event per hook, with `source: "claude"`:
+
+| Kind | Hook | `message` example | Extra `data` |
+|---|---|---|---|
+| `claude.session_start` | `SessionStart` | `Session started (startup)` | `source`, `model` |
+| `claude.prompt` | `UserPromptSubmit` | `Prompt: "fix the failing tests"` | `prompt` (preview), `promptLength` |
+| `claude.tool_use` | `PreToolUse` | `Edit src/a.ts`, `Bash: npm test` | `tool`, `toolUseId`, `input`, `file` |
+| `claude.tool_result` | `PostToolUse`, `PostToolUseFailure` | `Bash: npm test (failed)` | as above plus `success`, `durationMs`, `error` (first line) |
+| `claude.stop` / `claude.subagent_stop` | `Stop` / `SubagentStop` | `Claude finished responding` | `lastMessage` (truncated), `agentType` |
+| `claude.notification` | `Notification` | `Notification: Claude needs your permission` | `notificationType` |
+| `claude.compact` | `PreCompact` | `Compacting context (auto)` | `trigger` |
+| `claude.session_end` | `SessionEnd` | `Session ended (prompt_input_exit)` | `reason` |
+| `claude.hook` | anything else | `SubagentStart hook` | |
+
+Every event also carries `sessionId`, `hookEvent`, `transcriptPath` and `cwd`. `input` is a one-line summary of a tool call: the Bash command, the file path (relative to the project), a Grep/Glob pattern, a URL, or for unfamiliar tools (MCP servers) only the *names* of the arguments. Long values are cut to 300 characters.
+
+`tyr hook` never prints anything and always exits 0, quickly: Claude Code treats a hook's exit code 2 as "block this tool call" and feeds some hooks' stdout to the model, so a recording problem must never turn into a change in the session. It reads stdin for at most 2 seconds, gives up entirely after 5, and silently skips projects without a `.tyr/` (it never creates one). If Claude is working inside a worktree that has no `.tyr/`, the session's starting directory (`CLAUDE_PROJECT_DIR`) is tried instead.
+
+### Privacy
+
+The journal is a local file under `.tyr/state/`, which is never committed, but it is still a copy of what happened in your session, so Tyr keeps as little as it needs:
+
+- **Prompts** are stored as an 80-character preview and their length, never in full. Prompts are where pasted API keys and passwords end up.
+- **File contents and tool output are never stored**: not what `Write`/`Edit` wrote, not what `Read` returned, not a command's output. Only *which* file or command.
+- **Likely secrets are masked** in everything that is kept (prompt previews, Bash commands, messages): `sk-…`, GitHub/Slack tokens, AWS key ids, JWTs, and `password=`/`token:`/`Authorization:` style values become `[redacted]`. This is pattern matching, so treat it as a safety net rather than a guarantee.
+- `PreCompact` custom instructions are reduced to a yes/no.
+
+### Uninstall
+
+```text
+$ tyr hooks uninstall
+✓ Removed Tyr's hooks from .claude/settings.local.json (10 events)
+- No Tyr hooks in .claude/settings.json
+```
+
+Without flags both settings files are cleaned; `--local` or `--shared` limits it to one. Only Tyr's entries are removed, and a settings file left completely empty is deleted. Recorded events stay in `.tyr/state/events.jsonl`.
+
+### Transcripts
+
+Claude Code also keeps a JSON Lines transcript of every session in `~/.claude/projects/<project path with every non-alphanumeric character replaced by "-">/<session id>.jsonl`. `cli/core/claude-transcripts.ts` can find a project's transcripts (`findSessionTranscripts`) and summarize one (`readTranscriptSummary`: session id, start and end time, prompt count, tool calls by tool). It is not wired into a command yet; it exists to look back at sessions that ran before the hooks were installed. The format is Claude Code's private detail, so hooks remain the primary source.
+
+---
+
 ## Global config
 
 Settings that belong to *you* rather than to a repository live in one per-user file, `config.json`, outside every project:
@@ -780,6 +880,7 @@ Tyr/
 │   │   ├── watch.ts             # stub
 │   │   ├── status.ts            # stub
 │   │   ├── config.ts            # `tyr config` list/get/set/unset/path wiring
+│   │   ├── hooks.ts             # `tyr hook` (run by Claude Code), `tyr hooks` install/uninstall/status
 │   │   └── run.ts               # stub
 │   ├── core/
 │   │   ├── types.ts             # Shared contracts: DiscoveryResult, GitInfo, ProjectProfile,
@@ -793,6 +894,8 @@ Tyr/
 │   │   ├── project-settings.ts  # .tyr/settings.json (project layer)
 │   │   ├── global-config.ts     # ~/.config/tyr/config.json (global layer)
 │   │   ├── env-settings.ts      # TYR_* variables (env layer)
+│   │   ├── claude-hooks.ts      # Hook payload -> journal event; edits .claude/settings*.json
+│   │   ├── claude-transcripts.ts # Finds and summarizes ~/.claude/projects/*/<session>.jsonl
 │   │   └── scaffold.ts          # Writes .tyr/, atomic JSON I/O, readConfig/readState/
 │   │                            #   writeState/appendLog accessors
 │   └── ui/
@@ -841,7 +944,7 @@ These items come from stated intent in the code, command descriptions and the `*
 - [x] CLI skeleton with `init`, `start`, `watch`, `status`, `run`
 - [x] `tyr init`: root discovery (git-first), git snapshot, filtered scan, project profiling, atomic `.tyr/` scaffold, logging
 - [ ] **`tyr start`**: long-running background process (also triggered by `tyr init --start`) that sets `state.status` to `running`/`stopped`/`error`
-- [ ] **Observe Claude Code**: watch what the coding agent changes and does (via `integrations/`)
+- [x] **Observe Claude Code**: hooks record every prompt, tool call and stop in the event journal (`tyr hooks install`)
 - [ ] **Change detection**: compare the current HEAD and file count with `lastIndexedCommit` / `lastScanFileCount` and re-index incrementally
 - [ ] **Review and problem detection**: run the recorded `commands.*` (build, test, lint, typecheck) against the agent's changes and write findings to `.tyr/reports/`
 - [ ] **Corrective agents**: dispatch focused agents (`agents/`) to fix detected problems, coordinated by the engine in `core/`
