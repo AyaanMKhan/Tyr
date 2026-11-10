@@ -72,7 +72,7 @@ Claude Code, Cursor, GitHub Copilot, Aider and Codex CLI each handle in-session 
 | **State is tied to one tool and one session** | Context lives in a vendor's session, IDE workspace or conversation, and it is lost or fragmented when you switch tools, restart or run agents in parallel. | `.tyr/` lives at the **repository root**, is tool-agnostic plain JSON, and `tyr.json` is designed to be committed so a whole team shares one profile. *(Implemented.)* |
 | **No awareness of git state** | Agents often learn about branch, uncommitted changes, divergence from upstream or merge conflicts only when a command fails. | `tyr init` collects branch (including detached-HEAD labels), HEAD commit, staged, modified, untracked and conflicted files, ahead/behind counts and remotes. The HEAD hash is recorded for change detection. *(Implemented.)* |
 | **No coordination between agents** | When several agents or sessions work on one repo, none of them oversees the others. | Tyr is designed to **coordinate corrective agents**: detect a problem, then send a focused agent to fix it. *(Planned. See `agents/` and `core/`.)* |
-| **Opaque progress** | Long agent runs are a black box until they finish. | `tyr watch` and `tyr status` are reserved for showing what Tyr knows and is doing. *(Stubs only.)* |
+| **Opaque progress** | Long agent runs are a black box until they finish. | `tyr watch` streams what Tyr, git and Claude Code are doing, live. `tyr status` is still a stub. |
 
 In short, existing tools are **actors**. Tyr is meant to be the **supervisor**: persistent, independent of any one agent, and grounded in facts about the repository instead of in a conversation.
 
@@ -97,7 +97,8 @@ The code follows a few design principles that are already visible:
 | `tyr init --force` / `--reset` / `--no-color` | Implemented |
 | `tyr init --start` | Flag accepted. Prints a warning that the background process is not implemented yet. |
 | `tyr config` (`list`, `get`, `set`, `unset`, `path`) and the layered settings resolver | Implemented |
-| `tyr start`, `tyr watch`, `tyr status`, `tyr run` | **Stubs**: each prints one placeholder line |
+| `tyr watch`: live view of the event journal (history replay, filters, NDJSON) | Implemented |
+| `tyr status`, `tyr run` | **Stubs**: each prints one placeholder line |
 | Claude Code session observation (`tyr hooks`, see [Claude Code integration](#claude-code-integration)) | Implemented |
 | Background observer of Claude Code, problem detection, corrective agents | **Planned** |
 | Integrations (Claude Code, GitHub, Git) | **Planned** (`integrations/INTEGRATIONS.md`) |
@@ -316,13 +317,60 @@ Intended purpose: start Tyr's long-running background process, which observes th
 
 ### `tyr watch`
 
-**Status: stub.** It prints `Watching Project ...`.
+A live view of everything Tyr records: the background process's git and file watchers, Claude Code hooks, `tyr init`, and the daemon's own lifecycle. It replays the most recent events from `.tyr/state/events.jsonl`, then prints new ones as they are appended until you press `Ctrl-C`.
 
 ```
-tyr watch
+tyr watch [-n <n>] [--since <time>] [--source <list>] [--kind <pattern>]
+          [--session <id>] [--no-follow] [--no-ping] [--no-color]
 ```
 
-Intended purpose (from the command description): *"Allows user to see the progress Tyr is making"*, a live view of what the background process is observing and doing.
+| Option | Description |
+|---|---|
+| `-n, --lines <n>` | Replay the last `<n>` matching events first (default 20; `0` for none). |
+| `--since <time>` | Replay every event since `<time>`: an age (`30s`, `10m`, `2h`, `1d`, `1w`, `1h30m`) or an ISO date/time. Combined with an explicit `-n`, only the last `<n>` of those. |
+| `--source <list>` | Only these sources, comma-separated: `tyr`, `git`, `fs`, `claude`, `user`, `check`. |
+| `--kind <pattern>` | Only these kinds; repeatable or comma-separated. `git.` is a prefix; `daemon` matches `daemon` and `daemon.*`. |
+| `--session <id>` | Only events of this Claude Code session (a full id or a prefix such as the 8 characters shown); repeatable. |
+| `--no-follow` | Print the history and exit `0` instead of following. |
+| `--no-ping` | Skip the ping to the background process in the header. |
+| `--no-color` | Plain output (`NO_COLOR` and a non-TTY stdout also turn colour off). |
+
+It honours the global `--json`, `--quiet`, `--verbose` and `--cwd`. It requires an initialized project (exit `3` otherwise), but not a running daemon: hooks and Tyr commands write to the journal on their own, so without a daemon you get a warning that git and file changes are not being recorded, and everything else is still shown.
+
+```
+$ tyr watch
+Watching /home/me/app
+✓ Background process running (pid 95290, up 2h 13m, ping 41ms)
+
+14:22:30 ◆ claude  session 3f2a9c1d started (startup, claude-opus-5-5)
+14:22:31 ◆ claude  prompt: "fix the failing test in src/a.ts"
+14:22:32 ◆ claude  Read src/a.ts
+14:22:33 ◆ claude  Edit src/a.ts
+14:22:33 ◆ claude  Edit src/a.ts  ✓ 84ms
+14:22:34 ✎ fs      1 file changed: src/a.ts
+14:22:35 ◆ claude  Bash: npm test
+14:22:39 ◆ claude  Bash: npm test  ✗ Exit code 1
+14:22:40 ⎇ git     switched to main at 1a2b3c4
+14:22:41 ✎ fs      14 files changed by checkout
+14:22:45 ◆ claude  finished responding
+── following live (Ctrl-C to stop) ──
+14:25:02 ● tyr     daemon stopped (pid 95290, tyr stop)
+         Git and file changes are no longer recorded; "tyr start" resumes them. Still following.
+```
+
+Each line is the local time (with an `MM-DD` prefix for events from another day), the source (`●` tyr, `⎇` git, `✎` fs, `◆` claude, `▣` check, `▸` user; `* ^ + @ # >` on consoles without Unicode) and a one-line summary. Routine lines (read-only tool calls, successful tool results, staged-index changes, file changes caused by git) are dimmed; failures are red and Claude notifications yellow. A tool result shows its duration, taken from the hook or from its matching tool call. Kinds Tyr does not know yet are shown from their own message. `--verbose` adds the event kind, id and details (changed paths, session id, error text) on indented lines, and also shows `daemon.pong` events, which are hidden by default because the header's own ping creates one. A crash or stop of the background process while watching is followed by a hint. In a terminal, long lines are cut to its width.
+
+With `--json`, stdout is NDJSON: exactly one raw journal event per line, with no header or decoration (the "not running" warning goes to stderr), so it pipes into `jq`:
+
+```
+$ tyr watch --no-follow --json -n 2
+{"v":1,"id":"f6716d6e-…","ts":"2026-11-10T16:59:13.191Z","source":"claude","kind":"claude.stop","data":{"sessionId":"3f2a9c1d-…","hookEvent":"Stop"}}
+{"v":1,"id":"90b55e1f-…","ts":"2026-11-10T16:59:14.191Z","source":"tyr","kind":"daemon.stopped","message":"Background process stopped (SIGTERM)","data":{"pid":4242}}
+
+$ tyr watch --json --source claude | jq -r 'select(.kind=="claude.tool_result" and .data.success==false) | .data.input'
+```
+
+`Ctrl-C` exits with `130`, like every other Tyr command (and `tail -f`), so a script can tell an interrupted follow from `--no-follow`'s `0`. Under `--json` the interrupt adds one final line, `{"ok":false,"error":{"message":"Interrupted","code":"INTERRUPTED","exitCode":130}}`, so the stream stays valid NDJSON. `tyr watch` draws no banner, since its output is a log.
 
 ### `tyr status`
 
@@ -879,7 +927,7 @@ Tyr/
 │   ├── commands/
 │   │   ├── init.ts              # `tyr init` wiring: runs detectors, reports, scaffolds
 │   │   ├── start.ts             # stub
-│   │   ├── watch.ts             # stub
+│   │   ├── watch.ts             # `tyr watch`: replay + follow the event journal
 │   │   ├── status.ts            # stub
 │   │   ├── config.ts            # `tyr config` list/get/set/unset/path wiring
 │   │   ├── hooks.ts             # `tyr hook` (run by Claude Code), `tyr hooks` install/uninstall/status
@@ -901,6 +949,7 @@ Tyr/
 │   │   └── scaffold.ts          # Writes .tyr/, atomic JSON I/O, readConfig/readState/
 │   │                            #   writeState/appendLog accessors
 │   └── ui/
+│       ├── event-view.ts        # One-line rendering of journal events for `tyr watch`
 │       └── reporter.ts          # Dependency-free animated console reporter
 ├── core/CORE.md                 # Planned: orchestration + state + execution engine
 ├── agents/AGENTS.md             # Planned: Tyr's AI agents
@@ -953,7 +1002,7 @@ These items come from stated intent in the code, command descriptions and the `*
 - [ ] **Review and problem detection**: run the recorded `commands.*` (build, test, lint, typecheck) against the agent's changes and write findings to `.tyr/reports/`
 - [ ] **Corrective agents**: dispatch focused agents (`agents/`) to fix detected problems, coordinated by the engine in `core/`
 - [ ] **`tyr status`**: show what Tyr knows (`tyr.json`), its lifecycle (`state.json`) and live git state
-- [ ] **`tyr watch`**: live progress view of the background process
+- [x] **`tyr watch`**: live view of the event journal (daemon, git, files, Claude Code)
 - [ ] **`tyr run <prompt>`**: on-demand instructions to Tyr, tracked via `runCount` / `lastRunAt`
 - [ ] **Integrations**: Claude Code, GitHub, Git
 - [ ] Configurable ignore lists / `.gitignore` awareness

@@ -189,7 +189,11 @@ export function createFatalHandler(deps: FatalHandlerDeps): FatalHandler {
                 ok: false,
                 error: { message: "Interrupted", code: exitCodeName(code), exitCode: code },
             };
-            stdout = JSON.stringify(body, null, 2) + "\n";
+            // One compact line, unlike other JSON errors: Ctrl-C is how a
+            // streaming command (`tyr watch --json`, NDJSON) ends, and a
+            // pretty-printed object would break line-by-line consumers.
+            // It is still a single valid JSON document for everything else.
+            stdout = JSON.stringify(body) + "\n";
         } else if (proc.stderr.isTTY) {
             // Move the shell prompt off the line holding "^C" (and any
             // half-drawn spinner). The cursor itself is restored by the

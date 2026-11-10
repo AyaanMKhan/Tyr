@@ -20,7 +20,7 @@ It is a TypeScript/Node CLI (`commander`, `figlet`) that builds to `dist/cli/ind
 
 **What works today:** `tyr init` works end to end. It finds the root, takes a git snapshot, scans files, profiles languages, frameworks and toolchain commands, writes `.tyr/` atomically and logs the run. I verified this by building a copy of the repo and running it: `npm ci && npm run build` succeeds, and `tyr init` / `tyr init --force` both produce the full `.tyr/` tree. Every other command is a one-line `console.log` stub. None of the actual product exists yet: the background process, observing Claude Code, the problem detection, the agents and the integrations.
 
-### Overall completion: about 37%
+### Overall completion: about 46%
 
 I weighted each component by how much it contributes to an end-to-end working Tyr, multiplied the weight by that component's completion, and added up the results (see the table in section 3). The groundwork is the most polished part: init, discovery, git snapshot and project profiling are high quality. But it carries less than a third of the weight. The core product (daemon, observation, detection, agents, integrations) is about 45% of the weight and is at 0%.
 
@@ -129,12 +129,12 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Recover after a crash: `status: "error"` plus a log entry on uncaught errors; `tyr start`/`tyr stop` clear the stale PID file a hard-killed daemon leaves behind
 - [ ] The daemon only follows git events into `tyr.log` today (`watchGit`); real work (observation, review) still has to be wired in (see 2.9, 2.10)
 
-### 2.9 Observation of Claude Code and the repo: `tyr watch` (`cli/commands/watch.ts`): 0%, Not started
+### 2.9 Observation of Claude Code and the repo: `tyr watch` (`cli/commands/watch.ts`): 100%, Done
 - [x] File-system watcher on the project, using the discovery ignore rules and debounced (`cli/core/fs-watch.ts`, wired into `runDaemon`): recursive `fs.watch` with a polling fallback, the same ignore rules as discovery (built-ins, `.tyrignore`, `scan.extraIgnore`, `.gitignore`), one `fs.changed` event per burst, classified by stat against a startup snapshot
 - [x] Git event watcher wired end to end: the daemon journals `git.*` events and attributes git-driven file changes (checkout, merge, rebase, stash) to one `fs.changed` with `cause: "git"` linked to the git event (`cli/core/observe.ts`); stop requests are serviced during startup; nested repos/worktrees are skipped; a fallback to polling journals a `daemon.warning`; files written during daemon startup are no longer lost. Proven by `tests/daemon-git.test.ts` against a real daemon
 - [x] Claude Code session observation: `tyr hooks install|uninstall|status` installs Claude Code hooks (all 10 events) that run the hidden `tyr hook`, which normalizes the payload into `claude.*` events in `.tyr/state/events.jsonl` (prompt previews truncated, secrets redacted, never blocks Claude: always exit 0, no output). Transcript discovery and summaries in `cli/core/claude-transcripts.ts`
 - [x] IPC channel between the daemon and the CLI: the event journal `.tyr/state/events.jsonl` is the daemon → CLI channel, followed live by `followEvents()` (`cli/core/event-stream.ts`: byte-offset tail, partial lines, rotation without loss or duplicates, backlog replay, fs.watch + poll). CLI → daemon requests are atomic files in `.tyr/state/requests/` (`stop`, `ping` answered by a `daemon.pong` event; `pingDaemon()`, `cli/core/daemon-requests.ts`)
-- [ ] `tyr watch` live view: stream daemon events and progress through the reporter
+- [x] `tyr watch` live view: replays recent history (`-n`, `--since`), then follows the journal live with a daemon status header (pid, uptime, ping); filters by `--source`, `--kind`, `--session`; `--json` streams NDJSON; one formatted line per event kind (`cli/ui/event-view.ts`), pairing Claude tool calls with their results
 
 ### 2.10 Core engine / orchestration (`core/`, currently only `core/CORE.md`): 0%, Not started
 - [ ] Event bus and model (file changed, commit made, Claude tool call, check result)
@@ -235,7 +235,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 6 | `.tyr/` state and storage | 8 | 55% | Partial | 4.4 |
 | 7 | User configuration | 4 | 100% | Done | 4.0 |
 | 8 | Background process (`start`/`stop`) | 9 | 90% | Partial | 8.1 |
-| 9 | Observation (`watch`, Claude Code, fs, git events) | 9 | 0% | Not started | 0 |
+| 9 | Observation (`watch`, Claude Code, fs, git events) | 9 | 100% | Done | 9.0 |
 | 10 | Core engine / orchestration | 9 | 0% | Not started | 0 |
 | 11 | Problem detection / review | 7 | 0% | Not started | 0 |
 | 12 | `tyr status` | 3 | 5% | Not started (stub) | 0.15 |
@@ -248,7 +248,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 19 | Lint / format / CI | 1 | 0% | Not started | 0 |
 | 20 | Packaging and distribution | 2 | 30% | Partial | 0.6 |
 | 21 | Documentation | 2 | 10% | Partial | 0.2 |
-| | **Total** | **100** | | | **≈ 37.0 → 37%** |
+| | **Total** | **100** | | | **≈ 46.0 → 46%** |
 
 Discovery and the reporter are counted inside the `init` and CLI weights, because their only consumer today is `init`.
 
@@ -315,7 +315,7 @@ No component is 100% done. These individual pieces are complete and work as inte
 2. **Add a test harness and CI now,** while the codebase is small. Use Vitest or `node:test` with unit tests for `git.ts` parsers, `project.ts` detectors (fixture dirs) and `scaffold.ts`. Add an integration test that runs `tyr init` in temporary git and non-git repos. Add ESLint and Prettier, and a GitHub Actions matrix (Linux, macOS, Windows).
 3. **Implement `tyr status`.** It is the first consumer of `.tyr/`. Read `tyr.json` and `state.json`, detect "not initialized", show drift (HEAD and file count against the last index), and support `--json`. This exercises the storage layer and adds schema validation and migration.
 4. **Design and build the background process.** Implement `tyr start` / `tyr stop` with a PID or lock file, state transitions (`running` / `stopped` / `error`), graceful shutdown, Windows support, and a simple IPC channel. Then make `init --start` call it.
-5. **Observation layer.** Add a debounced file watcher using the discovery ignore rules, git change detection against `lastIndexedCommit`, and Claude Code hook installation or transcript reading. Emit events into a core event model, and have `tyr watch` stream them.
+5. **Observation layer (done).** Add a debounced file watcher using the discovery ignore rules, git change detection against `lastIndexedCommit`, and Claude Code hook installation or transcript reading. Emit events into a core event model, and have `tyr watch` stream them.
 6. **Core engine plus first detector.** Run the detected `build` / `test` / `lint` / `typecheck` commands from `tyr.json` on change events. Capture results, detect regressions and write findings to `reports/`. This is the first real "reviewer" value.
 7. **Git diff and review.** Add diff and commit-log helpers to `git.ts`. Add rule-based checks (deleted tests, secrets, very large diffs).
 8. **Agents and `tyr run`.** Add an LLM client and config (API key), a reviewer agent over diffs and failures, and `tyr run "<prompt>"` routing. Corrective agents should work on an isolated branch or worktree and require approval.

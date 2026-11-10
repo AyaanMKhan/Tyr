@@ -328,6 +328,8 @@ test("SIGINT: exits 130, with a JSON error under --json", async () => {
     await tick();
     assert.deepEqual(json.exits, [130]);
     assert.deepEqual(JSON.parse(json.out).error, { message: "Interrupted", code: "INTERRUPTED", exitCode: 130 });
+    // A single NDJSON-compatible line, so `tyr watch --json` streams stay line-parseable.
+    assert.equal(json.out.trimEnd().split("\n").length, 1);
 });
 
 /* -------------------------------------------------------------------------

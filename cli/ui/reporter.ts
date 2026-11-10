@@ -12,16 +12,25 @@ import { Reporter, TaskHandle } from "../core/types.js";
  * ANSI vocabulary
  * ---------------------------------------------------------------------- */
 
-// Named once so no escape sequence is ever inlined at a call site.
-const SGR = {
+// Named once so no escape sequence is ever inlined at a call site. Exported
+// (with the glyphs, paint() and the capability probes below) so other views
+// such as ui/event-view.ts share one palette and one set of detection rules.
+export const SGR = {
     reset: "\x1b[0m",
     bold: "\x1b[1m",
     dim: "\x1b[2m",
     red: "\x1b[31m",
     green: "\x1b[32m",
     yellow: "\x1b[33m",
+    blue: "\x1b[34m",
+    magenta: "\x1b[35m",
     cyan: "\x1b[36m",
 } as const;
+
+/** Wrap `text` in an SGR code (and a reset) when `color` is on; plain text otherwise. */
+export function paint(text: string, code: string, color: boolean): string {
+    return color ? code + text + SGR.reset : text;
+}
 
 const CURSOR_HIDE = "\x1b[?25l";
 const CURSOR_SHOW = "\x1b[?25h";
@@ -32,7 +41,7 @@ const LINE_START = "\r";
 
 const SPINNER_INTERVAL_MS = 80;
 
-interface Glyphs {
+export interface Glyphs {
     success: string;
     failure: string;
     skip: string;
@@ -40,7 +49,7 @@ interface Glyphs {
     frames: readonly string[];
 }
 
-const UNICODE_GLYPHS: Glyphs = {
+export const UNICODE_GLYPHS: Glyphs = {
     success: "✓",
     failure: "✗",
     skip: "-",
@@ -50,7 +59,7 @@ const UNICODE_GLYPHS: Glyphs = {
 
 // CP437-safe stand-ins for legacy Windows consoles, where the braille frames
 // and the check/cross marks render as mojibake.
-const ASCII_GLYPHS: Glyphs = {
+export const ASCII_GLYPHS: Glyphs = {
     success: "√",
     failure: "x",
     skip: "-",
@@ -106,7 +115,7 @@ function isCI(): boolean {
     return value !== undefined && value !== "" && value !== "0" && value !== "false";
 }
 
-function detectColor(stream: NodeJS.WriteStream): boolean {
+export function detectColor(stream: NodeJS.WriteStream): boolean {
     // no-color.org: presence of the variable is the signal, whatever its value.
     if (process.env.NO_COLOR !== undefined) {
         return false;
@@ -126,7 +135,7 @@ function detectAnimation(stream: NodeJS.WriteStream): boolean {
     return stream.isTTY === true;
 }
 
-function detectUnicode(): boolean {
+export function detectUnicode(): boolean {
     if (process.platform === "win32") {
         // Windows Terminal, VS Code and ConEmu are UTF-8; the legacy conhost
         // that ships without any of these markers is not.
@@ -306,7 +315,7 @@ class ConsoleReporter implements Reporter {
     }
 
     private paint(text: string, code: string): string {
-        return this.color ? code + text + SGR.reset : text;
+        return paint(text, code, this.color);
     }
 
     /**
