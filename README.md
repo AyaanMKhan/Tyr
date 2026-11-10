@@ -18,6 +18,7 @@ Tyr is a command-line tool that sits **beside** your AI coding agent instead of 
   - [Put `tyr` on your PATH](#put-tyr-on-your-path)
 - [Command reference](#command-reference)
   - [Global options](#global-options)
+  - [Environment variables](#environment-variables)
   - [`tyr init`](#tyr-init)
   - [`tyr start`](#tyr-start)
   - [`tyr watch`](#tyr-watch)
@@ -168,6 +169,35 @@ Commands:
 |---|---|
 | `-v`, `--version` | Print the Tyr version (`1.0.0`) |
 | `-h`, `--help` | Show help. `tyr help <command>` or `tyr <command> --help` shows help for one command. |
+
+### Environment variables
+
+Tyr's settings resolve in layers, lowest precedence first: built-in defaults, the global config (`~/.config/tyr/config.json`), the project's `.tyr/settings.json`, then environment variables. Each setting has a `TYR_*` variable that overrides every file. A few more variables stand in for global flags, for CI and scripts; an explicit flag always wins over them.
+
+| Variable | Overrides | Accepted values |
+|---|---|---|
+| `TYR_CHECKS_BUILD` | `checks.build` | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off` (any case) |
+| `TYR_CHECKS_TEST` | `checks.test` | same as above |
+| `TYR_CHECKS_LINT` | `checks.lint` | same as above |
+| `TYR_CHECKS_FORMAT` | `checks.format` | same as above |
+| `TYR_CHECKS_TYPECHECK` | `checks.typecheck` | same as above |
+| `TYR_SEVERITY` | `severity.threshold` | `info` \| `warning` \| `error` |
+| `TYR_AGENT_PERMISSION` | `agent.permission` | `read-only` \| `suggest` \| `edit` |
+| `TYR_NOTIFY` | `notifications.targets` | Comma-separated targets (`terminal,desktop`), or `none` for no targets |
+| `TYR_MODEL` | `ai.model` | Any model id |
+| `TYR_API_KEY` | `ai.apiKey` (secret) | Any string |
+| `ANTHROPIC_API_KEY` | `ai.apiKey` (secret) | Used only when `TYR_API_KEY` is unset |
+| `TYR_QUIET` | `--quiet` | Boolean, as above. Ignored when `--quiet` or `--verbose` is passed |
+| `TYR_VERBOSE` | `--verbose` | Boolean. Ignored when `--quiet` or `--verbose` is passed. Implies debug logging unless `--log-level` or `TYR_LOG_LEVEL` is set |
+| `TYR_JSON` | `--json` | Boolean. `TYR_JSON=0` turns an inherited `TYR_JSON=1` off |
+| `TYR_LOG_LEVEL` | `--log-level` | `debug` \| `info` \| `warn` \| `error` \| `silent`. Inherited by the background process |
+
+- **Empty means unset.** A variable set to an empty or whitespace-only value is ignored, as if it were not set. CI systems often export missing secrets as `""`, and that should never wipe a configured value. So `TYR_API_KEY=""` still falls back to `ANTHROPIC_API_KEY`. To turn notifications off from the environment, use `TYR_NOTIFY=none`.
+- **Bad values never stop Tyr.** An invalid value (`TYR_SEVERITY=fatal`) is ignored with a warning naming the variable, and the lower layers apply. Warnings never include the value of `TYR_API_KEY` or `ANTHROPIC_API_KEY`.
+- **API key.** `TYR_API_KEY` wins over `ANTHROPIC_API_KEY`, so an existing Anthropic setup works without Tyr-specific configuration.
+- `NO_COLOR` (any value) disables colored output, per [no-color.org](https://no-color.org).
+
+The full list is exported as `ENV_VARS` from `cli/core/env-settings.ts`.
 
 ### `tyr init`
 

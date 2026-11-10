@@ -117,7 +117,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Separate the detected snapshot from user preferences (enabled checks, severity thresholds, agent permissions, notification targets). `tyr.json` stays detection-only; preferences live in the committed `.tyr/settings.json` (`cli/core/project-settings.ts`, shared contract in `cli/core/settings-types.ts`)
 - [ ] `tyr config get/set` or documented hand-editing
 - [x] Global, per-user config (`~/.config/tyr`) for API keys and defaults (`cli/core/global-config.ts`: XDG / `%APPDATA%` / `TYR_CONFIG_HOME` locations, written atomically with mode 600, warns when a file holding the API key is group/world-readable)
-- [ ] Env var overrides
+- [x] Env var overrides (`cli/core/env-settings.ts`): a `TYR_*` variable per setting, `ANTHROPIC_API_KEY` as the API-key fallback, and `TYR_QUIET` / `TYR_VERBOSE` / `TYR_JSON` for the global flags (flag > env > default). Empty values count as unset; bad values warn and are ignored
 
 ### 2.8 Background process: `tyr start` (`cli/commands/start.ts`, `cli/core/daemon.ts`): 90%, Partial
 - [x] Choose the process model: a detached `node` child running a dedicated entry (`cli/daemon-main.ts`), not a hidden commander command

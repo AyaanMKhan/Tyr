@@ -1,10 +1,15 @@
 // Options accepted by every command: `--cwd`, `--verbose` / `--quiet`,
 // `--json` and `--log-level`. They are declared once on the root program and read by each
 // command through `optsWithGlobals()`, so no command re-declares them.
+//
+// TYR_QUIET, TYR_VERBOSE and TYR_JSON stand in for the matching flags (for CI
+// and scripts); readGlobals() layers them under the parsed flags, so every
+// caller sees flag > env > default. See applyEnvGlobals() in env-settings.ts.
 
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { Command, Option } from "commander";
+import { applyEnvGlobals } from "./env-settings.js";
 import { LOG_LEVEL_ENV, LOG_THRESHOLDS, setLogLevel, type LogThreshold } from "./log.js";
 
 export interface GlobalOptions {
@@ -33,6 +38,12 @@ export function registerGlobalOptions(program: Command): void {
         // `findProjectRoot()`'s `process.cwd()` default) sees the new directory.
         .hook("preAction", async (_root, action) => {
             const options = readGlobals(action);
+            // Report bad TYR_QUIET/TYR_VERBOSE/TYR_JSON values once, here,
+            // rather than from every readGlobals() call. stderr, so --json
+            // output stays parseable; a bad value is ignored, never fatal.
+            for (const warning of applyEnvGlobals(action.optsWithGlobals<GlobalOptions>()).warnings) {
+                process.stderr.write(`tyr: warning: ${warning}\n`);
+            }
             const { cwd } = options;
             setLogLevel(logLevelOf(options));
             if (cwd !== undefined) {
@@ -41,8 +52,9 @@ export function registerGlobalOptions(program: Command): void {
         });
 }
 
-export function readGlobals(command: Command): GlobalOptions {
-    return command.optsWithGlobals<GlobalOptions>();
+/** The parsed global flags, with TYR_QUIET / TYR_VERBOSE / TYR_JSON filling in unset ones. */
+export function readGlobals(command: Command, env: NodeJS.ProcessEnv = process.env): GlobalOptions {
+    return applyEnvGlobals(command.optsWithGlobals<GlobalOptions>(), env).options;
 }
 
 /** `--json` implies quiet text output: stdout is reserved for the JSON. */
