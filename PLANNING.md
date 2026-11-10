@@ -130,7 +130,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [ ] The daemon only follows git events into `tyr.log` today (`watchGit`); real work (observation, review) still has to be wired in (see 2.9, 2.10)
 
 ### 2.9 Observation of Claude Code and the repo: `tyr watch` (`cli/commands/watch.ts`): 0%, Not started
-- [ ] File-system watcher on the project, using the discovery ignore rules and debounced
+- [x] File-system watcher on the project, using the discovery ignore rules and debounced (`cli/core/fs-watch.ts`, wired into `runDaemon`): recursive `fs.watch` with a polling fallback, the same ignore rules as discovery (built-ins, `.tyrignore`, `scan.extraIgnore`, `.gitignore`), one `fs.changed` event per burst, classified by stat against a startup snapshot
 - [ ] Git event watcher: the module is done (`watchGit`, see 2.4) but is not yet wired into the daemon or `tyr watch`
 - [ ] Claude Code session observation: read the session transcripts or JSONL logs and/or install Claude Code hooks (PreToolUse/PostToolUse/Stop) that report to Tyr
 - [ ] IPC channel between the daemon and the CLI (Unix socket or named pipe, or a polled file in `.tyr/state/`)

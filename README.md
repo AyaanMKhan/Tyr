@@ -300,6 +300,11 @@ tyr start
 
 Intended purpose: start Tyr's long-running background process, which observes the coding agent and the repository. This is the same process `tyr init --start` will launch.
 
+**What the background process watches** (`runDaemon` in `cli/core/daemon.ts`):
+
+- **Git** (`cli/core/git-watch.ts`): HEAD, the index, refs and in-progress merges/rebases, recorded as `git.*` events.
+- **Project files** (`cli/core/fs-watch.ts`): one recursive file watcher on the project root, using the same ignore rules as the init scan (built-in directories/extensions, `scan.extraIgnore` in `tyr.json`, `.tyrignore`, and `.gitignore` inside a git work tree). `.git/` and `.tyr/` are never reported. Changes are debounced (300 ms of quiet, at most 2 s) and recorded as one `fs.changed` event per burst, listing added, modified and removed paths (50 per list, plus a total). Each file is checked against its size and modification time, so a file created and deleted within one burst is not reported, while a bare `touch` counts as modified. If the platform cannot watch recursively, or the watcher fails (for example on inotify limits on Linux), it falls back to rescanning every 5 s. The `daemon.started` event records which mode is in use (`fsWatch: "watch"` or `"poll"`).
+
 ### `tyr watch`
 
 **Status: stub.** It prints `Watching Project ...`.
@@ -592,7 +597,7 @@ Finally `init` checks the project's root `.gitignore` (see [What gets committed]
 | `settings.json` | Your preferences: which checks run, the severity threshold, agent permission, notification targets, model. Created once by `tyr init`, then edited by you; Tyr never regenerates it. See [Settings](#settings-settingsjson). | **Yes**, so the team shares one set of preferences |
 | `state/state.json` | Tyr's lifecycle on this machine: status, last indexed commit, last file count and run counters. Used for change detection between runs. | No |
 | `logs/tyr.log` | Timestamped log of Tyr activity, filtered by `--log-level` and rotated at 1 MiB (3 old files kept). | No |
-| `state/events.jsonl` | Structured event history, one JSON object per line: daemon start/stop/crash, git events, `tyr init`, and later Claude Code activity and actions taken. Written by `cli/core/events.ts`, rotated at 5 MiB. | No |
+| `state/events.jsonl` | Structured event history, one JSON object per line: daemon start/stop/crash, git events, project file changes (`fs.changed`), `tyr init`, and later Claude Code activity and actions taken. Written by `cli/core/events.ts`, rotated at 5 MiB. | No |
 | `reports/` | Review/check reports written by `cli/core/reports.ts`: a JSON document plus a rendered Markdown copy per report. Pruned to 100 reports / 30 days by default; override with `"reports": { "maxCount": N, "maxAgeDays": N }` in `tyr.json`. | No |
 | `.gitignore` | Keeps the per-machine runtime output above out of git. | Yes |
 | `state/scan.json` | Scan manifest (file fingerprints) that `tyr status` / `tyr watch` diff against. | No (under `state/`) |
@@ -725,7 +730,7 @@ Defined as `TyrState`:
 ```
 [2026-10-04T19:29:37.921Z] INFO tyr init — scaffolded .tyr/ with Tyr 1.0.0 (23 files scanned)
 [2026-10-04T19:29:37.922Z] INFO tyr init completed - 23 files indexed
-[2026-10-04T19:31:02.114Z] INFO Background process started (pid 4242); watching git (fs-watch)
+[2026-10-04T19:31:02.114Z] INFO Background process started (pid 4242); watching git (watch), watching files (watch)
 ```
 
 Levels are `DEBUG`, `INFO`, `WARN` and `ERROR`. Continuation lines of multi-line messages (stack traces) are indented so every record still starts with a timestamp.

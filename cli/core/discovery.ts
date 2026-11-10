@@ -158,6 +158,59 @@ const MAX_DEPTH = 25;
 const GIT_LS_FILES_TIMEOUT_MS = 15000;
 const GIT_LS_FILES_MAX_BUFFER = 256 * 1024 * 1024;
 
+/**
+ * True for a directory name the scanner never descends into, at any depth:
+ * the built-in IGNORED_DIRS plus Tyr's own `.tyr`. Shared with the file
+ * watcher (fs-watch.ts) so both apply one rule set.
+ */
+export function isIgnoredDirName(name: string): boolean {
+    return IGNORED_DIRS.has(name) || name === TYR_DIR;
+}
+
+/** True for a file name the scanner always drops (OS junk, binary extensions). */
+export function isIgnoredFileName(name: string): boolean {
+    return IGNORED_FILES.has(name) || IGNORED_EXTENSIONS.has(path.extname(name).toLowerCase());
+}
+
+/**
+ * The scanner's non-git ignore rules as a path predicate, for callers that see
+ * individual paths instead of walking (the file watcher). `relPath` is
+ * root-relative with `/` separators. Every ancestor directory is checked
+ * too, mirroring the walk, which prunes an ignored directory and so never
+ * lists anything beneath it — including user negations below it.
+ *
+ * Git ignore rules are not part of this: they need git, and callers apply
+ * them separately (scanProject via `git ls-files`, the watcher via
+ * `git check-ignore`).
+ */
+export interface PathIgnoreFilter {
+    ignores(relPath: string, isDirectory: boolean): boolean;
+}
+
+export function createPathIgnoreFilter(extraIgnore: readonly string[] = []): PathIgnoreFilter {
+    const userIgnore = compileIgnore(extraIgnore);
+    return {
+        ignores(relPath: string, isDirectory: boolean): boolean {
+            const segments = relPath.split("/").filter((segment) => segment.length > 0);
+            if (segments.length === 0) {
+                return false; // The root itself.
+            }
+            for (let i = 0; i < segments.length; i++) {
+                const isLeaf = i === segments.length - 1;
+                const asDirectory = !isLeaf || isDirectory;
+                const name = segments[i];
+                if (asDirectory ? isIgnoredDirName(name) : isIgnoredFileName(name)) {
+                    return true;
+                }
+                if (userIgnore.size > 0 && userIgnore.ignores(segments.slice(0, i + 1).join("/"), asDirectory)) {
+                    return true;
+                }
+            }
+            return false;
+        },
+    };
+}
+
 /** Knobs for `scanProject`; every field is optional. */
 export interface ScanOptions {
     /**
@@ -395,7 +448,7 @@ export async function scanProject(
             }
 
             if (entry.isDirectory()) {
-                if (IGNORED_DIRS.has(entry.name) || entry.name === TYR_DIR) {
+                if (isIgnoredDirName(entry.name)) {
                     recordSkip(fullPath);
                     continue;
                 }
@@ -423,10 +476,7 @@ export async function scanProject(
                 }
                 subdirs.push({ path: fullPath, filtered: childFiltered });
             } else if (entry.isFile()) {
-                if (
-                    IGNORED_FILES.has(entry.name) ||
-                    IGNORED_EXTENSIONS.has(path.extname(entry.name).toLowerCase())
-                ) {
+                if (isIgnoredFileName(entry.name)) {
                     continue;
                 }
                 if (filtered && gitFilter !== null && !gitFilter.files.has(gitKey)) {

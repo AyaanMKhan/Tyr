@@ -25,7 +25,8 @@ import { appendLog, readState, resolveTyrPaths, toJsonDocument, writeFileAtomic 
 import { isProcessAlive } from "./lock.js";
 import { markError, markRunning, markStopped } from "./state-store.js";
 import { watchGit, type GitWatchEvent, type GitWatcher } from "./git-watch.js";
-import { appendEvent, gitEventToTyrEvent } from "./events.js";
+import { appendEvent, fsBatchToTyrEvent, gitEventToTyrEvent } from "./events.js";
+import { watchFiles, type FileWatcher } from "./fs-watch.js";
 import { getLogLevel, LOG_LEVEL_ENV, rotateFileIfLarge } from "./log.js";
 
 /* -------------------------------------------------------------------------
@@ -321,12 +322,14 @@ const STOP_POLL_MS = 500;
 
 /**
  * Body of the background process. Marks state.json running, follows git
- * events into tyr.log, and stays alive until asked to stop.
+ * events and project file changes into tyr.log and the event journal, and
+ * stays alive until asked to stop.
  */
 export async function runDaemon(root: string): Promise<void> {
     const absRoot = resolveTyrPaths(root).root;
     const daemonPaths = resolveDaemonPaths(absRoot);
     let watcher: GitWatcher | null = null;
+    let fileWatcher: FileWatcher | null = null;
     let timer: NodeJS.Timeout | null = null;
     let exiting = false;
 
@@ -335,6 +338,7 @@ export async function runDaemon(root: string): Promise<void> {
         exiting = true;
         if (timer !== null) clearInterval(timer);
         watcher?.close();
+        fileWatcher?.close();
         try {
             // Guarded on our pid: never overwrite a newer daemon's "running".
             const guard = { ownerPid: process.pid };
@@ -383,17 +387,28 @@ export async function runDaemon(root: string): Promise<void> {
             void appendEvent(absRoot, gitEventToTyrEvent(event));
         },
     });
+    // Project files: one batch per debounced burst, to the journal (where
+    // `fs.changed` events are rendered) and to tyr.log at debug level only,
+    // since an active editing session would otherwise flood it.
+    fileWatcher = await watchFiles(absRoot, {
+        onBatch: (batch) => {
+            const event = fsBatchToTyrEvent(batch);
+            void appendLog(absRoot, "debug", `fs: ${event.message ?? "files changed"}`);
+            void appendEvent(absRoot, event);
+        },
+    });
     await appendEvent(absRoot, {
         source: "tyr",
         kind: "daemon.started",
         message: `Background process started (pid ${process.pid})`,
-        data: { pid: process.pid, runCount: state.runCount, gitWatch: watcher?.mode ?? null },
+        data: { pid: process.pid, runCount: state.runCount, gitWatch: watcher?.mode ?? null, fsWatch: fileWatcher.mode },
     });
     await appendLog(
         absRoot,
         "info",
         `Background process started (pid ${process.pid}); ` +
-            (watcher ? `watching git (${watcher.mode})` : "not a git repository, idling"),
+            (watcher ? `watching git (${watcher.mode})` : "not a git repository") +
+            `, watching files (${fileWatcher.mode})`,
     );
 
     // Doubles as the keep-alive when there is no git watcher holding the loop open.

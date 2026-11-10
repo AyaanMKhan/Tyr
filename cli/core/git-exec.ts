@@ -41,6 +41,12 @@ export interface RunGitOptions {
     maxBuffer?: number;
     /** Extra environment variables layered over `process.env`. */
     env?: Record<string, string>;
+    /**
+     * Written to git's stdin, which is then closed. For `--stdin` modes fed
+     * NUL-separated paths (`check-ignore -z --stdin`), where argv would mean
+     * parsing C-quoted output and risking the OS argument-size limit.
+     */
+    input?: string;
 }
 
 /**
@@ -54,7 +60,7 @@ export async function runGit(
     options: RunGitOptions = {},
 ): Promise<GitResult> {
     try {
-        const { stdout, stderr } = await execFileAsync("git", args, {
+        const pending = execFileAsync("git", args, {
             cwd: root,
             timeout: options.timeoutMs ?? GIT_TIMEOUT_MS,
             maxBuffer: options.maxBuffer ?? GIT_MAX_BUFFER,
@@ -62,6 +68,14 @@ export async function runGit(
             windowsHide: true,
             env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...options.env },
         });
+        // Without input, stdin is left exactly as before. With it, an EPIPE
+        // (git exiting before reading everything) must not surface as an
+        // unhandled stream error; the exit status already tells the story.
+        if (options.input !== undefined && pending.child.stdin !== null) {
+            pending.child.stdin.on("error", () => undefined);
+            pending.child.stdin.end(options.input);
+        }
+        const { stdout, stderr } = await pending;
         return { ok: true, stdout: stdout.toString(), stderr: stderr.toString(), timedOut: false, truncated: false };
     } catch (error) {
         // git exits non-zero for plenty of perfectly normal situations (not a

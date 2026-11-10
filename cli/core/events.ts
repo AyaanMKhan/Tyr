@@ -20,12 +20,14 @@
 //   appendEvent(root, input, opts?)  -> Promise<TyrEvent | null>  never throws
 //   readEvents(root, filter?)        -> Promise<TyrEvent[]>       never throws
 //   gitEventToTyrEvent(gitEvent)     -> TyrEventInput             for git-watch.ts events
+//   fsBatchToTyrEvent(batch)         -> TyrEventInput             for fs-watch.ts batches
 //   eventsFile(root)                 -> string                    absolute path of events.jsonl
 //
 // Kinds are dotted strings, "<area>.<what>". Conventional ones:
 //   daemon.started / daemon.stopped / daemon.crashed   (source "tyr")
 //   init.completed                                     (source "tyr")
 //   git.head / git.index / git.refs / git.merge-state  (source "git", see gitEventToTyrEvent)
+//   fs.changed                                         (source "fs", see fsBatchToTyrEvent)
 //   claude.tool_use / claude.session_*                 (source "claude")
 //   check.passed / check.failed                        (source "check")
 //   action.taken                                       (source "tyr" or "user")
@@ -38,6 +40,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { resolveTyrPaths } from "./scaffold.js";
 import type { GitOperationState, GitWatchEvent } from "./git-watch.js";
+import type { FileChangeBatch } from "./fs-watch.js";
 
 /* -------------------------------------------------------------------------
  * Model
@@ -45,9 +48,9 @@ import type { GitOperationState, GitWatchEvent } from "./git-watch.js";
 
 export const EVENT_VERSION = 1;
 
-export type EventSource = "tyr" | "git" | "claude" | "user" | "check";
+export type EventSource = "tyr" | "git" | "fs" | "claude" | "user" | "check";
 
-export const EVENT_SOURCES: readonly EventSource[] = ["tyr", "git", "claude", "user", "check"];
+export const EVENT_SOURCES: readonly EventSource[] = ["tyr", "git", "fs", "claude", "user", "check"];
 
 export interface TyrEvent {
     v: typeof EVENT_VERSION;
@@ -368,4 +371,46 @@ export function gitEventToTyrEvent(event: GitWatchEvent): TyrEventInput {
             };
         }
     }
+}
+
+/** Most paths per list kept in an fs.changed event's data. */
+export const FS_EVENT_MAX_PATHS = 50;
+
+/** Paths named in an fs.changed message before "(+N more)". */
+const FS_MESSAGE_PATHS = 2;
+
+/**
+ * Map an fs-watch.ts batch to an event input (source "fs", kind
+ * "fs.changed"). `data` is `{ added, modified, removed, total, truncated }`:
+ * each list capped at FS_EVENT_MAX_PATHS, `total` the real number of changed
+ * files, and `truncated` true when any list (here or in the watcher's own
+ * storm cap) lost paths. The message reads like
+ * "3 files changed: src/a.ts, src/b.ts (+1 more)", naming added, then
+ * modified, then removed paths.
+ */
+export function fsBatchToTyrEvent(batch: FileChangeBatch): TyrEventInput {
+    const cap = (list: readonly string[]): string[] => list.slice(0, FS_EVENT_MAX_PATHS);
+    const added = cap(batch.added);
+    const modified = cap(batch.modified);
+    const removed = cap(batch.removed);
+    const listed = batch.added.length + batch.modified.length + batch.removed.length;
+    // A hand-built batch may omit or understate total; never report fewer
+    // files than the lists themselves hold.
+    const total = Math.max(Number.isFinite(batch.total) ? batch.total : 0, listed);
+    const truncated =
+        batch.truncated === true ||
+        total > listed ||
+        added.length < batch.added.length ||
+        modified.length < batch.modified.length ||
+        removed.length < batch.removed.length;
+
+    const shown = [...batch.added, ...batch.modified, ...batch.removed].slice(0, FS_MESSAGE_PATHS);
+    const more = total > shown.length ? ` (+${total - shown.length} more)` : "";
+    const noun = total === 1 ? "file" : "files";
+    return {
+        source: "fs",
+        kind: "fs.changed",
+        message: shown.length > 0 ? `${total} ${noun} changed: ${shown.join(", ")}${more}` : `${total} ${noun} changed`,
+        data: { added, modified, removed, total, truncated },
+    };
 }

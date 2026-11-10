@@ -34,10 +34,11 @@
 // `build-output/` followed by `!build-output/keep.txt` still skips keep.txt.
 //
 // The matching half of this module is deliberately silent and synchronous;
-// only `readTyrIgnore` touches the filesystem.
+// only `readTyrIgnore` and `loadUserIgnorePatterns` touch the filesystem.
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { readConfig } from "./scaffold.js";
 
 /** File name of the project-level ignore file, read from the project root. */
 export const TYR_IGNORE_FILE = ".tyrignore";
@@ -224,4 +225,37 @@ export async function readTyrIgnore(root: string): Promise<string[] | null> {
     } catch {
         return null;
     }
+}
+
+/** The user's ignore patterns, by source, plus the combined ordered list. */
+export interface UserIgnorePatterns {
+    /** `scan.extraIgnore` from tyr.json (strings only). */
+    fromConfig: string[];
+    /** Raw lines of `.tyrignore`, empty when the file is absent. */
+    fromFile: string[];
+    /** `fromConfig` then `fromFile`: the order `compileIgnore` expects. */
+    patterns: string[];
+}
+
+/**
+ * Gather user ignore patterns: `scan.extraIgnore` from tyr.json, then
+ * `.tyrignore`. The file goes last so its rules win on conflict (the last
+ * matching pattern decides). Shared by `tyr init` and the file watcher so
+ * both see the same list. Never throws: a missing or unreadable source just
+ * contributes nothing.
+ */
+export async function loadUserIgnorePatterns(root: string): Promise<UserIgnorePatterns> {
+    let fromConfig: string[] = [];
+    try {
+        const config = await readConfig(root);
+        // tyr.json may be hand-edited; keep only strings and ignore any other shape.
+        const rawExtra: unknown = config?.scan?.extraIgnore;
+        if (Array.isArray(rawExtra)) {
+            fromConfig = rawExtra.filter((entry): entry is string => typeof entry === "string");
+        }
+    } catch {
+        // An unreadable config contributes no patterns.
+    }
+    const fromFile = (await readTyrIgnore(root)) ?? [];
+    return { fromConfig, fromFile, patterns: [...fromConfig, ...fromFile] };
 }

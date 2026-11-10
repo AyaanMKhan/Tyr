@@ -19,7 +19,7 @@ import { profileProject } from "../core/project.js";
 import { scaffold, readConfig, appendLog, type ScaffoldPreserved } from "../core/scaffold.js";
 import { withTyrLock } from "../core/lock.js";
 import { appendEvent } from "../core/events.js";
-import { countPatterns, readTyrIgnore, TYR_IGNORE_FILE } from "../core/ignore.js";
+import { countPatterns, loadUserIgnorePatterns, TYR_IGNORE_FILE } from "../core/ignore.js";
 import { buildScanManifest, saveScanManifest } from "../core/scan-diff.js";
 import { verifyCommands } from "../core/verify-commands.js";
 import { CLEAR_TOKEN, COMMAND_SLOTS, editCommands } from "../core/edit-commands.js";
@@ -359,13 +359,7 @@ async function loadExtraIgnore(
     reporter: Reporter,
     root: string,
 ): Promise<{ patterns: string[]; fromConfig: string[] }> {
-    const config = await readConfig(root);
-    // tyr.json may be hand-edited; keep only strings and ignore any other shape.
-    const rawExtra: unknown = config?.scan?.extraIgnore;
-    const fromConfig = Array.isArray(rawExtra)
-        ? rawExtra.filter((entry): entry is string => typeof entry === "string")
-        : [];
-    const fromFile = (await readTyrIgnore(root)) ?? [];
+    const { fromConfig, fromFile, patterns } = await loadUserIgnorePatterns(root);
 
     const configCount = countPatterns(fromConfig);
     const fileCount = countPatterns(fromFile);
@@ -374,7 +368,7 @@ async function loadExtraIgnore(
             `${fileCount} from ${TYR_IGNORE_FILE}`,
     );
 
-    return { patterns: [...fromConfig, ...fromFile], fromConfig };
+    return { patterns, fromConfig };
 }
 
 /** Says what a `--force` re-init carried over; silent on a fresh init. */
