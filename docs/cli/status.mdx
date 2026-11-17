@@ -16,6 +16,7 @@ Shows what Tyr knows about the current project: the project profile, whether the
 | Option | Effect |
 | --- | --- |
 | `--no-scan` | Skip the file scan used for drift. HEAD drift is still shown; the current file count is reported as unknown |
+| `--no-color` | Print without colors (also honored: `NO_COLOR`, non-TTY output) |
 
 The [global options](/cli/overview#global-options) apply too:
 
@@ -98,7 +99,7 @@ This re-detects the project and resets the baseline while keeping your edited co
 
 ## Not initialized
 
-If there is no `.tyr/` directory, or `.tyr/` has no `tyr.json`, status says the project isn't initialized, suggests `tyr init`, and exits non-zero. See [exit codes](/cli/overview#exit-codes).
+If there is no `.tyr/` directory, or `.tyr/` has no `tyr.json`, status says the project isn't initialized, suggests `tyr init`, and exits with code 3 (also with `--json`, which prints the `initialized: false` report). If `tyr.json` exists but can't be read or validated, the rest of the report is still printed and status exits with code 4. Otherwise it exits 0, even with open findings or warnings. See [exit codes](/cli/overview#exit-codes).
 
 ```bash
 tyr init
