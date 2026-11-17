@@ -292,7 +292,7 @@ export function buildRequest(input: BuildInput): Anthropic.MessageCreateParamsNo
 }
 
 /** Models that accept output_config.effort (Opus 4.5+, Sonnet 4.6+, the 5.x families). */
-function supportsEffort(model: string): boolean {
+export function supportsEffort(model: string): boolean {
     return /^claude-(fable|mythos|opus-5|sonnet-5|haiku-5|opus-4-[5-9]|sonnet-4-6)/.test(model);
 }
 
@@ -349,7 +349,7 @@ async function loadNestedClaudeMd(
 }
 
 /** Read a root-relative doc, trimmed to maxBytes at a line boundary. Null if missing or outside root. */
-async function readDoc(root: string, relative: string, maxBytes: number): Promise<{ path: string; text: string } | null> {
+export async function readDoc(root: string, relative: string, maxBytes: number): Promise<{ path: string; text: string } | null> {
     const absolute = path.resolve(root, relative);
     const rel = path.relative(root, absolute);
     if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return null;
@@ -522,7 +522,7 @@ function oneLine(text: string): string {
  * Errors and usage
  * ---------------------------------------------------------------------- */
 
-function usageOf(response: Anthropic.Message): LlmReviewUsage | undefined {
+export function usageOf(response: Anthropic.Message): LlmReviewUsage | undefined {
     const u = response.usage;
     if (!u) return undefined;
     const cacheRead = u.cache_read_input_tokens ?? 0;
@@ -536,7 +536,7 @@ function usageOf(response: Anthropic.Message): LlmReviewUsage | undefined {
 }
 
 /** A short, key-free description. Most specific SDK class first. */
-function errorReason(error: unknown): string {
+export function errorReason(error: unknown): string {
     if (error instanceof Anthropic.APIUserAbortError) return "the request was aborted";
     if (error instanceof Anthropic.APIConnectionTimeoutError) return "the request timed out";
     if (error instanceof Anthropic.APIConnectionError) return "could not reach the API";
@@ -557,7 +557,7 @@ function shortMessage(message: string): string {
 }
 
 /** Belt and braces: the key never leaves in a reason, whatever produced the message. */
-function redact(text: string, apiKey: string | null): string {
+export function redact(text: string, apiKey: string | null): string {
     let out = text;
     if (apiKey && apiKey.length >= 4) out = out.split(apiKey).join("[redacted]");
     return out.replace(/sk-ant-[A-Za-z0-9_-]+/g, "[redacted]");
