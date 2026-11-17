@@ -628,7 +628,7 @@ Both lists, sorted, are written to `tyr.json` under `scan`. A later run can then
 4. Writes `.tyr/.gitignore` and `reports/.gitkeep`.
 5. **Appends** a line to `logs/tyr.log`. Init never truncates the log, so history survives `--force`; size is capped by rotation instead (see [`logs/tyr.log` format](#logstyrlog-format)).
 
-Before merging, any existing `tyr.json` / `state.json` is run through the schema migration chain (`cli/core/migrate.ts`). A file written by a *newer* Tyr is never overwritten: init stops and asks you to upgrade Tyr or pass `--reset`. The write itself runs under the `.tyr/` lock (`cli/core/lock.ts`), so two concurrent inits, or an init racing a daemon state update, serialize instead of losing each other's changes.
+Before merging, any existing `tyr.json` / `state.json` is run through the schema migration chain (`cli/core/migrate.ts`). A file written by a *newer* Tyr is never overwritten: init stops and asks you to upgrade Tyr or pass `--reset`. The write itself, together with the scan baseline `state/scan.json`, runs under the `.tyr/` lock (`cli/core/lock.ts`), so two concurrent inits, or an init racing a daemon state update, serialize instead of losing each other's changes.
 
 `init.ts` then appends a second `tyr init completed - N files indexed` line. Log writes are best-effort: a failed log write never fails a command.
 

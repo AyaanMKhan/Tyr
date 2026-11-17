@@ -236,20 +236,29 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
         reporter.blank();
         reporter.header("Creating .tyr...");
 
+        // Baseline for change detection: `tyr status` / `tyr watch` diff
+        // later scans against this manifest. Built (one stat per file) before
+        // taking the lock, which is only meant to cover the writes.
+        const manifest = await buildScanManifest(root, scan.files);
+
         const writeTask = reporter.task("Writing configuration...");
         // Under the .tyr lock: scaffold() merges with the existing state.json,
         // so a concurrent init or daemon update must not interleave with it.
-        const paths = await withTyrLock(root, "tyr init", () => scaffold(snapshot, TYR_VERSION, { reset: options.reset }));
+        // saveScanManifest() takes the same lock; it is re-entrant, so the
+        // nested call runs straight through and the scan baseline lands in
+        // the same critical section as the state it belongs to.
+        const lockedRoot = root;
+        const paths = await withTyrLock(lockedRoot, "tyr init", async () => {
+            const written = await scaffold(snapshot, TYR_VERSION, { reset: options.reset });
+            await saveScanManifest(lockedRoot, manifest, "tyr init");
+            return written;
+        });
         writeTask.succeed("Configuration created");
         reportPreserved(reporter, paths.preserved);
         reporter.debug(`Wrote ${paths.configFile}`);
         reporter.debug(`Wrote ${paths.stateFile}`);
         if (paths.settings === "created") reporter.info("Created .tyr/settings.json for your preferences (commit it with tyr.json)");
 
-        // Baseline for change detection: `tyr status` / `tyr watch` diff
-        // later scans against this manifest.
-        const manifest = await buildScanManifest(root, scan.files);
-        await saveScanManifest(root, manifest);
         reporter.debug(`Wrote ${paths.scanFile} (${manifest.fileCount} files fingerprinted)`);
         reporter.success("State initialized");
         reporter.success("Logging initialized");

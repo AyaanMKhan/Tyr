@@ -21,6 +21,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { withTyrLock, type TyrLockOptions } from "./lock.js";
 import { readJsonObject, resolveTyrPaths, toJsonDocument, writeFileAtomic } from "./scaffold.js";
 import { FileFingerprint, ScanDiff, ScanManifest } from "./types.js";
 
@@ -130,11 +131,29 @@ export async function loadScanManifest(root: string): Promise<ScanManifest | nul
     };
 }
 
-/** Atomically replace `.tyr/state/scan.json` with `manifest`. */
-export async function saveScanManifest(root: string, manifest: ScanManifest): Promise<void> {
+/**
+ * Atomically replace `.tyr/state/scan.json` with `manifest`, under the `.tyr/`
+ * lock so it cannot interleave with `tyr init --reset` wiping state/ or with
+ * another writer of the baseline. The lock is re-entrant, so a caller that
+ * already holds it (init does) runs straight through. Build the manifest
+ * before calling: the stat pass is far too slow to hold the lock for.
+ */
+export async function saveScanManifest(
+    root: string,
+    manifest: ScanManifest,
+    owner = "scan manifest",
+    lockOptions?: TyrLockOptions,
+): Promise<void> {
     const paths = resolveTyrPaths(root);
-    await fs.mkdir(paths.stateDir, { recursive: true });
-    await writeFileAtomic(paths.scanFile, toJsonDocument(manifest));
+    await withTyrLock(
+        root,
+        owner,
+        async () => {
+            await fs.mkdir(paths.stateDir, { recursive: true });
+            await writeFileAtomic(paths.scanFile, toJsonDocument(manifest));
+        },
+        lockOptions,
+    );
 }
 
 /* -------------------------------------------------------------------------
