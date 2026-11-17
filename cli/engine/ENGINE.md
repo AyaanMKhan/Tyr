@@ -27,6 +27,7 @@ placeholder directory is gone.
 | `executor.ts`     | Execution engine: runs a configured command with a timeout, captures bounded output, classifies the outcome. |
 | `repo-state.ts`   | Repository state model: current diff, last result and last good run per check, open problems. Persisted to `.tyr/state/engine.json`. |
 | `scheduler.ts`    | Decides when checks run: on idle after edits, on commit, on Claude Code `Stop`. |
+| `findings.ts`     | Findings contract for problem detection: `EngineFinding`, fingerprints, ordering. |
 | `engine.ts`       | Wires bus + scheduler + executor + repo state together; started by the daemon. |
 
 ## Conventions
