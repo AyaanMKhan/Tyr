@@ -201,7 +201,8 @@ export async function withUntrackedFiles(root: string, diff: DiffResult): Promis
     return { ...diff, files, totals, patch };
 }
 
-async function workingTreeContext(root: string): Promise<ReviewContext | null> {
+/** Working tree vs HEAD, with untracked files folded into the patch. Null outside a repo or on an unborn HEAD. */
+export async function workingTreeContext(root: string): Promise<ReviewContext | null> {
     const diff = await getDiff(root, { kind: "since", ref: "HEAD" }, { includeUntracked: true }).catch(() => null);
     if (diff === null) return null;
     // A truncated patch already lost its tail; appending would mislead the parsers.
