@@ -24,7 +24,7 @@ import { appendEvent } from "../core/events.js";
 import { getDiff } from "../core/git-diff.js";
 import { getCurrentBranch, getHeadCommit } from "../core/git.js";
 import { writeReport, type FindingSeverity, type WrittenReport } from "../core/reports.js";
-import { readConfig } from "../core/scaffold.js";
+import { readConfig, TYR_DIR_NAME } from "../core/scaffold.js";
 import { resolveSettings } from "../core/settings.js";
 import { recordRun } from "../core/state-store.js";
 import { askRepository, type AskMessagesClient, type AskResult } from "./ask.js";
@@ -36,7 +36,7 @@ import { describeIntent, routePrompt, type RunIntent, type RunMode } from "./int
 import { reviewDiffWithLlm, type LlmMessagesClient } from "./llm-review.js";
 import type { CheckKind, CheckOutcome, CheckRun, CheckTrigger } from "./model.js";
 import { runCheckPass, type CheckPassResult } from "./pass.js";
-import { applyThreshold, countBySeverity, workingTreeContext, type ReviewDetectors } from "./review.js";
+import { applyThreshold, countBySeverity, withUntrackedFiles, type ReviewDetectors } from "./review.js";
 
 export const RUN_RESULT_VERSION = 1;
 
@@ -254,6 +254,8 @@ async function runChecks(root: string, intent: Extract<RunIntent, { mode: "check
             ...emptyOutcome(),
             status: "error",
             summary: `${wanted} configured or enabled. Set the commands in tyr.json (tyr config) or turn them on in settings.`,
+            // A full pass still reviews the diff; keep what it found.
+            findings,
             notes,
         };
     }
@@ -279,22 +281,24 @@ async function runChecks(root: string, intent: Extract<RunIntent, { mode: "check
 async function runReview(root: string, intent: Extract<RunIntent, { mode: "review" }>, options: ExecuteRunOptions): Promise<Outcome> {
     const settings = (await resolveSettings({ root, ...(options.env ? { env: options.env } : {}) })).settings;
     const notes: string[] = [];
-    let ctx: ReviewContext | null;
+    // Tyr's own files are not the project's changes.
+    const diffOptions = { pathspec: [".", `:(exclude)${TYR_DIR_NAME}`], timeoutMs: 15_000 };
+    let ctx: ReviewContext | null = null;
     if (intent.scope === "last-commit") {
-        const diff = await getDiff(root, { kind: "since", ref: "HEAD~1", until: "head" }, { includeUntracked: false }).catch(() => null);
-        ctx = diff === null ? null : { root, diff, base: "HEAD~1" };
+        const diff = await getDiff(root, { kind: "since", ref: "HEAD~1", until: "head" }, diffOptions).catch(() => null);
+        if (diff !== null) ctx = { root, diff, base: "HEAD~1" };
     } else {
-        ctx = await workingTreeContext(root);
+        const diff = await getDiff(root, { kind: "since", ref: "HEAD" }, { ...diffOptions, includeUntracked: true }).catch(() => null);
+        // A truncated patch already lost its tail; appending would mislead the rules.
+        if (diff !== null) ctx = { root, diff: diff.truncated ? diff : await withUntrackedFiles(root, diff).catch(() => diff), base: "HEAD" };
     }
     const what = intent.scope === "last-commit" ? "the last commit" : "uncommitted changes";
     if (ctx === null) {
         const why = intent.scope === "last-commit" ? "there is no previous commit to compare with" : "this is not a git repository with a commit";
         return { ...emptyOutcome(), status: "error", summary: `Cannot review ${what}: ${why}.` };
     }
-    // Tyr's own files are not the project's changes.
-    const diff = { ...ctx.diff, files: ctx.diff.files.filter((f) => !isTyrPath(f.path)) };
-    ctx = { ...ctx, diff };
-    if (diff.files.length === 0) {
+    const totals = ctx.diff.totals;
+    if (totals.files === 0) {
         return { ...emptyOutcome(), status: "succeeded", summary: `Nothing to review: no ${what}.` };
     }
 
@@ -323,9 +327,8 @@ async function runReview(root: string, intent: Extract<RunIntent, { mode: "revie
     }
     const findings = applyThreshold(dedupeFindings(collected), settings.severity.threshold).sort(compareFindings);
     const serious = findings.filter((f) => f.severity === "error" || f.severity === "critical").length;
-    const files = diff.files.length;
     const summary =
-        `Reviewed ${what} (${files} file${files === 1 ? "" : "s"}, +${diff.totals.additions}/-${diff.totals.deletions})` +
+        `Reviewed ${what} (${totals.files} file${totals.files === 1 ? "" : "s"}, +${totals.additions}/-${totals.deletions})` +
         (findings.length === 0 ? ": no findings" : `: ${findings.length} finding${findings.length === 1 ? "" : "s"}`) +
         (llm ? "" : " (diff rules only)");
     return {
@@ -337,7 +340,7 @@ async function runReview(root: string, intent: Extract<RunIntent, { mode: "revie
         answer: null,
         model,
         notes,
-        data: { scope: intent.scope, base: ctx.base, files, llm },
+        data: { scope: intent.scope, base: ctx.base, files: totals.files, llm },
     };
 }
 
@@ -349,7 +352,8 @@ async function runAsk(root: string, question: string, options: ExecuteRunOptions
         ...(options.onText ? { onText: options.onText } : {}),
         ...(options.onAskStart ? { onRequest: options.onAskStart } : {}),
     });
-    const notes = result.reason ? [result.reason] : [];
+    // The reason is already the summary; a note would repeat it.
+    const notes: string[] = [];
     const answered = result.status === "ok";
     return {
         ...emptyOutcome(),
@@ -429,10 +433,6 @@ function emptyOutcome(): Outcome {
 
 function checkSummary(run: CheckRun): RunCheckSummary {
     return { kind: run.kind, command: run.command, outcome: run.outcome, exitCode: run.exitCode, durationMs: run.durationMs };
-}
-
-function isTyrPath(file: string): boolean {
-    return file === ".tyr" || file.startsWith(".tyr/");
 }
 
 function oneLine(text: string, max: number): string {
