@@ -11,6 +11,7 @@ import { emptyEngineState } from "../cli/engine/repo-state.js";
 import {
     applyThreshold,
     markRegressions,
+    withUntrackedFiles,
     readFindingsState,
     reviewPass,
     type ReviewDetectors,
@@ -115,7 +116,7 @@ describe("review pass", () => {
         }
     });
 
-    it("writes no report for a clean pass with nothing resolved, but one when things resolve", async () => {
+    it("reports only changes: new findings, resolved ones, not repeats or clean passes", async () => {
         const root = await makeProject({ ".tyr/state/.keep": "" });
         try {
             let findings: EngineFinding[] = [secret];
@@ -129,6 +130,7 @@ describe("review pass", () => {
                 diff: noDiff,
             };
             assert.ok((await reviewPass(root, base)).report, "findings → report");
+            assert.equal((await reviewPass(root, base)).report, null, "same findings again → no new report");
             findings = [];
             const resolved = await reviewPass(root, base);
             assert.equal(resolved.resolved.length, 1);
@@ -183,6 +185,18 @@ describe("review pass", () => {
             });
             assert.equal(called, false);
             await fs.access(path.join(root, ".tyr", "state", "findings.json"));
+        } finally {
+            await removeProject(root);
+        }
+    });
+
+    it("untracked text files are added to the diff as new-file patches", async () => {
+        const root = await makeProject({ "new.js": "const a = 1;\nconst b = 2;\n", "bin.dat": "x\u0000y" });
+        try {
+            const diff = await withUntrackedFiles(root, { ...noDiff.diff, untracked: ["new.js", "bin.dat", "gone.js"] });
+            assert.deepEqual(diff.files.map((f) => `${f.status} ${f.path} +${f.additions}`), ["A new.js +2"]);
+            assert.match(diff.patch, /\+\+\+ b\/new\.js\n@@ -0,0 \+1,2 @@\n\+const a = 1;\n\+const b = 2;\n/);
+            assert.equal(diff.totals.additions, 2);
         } finally {
             await removeProject(root);
         }

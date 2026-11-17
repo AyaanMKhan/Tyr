@@ -26,7 +26,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { appendEvent } from "../core/events.js";
-import { getDiff } from "../core/git-diff.js";
+import { getDiff, type DiffResult } from "../core/git-diff.js";
 import { getCurrentBranch, getHeadCommit } from "../core/git.js";
 import { FINDING_SEVERITIES, writeReport, type FindingSeverity, type WrittenReport } from "../core/reports.js";
 import { readConfig, readJsonObject, resolveTyrPaths, writeFileAtomic, toJsonDocument } from "../core/scaffold.js";
@@ -160,10 +160,53 @@ export interface ReviewPassResult {
 
 const DETECTOR_NAMES: Record<FindingSource, string> = { check: "check output", diff: "diff review", llm: "LLM review" };
 
+/** Untracked files larger than this are listed but not read into the patch. */
+export const MAX_UNTRACKED_FILE_BYTES = 256 * 1024;
+/** Total untracked text added to the patch. */
+export const MAX_UNTRACKED_TOTAL_BYTES = 2 * 1024 * 1024;
+
+/**
+ * git diff never shows untracked files, yet new files are exactly what an
+ * agent writes. Append each small, text, untracked file to the diff as a
+ * "new file" patch so the reviewers see its contents with line numbers.
+ */
+export async function withUntrackedFiles(root: string, diff: DiffResult): Promise<DiffResult> {
+    const untracked = diff.untracked ?? [];
+    if (untracked.length === 0) return diff;
+    const files = [...diff.files];
+    const totals = { ...diff.totals };
+    let patch = diff.patch;
+    let budget = MAX_UNTRACKED_TOTAL_BYTES;
+    for (const file of untracked) {
+        let text: string;
+        try {
+            const stat = await fs.stat(path.join(root, file));
+            if (!stat.isFile() || stat.size > MAX_UNTRACKED_FILE_BYTES || stat.size > budget) continue;
+            const buffer = await fs.readFile(path.join(root, file));
+            if (buffer.includes(0)) continue; // binary
+            text = buffer.toString("utf8");
+            budget -= buffer.length;
+        } catch {
+            continue;
+        }
+        const lines = text.length === 0 ? [] : text.replace(/\n$/, "").split("\n");
+        const header = `diff --git a/${file} b/${file}\nnew file mode 100644\n--- /dev/null\n+++ b/${file}\n`;
+        const body = lines.length === 0 ? "" : `@@ -0,0 +1,${lines.length} @@\n${lines.map((line) => `+${line}`).join("\n")}\n`;
+        if (patch.length > 0 && !patch.endsWith("\n")) patch += "\n";
+        patch += header + body;
+        files.push({ path: file, status: "A", additions: lines.length, deletions: 0, binary: false });
+        totals.files += 1;
+        totals.additions += lines.length;
+    }
+    return { ...diff, files, totals, patch };
+}
+
 async function workingTreeContext(root: string): Promise<ReviewContext | null> {
     const diff = await getDiff(root, { kind: "since", ref: "HEAD" }, { includeUntracked: true }).catch(() => null);
     if (diff === null) return null;
-    return { root, diff, base: "HEAD" };
+    // A truncated patch already lost its tail; appending would mislead the parsers.
+    const full = diff.truncated ? diff : await withUntrackedFiles(root, diff).catch(() => diff);
+    return { root, diff: full, base: "HEAD" };
 }
 
 function cap(findings: EngineFinding[]): EngineFinding[] {
@@ -211,9 +254,14 @@ export async function reviewPass(root: string, input: ReviewPassInput): Promise<
     const findings = applyThreshold(all, input.threshold);
     const regressions = findings.filter((f) => f.regression === true);
 
-    // A report only when there is something to say: findings, changes since last time, or failures to explain.
+    // A report only when there is something new to say: the first findings,
+    // new ones, resolved ones, or failures to explain. The same findings pass
+    // after pass (an idle loop over unchanged code) update findings.json and
+    // the journal but do not pile up identical reports.
     let report: WrittenReport | null = null;
-    const worthReporting = findings.length > 0 || marked.resolved.length > 0 || notes.length > 0;
+    const reportedBefore = new Set(applyThreshold(previous?.findings ?? [], input.threshold).map((f) => f.fingerprint));
+    const changed = findings.some((f) => !reportedBefore.has(f.fingerprint)) || marked.resolved.length > 0;
+    const worthReporting = changed || notes.length > 0;
     if (worthReporting) {
         try {
             const [config, branch, head] = await Promise.all([
