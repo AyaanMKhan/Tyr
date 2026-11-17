@@ -20,7 +20,7 @@ It is a TypeScript/Node CLI (`commander`, `figlet`) that builds to `dist/cli/ind
 
 **What works today:** `tyr init` works end to end. It finds the root, takes a git snapshot, scans files, profiles languages, frameworks and toolchain commands, writes `.tyr/` atomically and logs the run. I verified this by building a copy of the repo and running it: `npm ci && npm run build` succeeds, and `tyr init` / `tyr init --force` both produce the full `.tyr/` tree. Every other command is a one-line `console.log` stub. None of the actual product exists yet: the background process, observing Claude Code, the problem detection, the agents and the integrations.
 
-### Overall completion: about 75%
+### Overall completion: about 76%
 
 I weighted each component by how much it contributes to an end-to-end working Tyr, multiplied the weight by that component's completion, and added up the results (see the table in section 3). The groundwork is the most polished part: init, discovery, git snapshot and project profiling are high quality. But it carries less than a third of the weight. The core product (daemon, observation, detection, agents, integrations) is about 45% of the weight and is at 0%.
 
@@ -215,13 +215,14 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [ ] Decide what `pyproject.toml` is for. It is empty (0 bytes), and Python tooling may reject it. Either remove it or define the Python part
 - [ ] Verify `npm pack` / `npm i -g` install and that `tyr` runs from `PATH` on every OS
 
-### 2.21 Documentation: 10%, Partial
+### 2.21 Documentation: 60%, Partial
 - [x] One-line project description in `README.md` (being rewritten separately)
 - [x] Placeholder docs: `cli/CLI.md`, `cli/engine/ENGINE.md`, `agents/AGENTS.md`, `integrations/INTEGRATIONS.md`
-- [ ] README: install, quickstart, command reference, `.tyr/` layout
-- [ ] `cli/CLI.md`: document each command and its flags
-- [ ] Architecture doc: daemon, engine, agents, integrations, and data flow
-- [ ] `tyr.json` / `state.json` schema reference
+- [x] User documentation site in `docs/` (Mintlify: `docs.json` + 26 `.mdx` pages): introduction and why, quickstart, installation, core concepts; guides for Claude Code, `tyr watch`, checks, review and regressions, reports, team setup; settings, `tyr.json`, ignore patterns, environment variables; a page per command; `.tyr/` layout, event kinds, diff-review rules, supported tools, troubleshooting. Preview with `mint dev` in `docs/`
+- [x] Install, quickstart, command reference, `.tyr/` layout and `tyr.json` reference (in `docs/`)
+- [ ] Publish the docs site (Mintlify deployment, domain)
+- [ ] Trim README.md to an overview that links into `docs/`; parts of it are stale (status table, known limitations)
+- [ ] Architecture doc for contributors: daemon, engine, agents, integrations, and data flow
 - [ ] CONTRIBUTING and a CLAUDE.md for this repo
 
 ---
@@ -250,8 +251,8 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 18 | Tests | 3 | 0% | Not started | 0 |
 | 19 | Lint / format / CI | 1 | 0% | Not started | 0 |
 | 20 | Packaging and distribution | 2 | 30% | Partial | 0.6 |
-| 21 | Documentation | 2 | 10% | Partial | 0.2 |
-| | **Total** | **100** | | | **≈ 74.6 → 75%** |
+| 21 | Documentation | 2 | 60% | Partial | 1.2 |
+| | **Total** | **100** | | | **≈ 75.6 → 76%** |
 
 Discovery and the reporter are counted inside the `init` and CLI weights, because their only consumer today is `init`.
 

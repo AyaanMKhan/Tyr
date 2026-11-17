@@ -4,6 +4,8 @@
 
 Tyr is a command-line tool that sits **beside** your AI coding agent instead of acting as one. It builds and keeps an on-disk understanding of your repository: where the root is, what it is written in, how it builds, tests, lints and type-checks, and what git state it is in. The goal is to observe what an agent such as Claude Code is doing, check that work against that understanding, flag problems, and eventually coordinate corrective agents to fix them. Today Tyr ships the foundation for this: a complete `tyr init` that profiles a project and writes a `.tyr/` state directory. The observing, reviewing and coordinating layers are planned and are not built yet. This README separates the two throughout.
 
+**User documentation** lives in [`docs/`](docs/): installation, a quickstart, guides, configuration and a full CLI reference, written as a [Mintlify](https://mintlify.com) site (`cd docs && mint dev` to preview).
+
 ---
 
 ## Table of contents
