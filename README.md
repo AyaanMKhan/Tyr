@@ -949,7 +949,12 @@ Tyr/
 │   │   └── scaffold.ts          # Writes .tyr/, atomic JSON I/O, readConfig/readState/
 │   │                            #   writeState/appendLog accessors
 │   ├── engine/                  # Orchestration on top of core/ (see cli/engine/ENGINE.md)
-│   │   └── model.ts             # Shared contract: engine events, check runs, repo state
+│   │   ├── model.ts             # Shared contract: engine events, check runs, repo state
+│   │   ├── bus.ts               # Journal -> typed engine events, in-process fan-out
+│   │   ├── scheduler.ts         # When checks run: idle, commit, Claude Code Stop
+│   │   ├── executor.ts          # Runs a check: timeout, tree kill, output tail, outcome
+│   │   ├── repo-state.ts        # .tyr/state/engine.json: diff, last good runs, problems
+│   │   └── engine.ts            # Wires them together; started by the daemon
 │   └── ui/
 │       ├── event-view.ts        # One-line rendering of journal events for `tyr watch`
 │       └── reporter.ts          # Dependency-free animated console reporter

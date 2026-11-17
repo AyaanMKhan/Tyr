@@ -20,7 +20,7 @@ It is a TypeScript/Node CLI (`commander`, `figlet`) that builds to `dist/cli/ind
 
 **What works today:** `tyr init` works end to end. It finds the root, takes a git snapshot, scans files, profiles languages, frameworks and toolchain commands, writes `.tyr/` atomically and logs the run. I verified this by building a copy of the repo and running it: `npm ci && npm run build` succeeds, and `tyr init` / `tyr init --force` both produce the full `.tyr/` tree. Every other command is a one-line `console.log` stub. None of the actual product exists yet: the background process, observing Claude Code, the problem detection, the agents and the integrations.
 
-### Overall completion: about 46%
+### Overall completion: about 64%
 
 I weighted each component by how much it contributes to an end-to-end working Tyr, multiplied the weight by that component's completion, and added up the results (see the table in section 3). The groundwork is the most polished part: init, discovery, git snapshot and project profiling are high quality. But it carries less than a third of the weight. The core product (daemon, observation, detection, agents, integrations) is about 45% of the weight and is at 0%.
 
@@ -119,7 +119,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Global, per-user config (`~/.config/tyr`) for API keys and defaults (`cli/core/global-config.ts`: XDG / `%APPDATA%` / `TYR_CONFIG_HOME` locations, written atomically with mode 600, warns when a file holding the API key is group/world-readable)
 - [x] Env var overrides (`cli/core/env-settings.ts`): a `TYR_*` variable per setting, `ANTHROPIC_API_KEY` as the API-key fallback, and `TYR_QUIET` / `TYR_VERBOSE` / `TYR_JSON` for the global flags (flag > env > default). Empty values count as unset; bad values warn and are ignored
 
-### 2.8 Background process: `tyr start` (`cli/commands/start.ts`, `cli/core/daemon.ts`): 90%, Partial
+### 2.8 Background process: `tyr start` (`cli/commands/start.ts`, `cli/core/daemon.ts`): 100%, Done
 - [x] Choose the process model: a detached `node` child running a dedicated entry (`cli/daemon-main.ts`), not a hidden commander command
 - [x] Spawn a detached daemon and write a PID file to `.tyr/state/` (`startDaemon`, `daemon.pid` holds `{ pid, startedAt }`; stdout/stderr go to `.tyr/logs/daemon.log`)
 - [x] Prevent duplicates (detect a live PID or stale lock). Exclusive-create claim of the PID file, `process.kill(pid, 0)` with EPERM counted as alive, stale files replaced (`readDaemonStatus`)
@@ -127,7 +127,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Graceful shutdown on SIGINT/SIGTERM (and SIGBREAK on Windows). Persist `status: "stopped"`, remove the PID file
 - [x] Windows-compatible daemonizing (`detached`, `windowsHide`, no POSIX-only signals). Stop uses the request file because `SIGTERM` is a hard kill on Windows
 - [x] Recover after a crash: `status: "error"` plus a log entry on uncaught errors; `tyr start`/`tyr stop` clear the stale PID file a hard-killed daemon leaves behind
-- [ ] The daemon only follows git events into `tyr.log` today (`watchGit`); real work (observation, review) still has to be wired in (see 2.9, 2.10)
+- [x] Real work wired in: the daemon observes git, files and Claude Code (2.9) and runs the engine (2.10), which schedules and runs checks
 
 ### 2.9 Observation of Claude Code and the repo: `tyr watch` (`cli/commands/watch.ts`): 100%, Done
 - [x] File-system watcher on the project, using the discovery ignore rules and debounced (`cli/core/fs-watch.ts`, wired into `runDaemon`): recursive `fs.watch` with a polling fallback, the same ignore rules as discovery (built-ins, `.tyrignore`, `scan.extraIgnore`, `.gitignore`), one `fs.changed` event per burst, classified by stat against a startup snapshot
@@ -136,12 +136,14 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] IPC channel between the daemon and the CLI: the event journal `.tyr/state/events.jsonl` is the daemon → CLI channel, followed live by `followEvents()` (`cli/core/event-stream.ts`: byte-offset tail, partial lines, rotation without loss or duplicates, backlog replay, fs.watch + poll). CLI → daemon requests are atomic files in `.tyr/state/requests/` (`stop`, `ping` answered by a `daemon.pong` event; `pingDaemon()`, `cli/core/daemon-requests.ts`)
 - [x] `tyr watch` live view: replays recent history (`-n`, `--since`), then follows the journal live with a daemon status header (pid, uptime, ping); filters by `--source`, `--kind`, `--session`; `--json` streams NDJSON; one formatted line per event kind (`cli/ui/event-view.ts`), pairing Claude tool calls with their results
 
-### 2.10 Core engine / orchestration (`cli/engine/`): 0%, Not started
-- [ ] Event bus and model (file changed, commit made, Claude tool call, check result)
-- [ ] Repository state model: current diff, last good build or test, open problems
-- [ ] Scheduler for when to run checks (on idle, on commit, on Claude "Stop")
-- [ ] Execution engine: run detected commands from `tyr.json` with timeouts, output capture and exit-code handling
+### 2.10 Core engine / orchestration (`cli/engine/`): 100%, Done
+- [x] Event bus and model (file changed, commit made, Claude tool call, check result): `cli/engine/bus.ts` normalizes journal events into the typed `EngineEvent` union (`cli/engine/model.ts`) and fans them out (`EventBus`, `attachJournal`); malformed payloads become `other`, handler errors are isolated. `publish()` appends to the journal only, so every subscriber sees one ordering
+- [x] Repository state model: current diff, last good build or test, open problems (`cli/engine/repo-state.ts`, `.tyr/state/engine.json`): working-tree snapshot vs HEAD, last and last-good run per check, a `check:<kind>` problem opened by a failure and closed by a pass, flagged as a regression when the check passed before; updates under `withTyrLock`
+- [x] Scheduler for when to run checks (`cli/engine/scheduler.ts`): on idle after edits (5s), on commit (coalesced), on Claude Code `Stop` when files changed; idle runs are held while a Claude session is mid-turn; runs never overlap (one queued trigger, highest priority wins); file changes during and just after a run are treated as the checks' own output unless Claude was editing
+- [x] Execution engine: run detected commands from `tyr.json` with timeouts, output capture and exit-code handling (`cli/engine/executor.ts`): shell commands with `CI=1`, 10 min default timeout, process-tree kill (process group on POSIX, `taskkill /T` on Windows), 64 KiB output tails, outcomes passed/failed/timeout/error/cancelled (shell 127/126/9009 = error); only checks enabled in settings run
 - [x] Decide on the code layout: the engine lives in `cli/engine/` (policy) on top of `cli/core/` (infrastructure), inside `tsconfig.include`; the top-level `core/` placeholder is gone. Shared contract in `cli/engine/model.ts`, layout in `cli/engine/ENGINE.md`
+- [x] Wired into the daemon (`cli/engine/engine.ts`, started by `runDaemon`): runs enabled checks in order (build, typecheck, lint, test, format), skips test when the build fails, journals `check.started`/`check.passed`/`check.failed` (visible in `tyr watch`), cancels a running check on `tyr stop`
+- [ ] Follow-ups: findings/report output from check runs (2.11); show `engine.json` in `tyr status` (2.12); a manual `tyr check` trigger; per-check timeouts in settings; Windows tree-kill path untested
 
 ### 2.11 Problem detection / review: 0%, Not started
 - [ ] Run build, test, lint and typecheck after changes, then parse the results into findings
@@ -234,9 +236,9 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 5 | Project profiling | 5 | 90% | Partial | 4.5 |
 | 6 | `.tyr/` state and storage | 8 | 55% | Partial | 4.4 |
 | 7 | User configuration | 4 | 100% | Done | 4.0 |
-| 8 | Background process (`start`/`stop`) | 9 | 90% | Partial | 8.1 |
+| 8 | Background process (`start`/`stop`) | 9 | 100% | Done | 9.0 |
 | 9 | Observation (`watch`, Claude Code, fs, git events) | 9 | 100% | Done | 9.0 |
-| 10 | Core engine / orchestration | 9 | 0% | Not started | 0 |
+| 10 | Core engine / orchestration | 9 | 100% | Done | 9.0 |
 | 11 | Problem detection / review | 7 | 0% | Not started | 0 |
 | 12 | `tyr status` | 3 | 5% | Not started (stub) | 0.15 |
 | 13 | `tyr run` | 3 | 5% | Not started (stub) | 0.15 |
@@ -248,7 +250,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 19 | Lint / format / CI | 1 | 0% | Not started | 0 |
 | 20 | Packaging and distribution | 2 | 30% | Partial | 0.6 |
 | 21 | Documentation | 2 | 10% | Partial | 0.2 |
-| | **Total** | **100** | | | **≈ 46.0 → 46%** |
+| | **Total** | **100** | | | **≈ 64.0 → 64%** |
 
 Discovery and the reporter are counted inside the `init` and CLI weights, because their only consumer today is `init`.
 
