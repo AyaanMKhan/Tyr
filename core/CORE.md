@@ -1,1 +1,0 @@
-Orchestration + state + excution engine for Tyr. It is the core of the system and is responsible for managing the state of the system, executing commands, and orchestrating the flow of data between different components.

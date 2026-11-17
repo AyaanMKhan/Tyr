@@ -4,7 +4,7 @@ _Last assessed: 2026-10-04, at commit `9fe8758` ("feat: implement scaffolding fo
 
 ## 1. Goal and overall completion
 
-**What Tyr is meant to be** (from `README.md`, `core/CORE.md`, `agents/AGENTS.md`, `integrations/INTEGRATIONS.md` and the CLI command descriptions):
+**What Tyr is meant to be** (from `README.md`, `cli/engine/ENGINE.md`, `agents/AGENTS.md`, `integrations/INTEGRATIONS.md` and the CLI command descriptions):
 
 > A background engineering manager and reviewer. It watches what Claude Code is doing, understands the repository's state, detects problems (failing builds, tests, lint, risky changes), and eventually coordinates corrective agents.
 
@@ -136,12 +136,12 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] IPC channel between the daemon and the CLI: the event journal `.tyr/state/events.jsonl` is the daemon → CLI channel, followed live by `followEvents()` (`cli/core/event-stream.ts`: byte-offset tail, partial lines, rotation without loss or duplicates, backlog replay, fs.watch + poll). CLI → daemon requests are atomic files in `.tyr/state/requests/` (`stop`, `ping` answered by a `daemon.pong` event; `pingDaemon()`, `cli/core/daemon-requests.ts`)
 - [x] `tyr watch` live view: replays recent history (`-n`, `--since`), then follows the journal live with a daemon status header (pid, uptime, ping); filters by `--source`, `--kind`, `--session`; `--json` streams NDJSON; one formatted line per event kind (`cli/ui/event-view.ts`), pairing Claude tool calls with their results
 
-### 2.10 Core engine / orchestration (`core/`, currently only `core/CORE.md`): 0%, Not started
+### 2.10 Core engine / orchestration (`cli/engine/`): 0%, Not started
 - [ ] Event bus and model (file changed, commit made, Claude tool call, check result)
 - [ ] Repository state model: current diff, last good build or test, open problems
 - [ ] Scheduler for when to run checks (on idle, on commit, on Claude "Stop")
 - [ ] Execution engine: run detected commands from `tyr.json` with timeouts, output capture and exit-code handling
-- [ ] Decide on the code layout. The top-level `core/` is outside `tsconfig.include` (`cli/**/*.ts`) and overlaps with `cli/core/`
+- [x] Decide on the code layout: the engine lives in `cli/engine/` (policy) on top of `cli/core/` (infrastructure), inside `tsconfig.include`; the top-level `core/` placeholder is gone. Shared contract in `cli/engine/model.ts`, layout in `cli/engine/ENGINE.md`
 
 ### 2.11 Problem detection / review: 0%, Not started
 - [ ] Run build, test, lint and typecheck after changes, then parse the results into findings
@@ -214,7 +214,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 
 ### 2.21 Documentation: 10%, Partial
 - [x] One-line project description in `README.md` (being rewritten separately)
-- [x] Placeholder docs: `cli/CLI.md`, `core/CORE.md`, `agents/AGENTS.md`, `integrations/INTEGRATIONS.md`
+- [x] Placeholder docs: `cli/CLI.md`, `cli/engine/ENGINE.md`, `agents/AGENTS.md`, `integrations/INTEGRATIONS.md`
 - [ ] README: install, quickstart, command reference, `.tyr/` layout
 - [ ] `cli/CLI.md`: document each command and its flags
 - [ ] Architecture doc: daemon, engine, agents, integrations, and data flow

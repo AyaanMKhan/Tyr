@@ -71,7 +71,7 @@ Claude Code, Cursor, GitHub Copilot, Aider and Codex CLI each handle in-session 
 | **Memory is prose, not state** | Where persistent memory exists (`CLAUDE.md`, rules files, chat history), it is natural-language text for the model to read. No structured record says "last indexed at commit X, N files, status Y". | `.tyr/state/state.json` records lifecycle status, the last indexed commit, file count and run counters, so later runs can tell **what changed since last time**. *(Schema and writer implemented. Consumers planned.)* |
 | **State is tied to one tool and one session** | Context lives in a vendor's session, IDE workspace or conversation, and it is lost or fragmented when you switch tools, restart or run agents in parallel. | `.tyr/` lives at the **repository root**, is tool-agnostic plain JSON, and `tyr.json` is designed to be committed so a whole team shares one profile. *(Implemented.)* |
 | **No awareness of git state** | Agents often learn about branch, uncommitted changes, divergence from upstream or merge conflicts only when a command fails. | `tyr init` collects branch (including detached-HEAD labels), HEAD commit, staged, modified, untracked and conflicted files, ahead/behind counts and remotes. The HEAD hash is recorded for change detection. *(Implemented.)* |
-| **No coordination between agents** | When several agents or sessions work on one repo, none of them oversees the others. | Tyr is designed to **coordinate corrective agents**: detect a problem, then send a focused agent to fix it. *(Planned. See `agents/` and `core/`.)* |
+| **No coordination between agents** | When several agents or sessions work on one repo, none of them oversees the others. | Tyr is designed to **coordinate corrective agents**: detect a problem, then send a focused agent to fix it. *(Planned. See `agents/` and `cli/engine/`.)* |
 | **Opaque progress** | Long agent runs are a black box until they finish. | `tyr watch` streams what Tyr, git and Claude Code are doing, live. `tyr status` is still a stub. |
 
 In short, existing tools are **actors**. Tyr is meant to be the **supervisor**: persistent, independent of any one agent, and grounded in facts about the repository instead of in a conversation.
@@ -948,10 +948,11 @@ Tyr/
 │   │   ├── claude-transcripts.ts # Finds and summarizes ~/.claude/projects/*/<session>.jsonl
 │   │   └── scaffold.ts          # Writes .tyr/, atomic JSON I/O, readConfig/readState/
 │   │                            #   writeState/appendLog accessors
+│   ├── engine/                  # Orchestration on top of core/ (see cli/engine/ENGINE.md)
+│   │   └── model.ts             # Shared contract: engine events, check runs, repo state
 │   └── ui/
 │       ├── event-view.ts        # One-line rendering of journal events for `tyr watch`
 │       └── reporter.ts          # Dependency-free animated console reporter
-├── core/CORE.md                 # Planned: orchestration + state + execution engine
 ├── agents/AGENTS.md             # Planned: Tyr's AI agents
 ├── integrations/INTEGRATIONS.md # Planned: Claude Code, GitHub, Git integrations
 ├── .tyr/                        # Tyr's own profile of this repo (dogfooding)
@@ -982,9 +983,8 @@ findProjectRoot ──► isInitialized? ──► collectGitInfo ──► scan
 - `ui/reporter.ts` owns **every** line of user output. Exactly one spinner owns the current line at a time.
 - Modules communicate only through the types in `core/types.ts`, which the file calls "a fixed API".
 
-**Top-level `core/`, `agents/` and `integrations/`** contain only description files for now. Their stated intent:
+**Top-level `agents/` and `integrations/`** contain only description files for now. Their stated intent:
 
-- **`core/`**: "Orchestration + state + execution engine for Tyr… responsible for managing the state of the system, executing commands, and orchestrating the flow of data between different components."
 - **`agents/`**: the AI agents Tyr will coordinate.
 - **`integrations/`**: "Will support Claude Code, Github, Git etc."
 
