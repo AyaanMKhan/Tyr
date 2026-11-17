@@ -57,7 +57,8 @@
               "cli/watch",
               "cli/config",
               "cli/hooks",
-              "cli/status-run"
+              "cli/status",
+              "cli/run"
             ]
           }
         ]

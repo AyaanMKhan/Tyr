@@ -1,0 +1,17 @@
+---
+title: "tyr run"
+description: "Planned command: ask Tyr to act."
+---
+
+<Note>
+`tyr run` is registered but not implemented yet. It prints a placeholder line.
+</Note>
+
+```bash
+tyr run "review my last commit"
+tyr run "why is the build failing?"
+```
+
+Will send a request in plain language to Tyr's engine or an agent, with the project's context from `.tyr/`, then stream progress and save the result as a report.
+
+To see what Tyr already knows about the project, use [`tyr status`](/cli/status).

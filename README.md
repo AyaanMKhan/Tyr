@@ -74,7 +74,7 @@ Claude Code, Cursor, GitHub Copilot, Aider and Codex CLI each handle in-session 
 | **State is tied to one tool and one session** | Context lives in a vendor's session, IDE workspace or conversation, and it is lost or fragmented when you switch tools, restart or run agents in parallel. | `.tyr/` lives at the **repository root**, is tool-agnostic plain JSON, and `tyr.json` is designed to be committed so a whole team shares one profile. *(Implemented.)* |
 | **No awareness of git state** | Agents often learn about branch, uncommitted changes, divergence from upstream or merge conflicts only when a command fails. | `tyr init` collects branch (including detached-HEAD labels), HEAD commit, staged, modified, untracked and conflicted files, ahead/behind counts and remotes. The HEAD hash is recorded for change detection. *(Implemented.)* |
 | **No coordination between agents** | When several agents or sessions work on one repo, none of them oversees the others. | Tyr is designed to **coordinate corrective agents**: detect a problem, then send a focused agent to fix it. *(Planned. See `agents/` and `cli/engine/`.)* |
-| **Opaque progress** | Long agent runs are a black box until they finish. | `tyr watch` streams what Tyr, git and Claude Code are doing, live. `tyr status` is still a stub. |
+| **Opaque progress** | Long agent runs are a black box until they finish. | `tyr watch` streams what Tyr, git and Claude Code are doing, live. `tyr status` summarizes the project, background process, checks, open findings and drift since the last index. |
 
 In short, existing tools are **actors**. Tyr is meant to be the **supervisor**: persistent, independent of any one agent, and grounded in facts about the repository instead of in a conversation.
 
@@ -100,7 +100,8 @@ The code follows a few design principles that are already visible:
 | `tyr init --start` | Flag accepted. Prints a warning that the background process is not implemented yet. |
 | `tyr config` (`list`, `get`, `set`, `unset`, `path`) and the layered settings resolver | Implemented |
 | `tyr watch`: live view of the event journal (history replay, filters, NDJSON) | Implemented |
-| `tyr status`, `tyr run` | **Stubs**: each prints one placeholder line |
+| `tyr status`: project profile, background process, last run, checks, open findings, drift, `--json` | Implemented |
+| `tyr run` | **Stub**: prints one placeholder line |
 | Claude Code session observation (`tyr hooks`, see [Claude Code integration](#claude-code-integration)) | Implemented |
 | Background observer of Claude Code, problem detection, corrective agents | **Planned** |
 | Integrations (Claude Code, GitHub, Git) | **Planned** (`integrations/INTEGRATIONS.md`) |
@@ -376,13 +377,13 @@ $ tyr watch --json --source claude | jq -r 'select(.kind=="claude.tool_result" a
 
 ### `tyr status`
 
-**Status: stub.** It prints `Status of Project ...`.
+**Status: implemented.**
 
 ```
-tyr status
+tyr status [--no-scan] [--json] [--quiet] [--verbose]
 ```
 
-Intended purpose: *"Tells user what Tyr knows / is doing"*. The building blocks already exist: `readConfig()` and `readState()` in `cli/core/scaffold.ts`, and the git and discovery detectors, which are deliberately silent so `status` can reuse them.
+Shows the project profile (`tyr.json`), the background process (`state/daemon.pid`), the last run and recent reports (`state/state.json`, `reports/`), each check's latest result and open problems (`state/engine.json`), open findings (`state/findings.json`, falling back to the newest review report), and drift: HEAD and file count now versus the last `tyr init` (suggesting `tyr init --force` to re-index). `--no-scan` skips the drift file scan. Without `.tyr/` it suggests `tyr init` and exits non-zero. `--json` prints the `StatusReport` from `cli/core/status.ts`. Full reference: [`docs/cli/status.mdx`](docs/cli/status.mdx).
 
 ### `tyr config`
 
@@ -930,7 +931,7 @@ Tyr/
 │   │   ├── init.ts              # `tyr init` wiring: runs detectors, reports, scaffolds
 │   │   ├── start.ts             # stub
 │   │   ├── watch.ts             # `tyr watch`: replay + follow the event journal
-│   │   ├── status.ts            # stub
+│   │   ├── status.ts            # `tyr status`: what Tyr knows about the project
 │   │   ├── config.ts            # `tyr config` list/get/set/unset/path wiring
 │   │   ├── hooks.ts             # `tyr hook` (run by Claude Code), `tyr hooks` install/uninstall/status
 │   │   └── run.ts               # stub
@@ -1013,7 +1014,7 @@ These items come from stated intent in the code, command descriptions and the `*
 - [ ] **Change detection**: compare the current HEAD and file count with `lastIndexedCommit` / `lastScanFileCount` and re-index incrementally
 - [ ] **Review and problem detection**: run the recorded `commands.*` (build, test, lint, typecheck) against the agent's changes and write findings to `.tyr/reports/`
 - [ ] **Corrective agents**: dispatch focused agents (`agents/`) to fix detected problems, coordinated by the engine in `core/`
-- [ ] **`tyr status`**: show what Tyr knows (`tyr.json`), its lifecycle (`state.json`) and live git state
+- [x] **`tyr status`**: show what Tyr knows (`tyr.json`), its lifecycle (`state.json`) and live git state
 - [x] **`tyr watch`**: live view of the event journal (daemon, git, files, Claude Code)
 - [ ] **`tyr run <prompt>`**: on-demand instructions to Tyr, tracked via `runCount` / `lastRunAt`
 - [ ] **Integrations**: Claude Code, GitHub, Git
@@ -1043,7 +1044,7 @@ npx tsc --noEmit              # type-check only (the command Tyr detects for its
 
 ## Known limitations and quirks
 
-- Only `init` does real work. `start`, `watch`, `status` and `run` are placeholders, and `--start` only warns.
+- Only `init` does real work. `start`, `watch` and `run` are placeholders, and `--start` only warns.
 - The ASCII banner prints on every invocation, including `--version` and `--help`, and before machine-readable output.
 - The help header reads `Usage: Tyr` (the program name is set to `"Tyr"`), while the installed binary is `tyr`.
 - `tyr.json` is portable since schema v2 (`project.root` is stored as `"."`), but it still churns when someone re-runs `tyr init --force`: `git.headCommit`, `project.fileCount` and `initializedAt` change. Preferences in `settings.json` are not affected (see [What gets committed](#what-gets-committed)).

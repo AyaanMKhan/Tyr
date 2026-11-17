@@ -1,0 +1,269 @@
+---
+title: "tyr status"
+description: "Everything Tyr knows about the project, in one place."
+---
+
+```bash
+tyr status [options]
+```
+
+Shows what Tyr knows about the current project: the project profile, whether the background process is running, the last run and reports, the result of each check, open findings, and how far the repository has drifted since it was last indexed. Anything that went wrong while gathering this appears as a warning at the end.
+
+`tyr status` only reads. It never starts a check, writes to `.tyr/` or contacts the background process, so it's safe to run at any time, from a script or alongside `tyr watch`.
+
+## Options
+
+| Option | Effect |
+| --- | --- |
+| `--no-scan` | Skip the file scan used for drift. HEAD drift is still shown; the current file count is reported as unknown |
+
+The [global options](/cli/overview#global-options) apply too:
+
+| Option | Effect |
+| --- | --- |
+| `--json` | Print the full status report as one JSON object. See [JSON output](#json-output) |
+| `-q`, `--quiet` | Only print warnings and errors |
+| `--verbose` | Show extra detail in each section |
+| `-C`, `--cwd <dir>` | Report on the project in `<dir>` |
+
+## Examples
+
+```bash
+tyr status                                   # human-readable summary
+tyr status --no-scan                         # faster on very large repositories
+tyr status --json | jq .findings.counts      # open findings by severity
+tyr status --json | jq .daemon.running       # is the background process up?
+tyr status --json | jq '.drift.headChanged'  # has HEAD moved since the last index?
+```
+
+## What each section shows
+
+| Section | Shows | Read from |
+| --- | --- | --- |
+| Project | Name, languages, frameworks, package manager, workspace, configured commands, git branch and remote at init time, Tyr and schema versions | `.tyr/tyr.json` |
+| Background process | Running or not, pid, start time and uptime. Flags a stale pid file left by a crash or reboot | `.tyr/state/daemon.pid` (authoritative), cross-checked with `.tyr/state/state.json` |
+| Last run | Lifecycle status, run count, time of the last run, the most recent reports and how many exist | `.tyr/state/state.json` and `.tyr/reports/` |
+| Checks | The latest run of each check (build, typecheck, lint, test, format): outcome, exit code, duration, what triggered it, and when it last passed. Open problems, with a regression flag when the check used to pass | `.tyr/state/engine.json` |
+| Findings | Open findings from the last review, most severe first, with counts per severity and the number of regressions | `.tyr/state/findings.json`, or the newest review report as a fallback |
+| Drift | HEAD and file count now compared with the last index | `.tyr/state/state.json`, `.tyr/state/scan.json`, `.tyr/tyr.json`, git and a fresh file scan |
+| Warnings | Anything that could not be read or computed | All of the above |
+
+### Background process
+
+`daemon.pid` decides whether the process is running: Tyr checks that the recorded pid is alive. `state.json` also records a status (`initialized`, `running`, `stopped` or `error`) and a pid, but these are informational. If `state.json` says `running` and no process is alive, or the pid file points at a dead process, status shows a warning. `tyr start` replaces a stale pid file. See [start and stop](/cli/start-stop).
+
+### Checks
+
+Checks that have never run are left out. If the background process has never run a check, this section is empty. See the [checks guide](/guides/checks).
+
+### Findings
+
+The open findings come from `.tyr/state/findings.json`, the engine's record of its last review pass. It's the same list the engine compares against to spot regressions, so it always reflects the latest review.
+
+Reports in `.tyr/reports/` are only written when findings change, so the newest report can be older than the last review. Status falls back to the newest review report only when `findings.json` doesn't exist yet, for example on a machine where reports were copied in but the engine never ran.
+
+Your [`severity.threshold`](/configuration/settings) setting is applied, so status shows the same findings a report would. At most 20 findings are listed; the counts always cover all of them. See the [review guide](/guides/review) and [reports](/guides/reports).
+
+## Drift
+
+Drift tells you how much the repository has changed since Tyr last indexed it.
+
+<Note>
+Drift is measured against the last `tyr init` (including `tyr init --force`). The background process watches changes as they happen but does not move this baseline, so drift keeps growing until you re-index.
+</Note>
+
+| Measure | Compares |
+| --- | --- |
+| HEAD | The commit recorded at the last index with HEAD now, and how many commits HEAD has gained since |
+| File count | The number of files at the last index with the number a fresh scan finds now |
+| Files added / removed | The files in `.tyr/state/scan.json` with the files found now |
+
+The fresh scan uses the same rules as `tyr init`: `.gitignore`, `.tyrignore` and Tyr's built-in ignore list. It gives up after 10 seconds with a warning. On very large repositories, use `--no-scan` to skip it.
+
+Each baseline value has a fallback, so status can still say something about older or partly damaged `.tyr/` folders:
+
+| Value | Taken from, in order |
+| --- | --- |
+| Indexed HEAD | `state.json` `lastIndexedCommit`, then `tyr.json` `git.headCommit` |
+| Indexed at | `scan.json` `scannedAt`, then `tyr.json` `initializedAt` |
+| Indexed file count | `scan.json`, then `state.json` `lastScanFileCount`, then `tyr.json` `project.fileCount` |
+
+When HEAD or the file count has moved, status suggests re-indexing:
+
+```bash
+tyr init --force
+```
+
+This re-detects the project and resets the baseline while keeping your edited commands and state history. See [re-initializing](/cli/init#re-initializing).
+
+## Not initialized
+
+If there is no `.tyr/` directory, or `.tyr/` has no `tyr.json`, status says the project isn't initialized, suggests `tyr init`, and exits non-zero. See [exit codes](/cli/overview#exit-codes).
+
+```bash
+tyr init
+```
+
+A `tyr.json` that exists but is corrupt still counts as initialized: status shows what it can and reports the problem as a warning.
+
+## Warnings
+
+Status never fails because one file is missing or damaged. A corrupt or newer-version file, a git command that times out, or a slow file scan each costs only its own section, which shows as unknown, and adds a warning that names the source. Common ones:
+
+| Warning | What to do |
+| --- | --- |
+| `state.json is missing` | Run `tyr init --force` to recreate it |
+| `stale PID file` | The background process died. Run `tyr start` |
+| `state.json says running, but no background process is alive` | The process exited without updating its state. Run `tyr start` |
+| `file scan took longer than 10s` | Use `--no-scan`, or add large folders to [`.tyrignore`](/configuration/ignore-patterns) |
+| `findings.json is unreadable or from another version` | Status shows the newest review report instead. The next review rewrites the file |
+
+## JSON output
+
+`tyr status --json` prints one JSON object, the status report. Field names are a stable contract: new fields may be added, but a field is only renamed or removed together with a bump of `statusVersion`.
+
+Switch on `initialized` first. The two shapes share `statusVersion`, `initialized`, `root` and `collectedAt`.
+
+### Not initialized
+
+```json
+{
+  "statusVersion": 1,
+  "initialized": false,
+  "root": "/home/me/app",
+  "collectedAt": "2026-11-17T10:00:00.000Z",
+  "reason": "no-tyr-dir",
+  "suggestion": "tyr init"
+}
+```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `statusVersion` | number | Report format version, currently `1` |
+| `initialized` | `false` | |
+| `root` | string | Absolute directory that was inspected |
+| `collectedAt` | string | ISO-8601 time the report was made |
+| `reason` | `"no-tyr-dir"` \| `"no-config"` | No `.tyr/` directory, or `.tyr/` without `tyr.json` |
+| `suggestion` | `"tyr init"` | The command to run next |
+
+### Initialized
+
+```json
+{
+  "statusVersion": 1,
+  "initialized": true,
+  "root": "/home/me/app",
+  "collectedAt": "2026-11-17T10:00:00.000Z",
+  "project": { "name": "app", "primaryLanguage": "TypeScript", "...": "..." },
+  "state": { "status": "running", "runCount": 12, "...": "..." },
+  "daemon": { "running": true, "pid": 4242, "startedAt": "2026-11-17T08:00:00.000Z", "uptimeMs": 7200000, "stale": false },
+  "lastRun": { "lastRunAt": "2026-11-17T09:58:00.000Z", "runCount": 12, "recentReports": [], "reportCount": 0 },
+  "findings": { "source": "engine", "total": 2, "counts": { "critical": 0, "error": 1, "warning": 1, "info": 0 }, "...": "..." },
+  "engine": { "healthy": false, "checks": [], "problems": [], "...": "..." },
+  "drift": { "headChanged": true, "commitsSinceIndex": 3, "fileCountDelta": 5, "...": "..." },
+  "warnings": []
+}
+```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `statusVersion` | number | Report format version, currently `1` |
+| `initialized` | `true` | |
+| `root` | string | Absolute project root, the directory holding `.tyr/` |
+| `collectedAt` | string | ISO-8601 time the report was made |
+| `project` | object \| null | Project profile from `tyr.json`. `null` when it's corrupt or invalid |
+| `state` | object \| null | `state.json`. `null` when it's missing, corrupt or invalid |
+| `daemon` | object | Background process |
+| `lastRun` | object | Run counters and recent reports |
+| `findings` | object | Open findings |
+| `engine` | object \| null | Summary of `engine.json`. `null` when the engine never wrote one |
+| `drift` | object | Changes since the last index |
+| `warnings` | array | `{ source, message }` for each problem, in the order found. Empty when all is well |
+
+Whenever a value can't be determined, it's `null` and a warning explains why.
+
+<AccordionGroup>
+  <Accordion title="project">
+    | Field | Meaning |
+    | --- | --- |
+    | `name` | Project name (the root directory's name) |
+    | `root` | Project root as recorded in `tyr.json` |
+    | `primaryLanguage` | Most common language, or `null` |
+    | `languages` | `[{ name, fileCount, percentage }]`, most files first. `percentage` is 0 to 100 |
+    | `frameworks` | Detected frameworks |
+    | `packageManager` | e.g. `npm`, or `null` |
+    | `workspace` | `{ tool, packages }` for a monorepo, else `null` |
+    | `commands` | One key per slot (`build`, `typecheck`, `lint`, `test`, `format`): `{ command, tool, source }` or `null`. `source` is `"user"` for commands you edited, else `"detected"` |
+    | `git` | `{ isRepo, branch, remote }` as of `tyr init` |
+    | `docs` | `{ readme, claudeMd }` paths, or `null` |
+    | `tyrVersion` | Tyr version that wrote `tyr.json` |
+    | `configVersion` | `tyr.json` schema version, after migration |
+    | `initializedAt` | ISO-8601 time of `tyr init` |
+    | `migrated` | Migration steps applied while reading an older `tyr.json`. Empty when current |
+  </Accordion>
+  <Accordion title="state">
+    | Field | Meaning |
+    | --- | --- |
+    | `status` | `"initialized"`, `"running"`, `"stopped"` or `"error"` as recorded. Use `daemon.running` for liveness |
+    | `createdAt`, `updatedAt` | ISO-8601 |
+    | `runCount` | Number of runs |
+    | `lastRunAt` | ISO-8601, or `null` |
+    | `pid`, `startedAt` | As recorded in `state.json`. Informational; `daemon` is authoritative |
+  </Accordion>
+  <Accordion title="daemon">
+    | Field | Meaning |
+    | --- | --- |
+    | `running` | Whether the background process is alive |
+    | `pid` | Its pid, or `null` |
+    | `startedAt` | ISO-8601 start time from the pid file, or `null` |
+    | `uptimeMs` | Milliseconds since `startedAt`. `null` unless running with a known start time |
+    | `stale` | A pid file exists but its process is gone |
+  </Accordion>
+  <Accordion title="lastRun">
+    | Field | Meaning |
+    | --- | --- |
+    | `lastRunAt` | From `state.json`, or `null` |
+    | `runCount` | From `state.json`; `0` when it's unavailable |
+    | `recentReports` | Up to 5 newest reports: `{ id, kind, title, createdAt, summary, findingCounts, jsonFile }`. `jsonFile` is the absolute path of the JSON report; the Markdown file sits next to it |
+    | `reportCount` | Total reports on disk |
+  </Accordion>
+  <Accordion title="findings">
+    | Field | Meaning |
+    | --- | --- |
+    | `source` | `"engine"` (`findings.json`), `"report"` (newest review report, used when `findings.json` doesn't exist) or `"none"` (neither exists; everything below is empty) |
+    | `updatedAt` | When that review or report was produced, or `null` |
+    | `reportId` | Report written for that review, or `null` |
+    | `threshold` | Severity threshold applied, or `null` when the source was already filtered (a report) |
+    | `total` | Findings at or above the threshold |
+    | `counts` | `{ critical, error, warning, info }` |
+    | `regressions` | How many findings are regressions |
+    | `items` | Up to 20 findings, most severe first: `{ severity, title, detail?, file?, line?, rule?, source?, checkKind?, regression?, fingerprint? }`. `source` is the detector (`"check"`, `"diff"` or `"llm"`); it's absent for findings read from a report |
+    | `truncated` | `true` when `items` was cut short; `total` says how many exist |
+  </Accordion>
+  <Accordion title="engine">
+    | Field | Meaning |
+    | --- | --- |
+    | `updatedAt` | Last time the engine wrote `engine.json` |
+    | `healthy` | `true` when no check is failing |
+    | `checks` | Latest run per check, in the order build, typecheck, lint, test, format; checks that never ran are omitted. Each is `{ kind, command, outcome, exitCode, startedAt, finishedAt, durationMs, trigger, headCommit, lastPassedAt }`. `outcome` is `passed`, `failed`, `timeout`, `error` or `cancelled`. `trigger` is `idle`, `commit`, `claude-stop`, `manual`, `startup` or `null`. `lastPassedAt` is `null` if the check never passed |
+    | `problems` | Checks failing now, oldest first: `{ key, kind, title, detail, firstSeenAt, lastSeenAt, regression }`. `key` looks like `"check:test"`; `detail` is a short excerpt of the output |
+    | `workingTree` | Uncommitted changes at the engine's last pass: `{ headCommit, branch, filesChanged, additions, deletions, untracked, takenAt }`, or `null` |
+  </Accordion>
+  <Accordion title="drift">
+    | Field | Meaning |
+    | --- | --- |
+    | `isRepo` | Whether the project is a git work tree now |
+    | `indexedHead` | HEAD at the last index, or `null` |
+    | `currentHead` | HEAD now. `null` outside a repository, on a branch with no commits, or when git failed |
+    | `currentBranch` | Current branch or a detached-HEAD label, or `null` |
+    | `headChanged` | `true` or `false` when both heads are known, else `null` |
+    | `commitsSinceIndex` | Commits on HEAD that aren't on `indexedHead`. `null` when it can't be computed, for example when the indexed commit no longer exists |
+    | `indexedAt` | When the index was taken, or `null` |
+    | `indexedFileCount` | Files at the last index, or `null` |
+    | `currentFileCount` | Files found now. `null` with `--no-scan`, or when the scan timed out or failed |
+    | `fileCountDelta` | `currentFileCount - indexedFileCount`, or `null` |
+    | `filesAdded`, `filesRemoved` | Files new or gone since `scan.json`. `null` without `scan.json` or without a scan |
+  </Accordion>
+</AccordionGroup>
+
+`warnings[].source` is one of `config`, `state`, `daemon`, `reports`, `findings`, `engine`, `drift` or `settings`.
