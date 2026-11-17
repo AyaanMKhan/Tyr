@@ -11,7 +11,9 @@ checks, runs them, and keeps a model of the repository's health.
 - `cli/core/` is **infrastructure**: storage under `.tyr/`, git, watchers, the
   event journal, settings. Modules there know nothing about the engine.
 - `cli/engine/` is **policy**: it consumes `cli/core/` and decides what to do.
-  It may import from `cli/core/`; `cli/core/` never imports from `cli/engine/`.
+  It may import from `cli/core/`; `cli/core/` never imports from `cli/engine/`,
+  with one exception: `cli/core/daemon.ts` hosts the engine (`startEngine`) for
+  the lifetime of the background process.
 
 Both are inside `tsconfig.include` (`cli/**/*.ts`). The old top-level `core/`
 placeholder directory is gone.

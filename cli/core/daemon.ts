@@ -28,6 +28,7 @@ import { fileURLToPath } from "node:url";
 import { appendLog, readState, resolveTyrPaths, toJsonDocument, writeFileAtomic } from "./scaffold.js";
 import { isProcessAlive } from "./lock.js";
 import { markError, markRunning, markStopped } from "./state-store.js";
+import { startEngine, type Engine } from "../engine/engine.js";
 import { describeError, watchGit, type GitWatchEvent, type GitWatcher } from "./git-watch.js";
 import { appendEvent, type TyrEventInput } from "./events.js";
 import { watchFiles, type FileWatcher } from "./fs-watch.js";
@@ -357,6 +358,7 @@ export async function runDaemon(root: string): Promise<void> {
     const daemonPaths = resolveDaemonPaths(absRoot);
     let watcher: GitWatcher | null = null;
     let fileWatcher: FileWatcher | null = null;
+    let engine: Engine | null = null;
     let timer: NodeJS.Timeout | null = null;
     let exiting = false;
 
@@ -402,6 +404,8 @@ export async function runDaemon(root: string): Promise<void> {
         if (timer !== null) clearInterval(timer);
         watcher?.close();
         fileWatcher?.close();
+        // Cancels a check in progress (killing its processes) before we exit.
+        await engine?.close().catch(() => undefined);
         // Held batches go out now rather than vanish with the process.
         observer.close();
         await Promise.allSettled([...pending]);
@@ -495,6 +499,18 @@ export async function runDaemon(root: string): Promise<void> {
     }
     watcher = git;
     fileWatcher = files;
+
+    // The engine follows the journal the watchers write to and runs the
+    // project's checks when the scheduler says so (cli/engine/ENGINE.md).
+    const started = await startEngine(absRoot).catch((error: unknown) => {
+        void appendLog(absRoot, "error", `Engine could not start: ${describeError(error)}`);
+        return null;
+    });
+    if (exiting) {
+        await started?.close();
+        return;
+    }
+    engine = started;
 
     journal({
         source: "tyr",
