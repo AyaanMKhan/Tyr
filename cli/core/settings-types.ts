@@ -28,6 +28,13 @@ export interface TyrSettings {
     /** Findings below this severity are not reported. */
     severity: { threshold: Severity };
     agent: { permission: AgentPermission };
+    /** What runs after each check pass (cli/engine/review.ts). */
+    review: {
+        /** Heuristic review of the working-tree diff: secrets, deleted tests, risky patterns. */
+        diff: boolean;
+        /** Model review of the diff against CLAUDE.md / README. Costs API calls; off by default. */
+        llm: boolean;
+    };
     /** Where findings are sent, e.g. "terminal", "desktop", "webhook:https://…". */
     notifications: { targets: string[] };
     ai: {
@@ -42,6 +49,7 @@ export const DEFAULT_SETTINGS: TyrSettings = {
     checks: { build: true, test: true, lint: true, format: false, typecheck: true },
     severity: { threshold: "warning" },
     agent: { permission: "suggest" },
+    review: { diff: true, llm: false },
     notifications: { targets: ["terminal"] },
     ai: { model: "claude-opus-5-5", apiKey: null },
 };
@@ -79,6 +87,8 @@ export const SETTING_KEYS: readonly SettingKeySpec[] = [
     { key: "checks.typecheck", type: "boolean", env: "TYR_CHECKS_TYPECHECK", description: "Run the detected type checker" },
     { key: "severity.threshold", type: "enum", values: SEVERITIES, env: "TYR_SEVERITY", description: "Lowest severity that gets reported" },
     { key: "agent.permission", type: "enum", values: AGENT_PERMISSIONS, env: "TYR_AGENT_PERMISSION", description: "What the reviewing agent may do" },
+    { key: "review.diff", type: "boolean", env: "TYR_REVIEW_DIFF", description: "Review the working-tree diff for secrets, deleted tests and risky patterns" },
+    { key: "review.llm", type: "boolean", env: "TYR_REVIEW_LLM", description: "Ask the model to review the diff on Claude Code Stop and on commit (needs ai.apiKey)" },
     { key: "notifications.targets", type: "string-list", env: "TYR_NOTIFY", description: "Comma-separated notification targets" },
     { key: "ai.model", type: "string", env: "TYR_MODEL", description: "Model used for reviews" },
     { key: "ai.apiKey", type: "nullable-string", env: "TYR_API_KEY", secret: true, description: "API key (global config or env only)" },

@@ -41,6 +41,8 @@ test("every settings key is read from its own variable", () => {
         TYR_CHECKS_TYPECHECK: "off",
         TYR_SEVERITY: "error",
         TYR_AGENT_PERMISSION: "read-only",
+        TYR_REVIEW_DIFF: "false",
+        TYR_REVIEW_LLM: "true",
         TYR_NOTIFY: "terminal, desktop",
         TYR_MODEL: " claude-sonnet-5 ",
         TYR_API_KEY: "sk-test",
@@ -50,6 +52,7 @@ test("every settings key is read from its own variable", () => {
         checks: { build: false, test: true, lint: false, format: true, typecheck: false },
         severity: { threshold: "error" },
         agent: { permission: "read-only" },
+        review: { diff: false, llm: true },
         notifications: { targets: ["terminal", "desktop"] },
         ai: { model: "claude-sonnet-5", apiKey: "sk-test" },
     });
