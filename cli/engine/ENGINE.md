@@ -28,6 +28,8 @@ placeholder directory is gone.
 | `repo-state.ts`   | Repository state model: current diff, last result and last good run per check, open problems. Persisted to `.tyr/state/engine.json`. |
 | `scheduler.ts`    | Decides when checks run: on idle after edits, on commit, on Claude Code `Stop`. |
 | `findings.ts`     | Findings contract for problem detection: `EngineFinding`, fingerprints, ordering. |
+| `check-parsers.ts` | Parses check output (tsc, ESLint, node:test, Jest/Vitest, pytest, cargo, Go, ruff/flake8/mypy, generic) into findings. |
+| `diff-review.ts`  | Heuristic diff review: secrets, deleted or skipped tests, risky patterns, oversized changes. Pure, rule registry. |
 | `llm-review.ts`   | Model review of a diff against CLAUDE.md, README and the tyr.json profile (`@anthropic-ai/sdk`, injectable client); never throws, skips without a key. |
 | `review.ts`       | Review pass: merges detector findings, marks regressions/new/resolved against the last pass (`.tyr/state/findings.json`), applies the severity threshold, writes a `review` report and journals `review.completed`. |
 | `engine.ts`       | Wires bus + scheduler + executor + repo state together; started by the daemon. |
