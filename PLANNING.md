@@ -20,7 +20,7 @@ It is a TypeScript/Node CLI (`commander`, `figlet`) that builds to `dist/cli/ind
 
 **What works today:** `tyr init` works end to end. It finds the root, takes a git snapshot, scans files, profiles languages, frameworks and toolchain commands, writes `.tyr/` atomically and logs the run. I verified this by building a copy of the repo and running it: `npm ci && npm run build` succeeds, and `tyr init` / `tyr init --force` both produce the full `.tyr/` tree. Every other command is a one-line `console.log` stub. None of the actual product exists yet: the background process, observing Claude Code, the problem detection, the agents and the integrations.
 
-### Overall completion: about 76%
+### Overall completion: about 78%
 
 I weighted each component by how much it contributes to an end-to-end working Tyr, multiplied the weight by that component's completion, and added up the results (see the table in section 3). The groundwork is the most polished part: init, discovery, git snapshot and project profiling are high quality. But it carries less than a third of the weight. The core product (daemon, observation, detection, agents, integrations) is about 45% of the weight and is at 0%.
 
@@ -153,12 +153,13 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Findings model with severity, persisted to `reports/` (`cli/engine/findings.ts`: `EngineFinding` extends the reports.ts `Finding` with source and fingerprint); a `review` report is written when findings change, filtered by `severity.threshold`; `review.completed` is journaled for `tyr watch`
 - [ ] Follow-ups: per-path rule exclusions for diff review (test fixtures trip the risky-pattern rules); show findings in `tyr status` (2.12); notify on new regressions (2.15)
 
-### 2.12 `tyr status` (`cli/commands/status.ts`): 5%, Not started (stub only)
-- [x] Command registered (prints a placeholder)
-- [ ] Read `tyr.json` and `state.json` and print the project profile, daemon status, last run and open findings
-- [ ] Detect "not initialized" and suggest `tyr init`
-- [ ] Show drift: HEAD and file count against the last index
-- [ ] `--json` output
+### 2.12 `tyr status` (`cli/commands/status.ts`): 100%, Done
+- [x] Command registered
+- [x] Read `tyr.json` and `state.json` and print the project profile, daemon status, last run and open findings: `collectStatus()` in `cli/core/status.ts` (never throws; load problems become `warnings`), also summarizing `engine.json` checks/problems and findings from `.tyr/state/findings.json` (falling back to the newest review report); rendered by `cli/ui/status-view.ts` (compact by default, `--verbose` for more)
+- [x] Detect "not initialized" and suggest `tyr init` (exit 3; a corrupt `tyr.json` exits 4)
+- [x] Show drift: HEAD and file count against the last index (commits since index, files added/removed; `--no-scan` skips the file scan)
+- [x] `--json` output: the versioned `StatusReport` (`statusVersion: 1`)
+- [ ] Follow-ups: nothing updates `state.lastIndexedCommit` after `tyr init`, so drift is always against the last init
 
 ### 2.13 `tyr run <prompt>` (`cli/commands/run.ts`): 5%, Not started (stub only)
 - [x] Command registered with a required `<prompt>` argument (echoes it)
@@ -242,7 +243,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 9 | Observation (`watch`, Claude Code, fs, git events) | 9 | 100% | Done | 9.0 |
 | 10 | Core engine / orchestration | 9 | 100% | Done | 9.0 |
 | 11 | Problem detection / review | 7 | 100% | Done | 7.0 |
-| 12 | `tyr status` | 3 | 5% | Not started (stub) | 0.15 |
+| 12 | `tyr status` | 3 | 100% | Done | 3.0 |
 | 13 | `tyr run` | 3 | 5% | Not started (stub) | 0.15 |
 | 14 | Agents | 5 | 0% | Not started | 0 |
 | 15 | Integrations (Claude Code, GitHub) | 5 | 0% | Not started | 0 |
@@ -252,7 +253,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 19 | Lint / format / CI | 1 | 0% | Not started | 0 |
 | 20 | Packaging and distribution | 2 | 30% | Partial | 0.6 |
 | 21 | Documentation | 2 | 60% | Partial | 1.2 |
-| | **Total** | **100** | | | **≈ 75.6 → 76%** |
+| | **Total** | **100** | | | **≈ 78.5 → 78%** |
 
 Discovery and the reporter are counted inside the `init` and CLI weights, because their only consumer today is `init`.
 
@@ -282,7 +283,7 @@ No component is 100% done. These individual pieces are complete and work as inte
 - **Error handling and logging:** no typed errors or levels, and warnings and errors go to stdout.
 - **Packaging:** the package name cannot be published, and `files`, `engines`, `prepare` and metadata are missing. `pyproject.toml` is empty.
 - **Docs:** placeholders only.
-- **`status` / `run`:** registered stubs that only print a line.
+- **`run`:** registered stub that only prints a line.
 
 ---
 
