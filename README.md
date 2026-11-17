@@ -227,7 +227,7 @@ Inspects the current project and creates the `.tyr/` directory at the project ro
 | `-f`, `--force` | Re-initialize even if `.tyr/tyr.json` already exists. Detection runs again and refreshes everything it owns (git snapshot, file and language counts, ignore lists, root, versions), but keeps what you changed: commands you edited in `tyr.json`, keys Tyr does not recognise, and state history (`createdAt`, `runCount`, `lastRunAt`, `status` and any extra fields). Other files in `state/` are left alone, and the log is **appended** to. |
 | `--reset` | Re-initialize from scratch (implies `--force`). Overwrites `tyr.json` and `state/state.json`, discarding command edits, extra keys and state history. `scan.extraIgnore` is still kept. `.tyr/settings.json` is never touched: it holds your preferences, not detection output. |
 | `-s`, `--start` | Initialize, then start the background process. **The background process is not implemented yet.** Tyr finishes `init`, prints a warning and writes a `WARN` line to the log. |
-| `--gitignore` | Add `/.tyr/` to the project's root `.gitignore` without asking (creating the file if needed). Does nothing if `.tyr` is already ignored. |
+| `--gitignore` | Keep all of `.tyr/` out of git: add `/.tyr/` to the project's root `.gitignore` without asking (creating the file if needed). Does nothing if `.tyr` is already ignored. Without it, `tyr.json` and `settings.json` are meant to be committed (see [What gets committed](#what-gets-committed)). |
 | `--no-gitignore` | Never read, change or ask about the root `.gitignore`. |
 | `--no-color` | Disable ANSI colours. Colour is also turned off automatically when `NO_COLOR` is set, when `TERM=dumb`, or when stdout is not a TTY. |
 | `-h`, `--help` | Show help for `init`. |
@@ -632,7 +632,7 @@ Before merging, any existing `tyr.json` / `state.json` is run through the schema
 
 `init.ts` then appends a second `tyr init completed - N files indexed` line. Log writes are best-effort: a failed log write never fails a command.
 
-Finally `init` checks the project's root `.gitignore` (see [What gets committed](#what-gets-committed)). If it does not already ignore `.tyr` (any of `/.tyr/`, `.tyr/`, `.tyr`, `/.tyr`, optionally with `*` or `**`), then inside a git repo on an interactive terminal it asks `Add /.tyr/ to the project's .gitignore? (Y/n)`. With no terminal (piped, CI, `--json`) it only prints a hint to use `--gitignore`. Outside a git repo it stays silent. The entry is appended under a `# Tyr` comment, keeping the file's line endings, and written atomically. `--json` reports the outcome as `"gitignore": "added" | "present" | "skipped" | "declined"`.
+Finally `init` checks the project's root `.gitignore` (see [What gets committed](#what-gets-committed)). If it does not already ignore `.tyr` (any of `/.tyr/`, `.tyr/`, `.tyr`, `/.tyr`, optionally with `*` or `**`), then inside a git repo on an interactive terminal it explains that `.tyr/tyr.json` and `.tyr/settings.json` are meant to be committed (runtime output is already ignored by `.tyr/.gitignore`) and asks `Keep all of .tyr/ out of git instead (add /.tyr/ to .gitignore)? (y/N)`. The default, pressing Enter, leaves the root `.gitignore` alone so the config can be shared. With no terminal (piped, CI, `--json`) it only prints a hint: commit those files, or rerun with `--gitignore` to keep `.tyr/` local. Outside a git repo it stays silent. The entry is appended under a `# Tyr` comment, keeping the file's line endings, and written atomically. `--json` reports the outcome as `"gitignore": "added" | "present" | "skipped" | "declined"`.
 
 ---
 
@@ -674,12 +674,12 @@ The "Committed?" column describes the design: `.tyr/.gitignore` already keeps `s
 
 ### What gets committed
 
-Since config schema v2, `tyr.json` is **portable**: `project.root` is stored as `"."` (the directory containing `.tyr/`) and resolved to the absolute path only in memory when Tyr reads the file, so the committed copy is identical on every machine. Sharing `tyr.json` and `.tyr/.gitignore` is the intended setup. The remaining churn is `git.headCommit`, `project.fileCount` and `initializedAt`, which change when someone re-runs `tyr init --force`. That churn is confined to the detection snapshot: preferences live in `settings.json`, which init never rewrites (see [Settings](#settings-settingsjson)). Teams that want Tyr purely local can still ignore the whole directory:
+Since config schema v2, `tyr.json` is **portable**: `project.root` is stored as `"."` (the directory containing `.tyr/`) and resolved to the absolute path only in memory when Tyr reads the file, so the committed copy is identical on every machine. Sharing `tyr.json`, `settings.json` and `.tyr/.gitignore` is the intended setup, and what `tyr init` does unless you ask otherwise. The remaining churn is `git.headCommit`, `project.fileCount` and `initializedAt`, which change when someone re-runs `tyr init --force`. That churn is confined to the detection snapshot: preferences live in `settings.json`, which init never rewrites (see [Settings](#settings-settingsjson)). Teams that want Tyr purely local can still ignore the whole directory:
 
 | Choice | Root `.gitignore` | What git tracks |
 |---|---|---|
-| Ignore everything (default offer, `--gitignore`) | `/.tyr/` | Nothing under `.tyr/`. Every clone runs its own `tyr init`. |
-| Share the profile (decline, or `--no-gitignore`) | no entry | `.tyr/tyr.json`, `.tyr/settings.json` and `.tyr/.gitignore`. `state/`, `logs/` and `reports/` stay ignored by `.tyr/.gitignore`. |
+| Share the profile (default: answer no, or `--no-gitignore`) | no entry | `.tyr/tyr.json`, `.tyr/settings.json` and `.tyr/.gitignore`. `state/`, `logs/` and `reports/` stay ignored by `.tyr/.gitignore`. |
+| Ignore everything (answer yes, or `--gitignore`) | `/.tyr/` | Nothing under `.tyr/`. Every clone runs its own `tyr init` and keeps its own settings. |
 
 A narrower root entry such as `.tyr/state/` would add nothing, since `.tyr/.gitignore` already covers the runtime output. If you share `tyr.json`, expect it to change in diffs when someone re-runs `tyr init --force`.
 

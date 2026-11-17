@@ -23,7 +23,7 @@ import { countPatterns, loadUserIgnorePatterns, TYR_IGNORE_FILE } from "../core/
 import { buildScanManifest, saveScanManifest } from "../core/scan-diff.js";
 import { verifyCommands } from "../core/verify-commands.js";
 import { CLEAR_TOKEN, COMMAND_SLOTS, editCommands } from "../core/edit-commands.js";
-import { applyGitignorePolicy, TYR_GITIGNORE_ENTRY, type GitignoreOutcome } from "../core/root-gitignore.js";
+import { applyGitignorePolicy, GITIGNORE_MESSAGES, type GitignoreOutcome } from "../core/root-gitignore.js";
 import { TYR_VERSION } from "../core/version.js";
 import { EXIT_CODES } from "../core/errors.js";
 import { printJson, readGlobals, verbosityOf, type GlobalOptions } from "../core/globals.js";
@@ -65,7 +65,7 @@ export function registerInitCommand(program: Command) {
         .option("--no-color", "Disable colored output")
         .option("--no-verify", "Skip checking that detected commands are runnable")
         .option("-i, --interactive", "Review and edit detected commands before writing")
-        .option("--gitignore", "Add /.tyr/ to the project's root .gitignore without asking")
+        .option("--gitignore", "Keep .tyr/ out of git: add /.tyr/ to the root .gitignore without asking")
         .option("--no-gitignore", "Never touch the root .gitignore, and do not ask")
         .addHelpText("after", `
 Finds the project root (the git toplevel, or the nearest directory with a
@@ -80,10 +80,12 @@ it. Typed commands are recorded with evidence "user". Declining the final
 confirmation writes nothing. Without a terminal (piped, CI, --json) the
 flag is ignored with a warning.
 
-In a git repo whose root .gitignore does not already ignore .tyr/, init asks
-whether to add /.tyr/ (tyr.json holds a machine-specific absolute path).
-Without a terminal it only prints a hint; --gitignore / --no-gitignore decide
-up front.
+.tyr/tyr.json and .tyr/settings.json are portable and meant to be committed,
+so a team shares one config; .tyr/.gitignore already keeps state/, logs/ and
+reports/ out of git. In a git repo whose root .gitignore does not ignore
+.tyr/, init asks whether to ignore all of .tyr/ instead (default: no). Without
+a terminal it only prints a hint; --gitignore / --no-gitignore decide up
+front.
 
 --force re-runs detection but keeps what you changed: commands you edited
 in tyr.json (or marked "source": "user"), keys Tyr does not know about, and
@@ -98,7 +100,7 @@ Examples:
   $ tyr init --no-color     Plain output, e.g. for logs
   $ tyr init --no-verify    Skip probing build/test/lint tools
   $ tyr init --interactive  Confirm or edit detected commands first
-  $ tyr init --gitignore    Also add /.tyr/ to the root .gitignore
+  $ tyr init --gitignore    Keep .tyr/ local: add /.tyr/ to the root .gitignore
   $ tyr init --no-gitignore Leave the root .gitignore alone
   $ tyr init --verbose      Also show scan and write details
   $ tyr init --json         Print a JSON summary instead of text`)
@@ -338,13 +340,14 @@ async function offerRootGitignore(
         ask: () => {
             // The prompt writes to the same terminal, so no spinner may own the line.
             reporter.stop();
-            return confirm(`Add ${TYR_GITIGNORE_ENTRY} to the project's .gitignore?`, true);
+            reporter.muted(GITIGNORE_MESSAGES.note);
+            return confirm(GITIGNORE_MESSAGES.question, GITIGNORE_MESSAGES.defaultYes);
         },
     });
-    if (outcome === "added") reporter.success(`Added ${TYR_GITIGNORE_ENTRY} to .gitignore`);
-    else if (outcome === "present") reporter.debug(".gitignore already ignores .tyr/");
-    else if (outcome === "declined") reporter.muted(".gitignore left unchanged");
-    else if (suggestFlag) reporter.muted(`.gitignore does not ignore .tyr/ (run with --gitignore to add ${TYR_GITIGNORE_ENTRY})`);
+    if (outcome === "added") reporter.success(GITIGNORE_MESSAGES.added);
+    else if (outcome === "present") reporter.debug(GITIGNORE_MESSAGES.present);
+    else if (outcome === "declined") reporter.muted(GITIGNORE_MESSAGES.declined);
+    else if (suggestFlag) reporter.muted(GITIGNORE_MESSAGES.hint);
     return outcome;
 }
 

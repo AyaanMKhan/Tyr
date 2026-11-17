@@ -2,15 +2,18 @@ import { test } from "node:test";
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { PassThrough } from "node:stream";
 
 import {
     appendTyrEntry,
     applyGitignorePolicy,
     ensureTyrIgnored,
+    GITIGNORE_MESSAGES,
     isTyrIgnored,
     readRootGitignore,
     type GitignorePolicy,
 } from "../cli/core/root-gitignore.js";
+import { confirm } from "../cli/ui/prompt.js";
 import { makeProject, removeProject } from "./helpers.js";
 
 async function readGitignore(root: string): Promise<string> {
@@ -171,4 +174,33 @@ test("applyGitignorePolicy: non-interactive or non-repo runs never write", async
     } finally {
         await removeProject(root);
     }
+});
+
+test("GITIGNORE_MESSAGES: sharing the config is the default, ignoring .tyr/ is the opt-in", () => {
+    assert.equal(GITIGNORE_MESSAGES.defaultYes, false);
+    // The question asks about ignoring all of .tyr/, so "yes" means local-only.
+    assert.match(GITIGNORE_MESSAGES.question, /Keep all of \.tyr\/ out of git/);
+    assert.ok(GITIGNORE_MESSAGES.question.includes("/.tyr/"));
+    // The note explains what is committed and what is already ignored.
+    for (const file of [".tyr/tyr.json", ".tyr/settings.json"]) {
+        assert.ok(GITIGNORE_MESSAGES.note.includes(file), file);
+        assert.ok(GITIGNORE_MESSAGES.hint.includes(file), file);
+        assert.ok(GITIGNORE_MESSAGES.declined.includes(file), file);
+    }
+    assert.match(GITIGNORE_MESSAGES.note, /state\/, logs\/ and reports\/ are already ignored by \.tyr\/\.gitignore/);
+    assert.match(GITIGNORE_MESSAGES.hint, /--gitignore/);
+    // Nothing may still claim tyr.json is machine-specific or must be ignored.
+    for (const text of Object.values(GITIGNORE_MESSAGES)) {
+        if (typeof text !== "string") continue;
+        assert.doesNotMatch(text, /machine-specific|absolute path|does not ignore/);
+    }
+});
+
+test("GITIGNORE_MESSAGES: pressing Enter at the prompt declines", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    output.resume();
+    const answer = confirm(GITIGNORE_MESSAGES.question, GITIGNORE_MESSAGES.defaultYes, { input, output });
+    input.end("\n");
+    assert.equal(await answer, false);
 });

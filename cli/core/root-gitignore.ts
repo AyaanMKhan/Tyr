@@ -12,16 +12,18 @@
 // directory holding `.tyr/`) and rehydrated on read, so a teammate's clone
 // resolves to their own checkout. Runtime output under state/, logs/ and
 // reports/ is per-machine and already excluded by the generated
-// `.tyr/.gitignore`. The intended setup is therefore to commit `.tyr/tyr.json`
-// and `.tyr/.gitignore` so a team shares one config (including user-edited
-// commands and `scan.extraIgnore`).
+// `.tyr/.gitignore`. The intended setup is therefore to commit `.tyr/tyr.json`,
+// `.tyr/settings.json` and `.tyr/.gitignore` so a team shares one config
+// (including user-edited commands, `scan.extraIgnore` and preferences).
 //
 // The `/.tyr/` entry stays as an opt-in for projects that want Tyr to be
-// purely local: tyr.json still records a detection snapshot
+// purely local, and the prompt defaults to "no" so pressing Enter keeps the
+// shared setup. Reasons to opt in: tyr.json still records a detection snapshot
 // (`git.headCommit`, `project.fileCount`, `initializedAt` on first init) that
 // changes when `tyr init --force` runs, which some teams will not want in
 // their history. A narrower entry (only the runtime directories) would add
-// nothing over `.tyr/.gitignore`, so the choice is all or tyr.json.
+// nothing over `.tyr/.gitignore`, so the choice is all of `.tyr/` or the
+// shared files.
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -32,6 +34,26 @@ export const TYR_GITIGNORE_ENTRY = `/${TYR_DIR_NAME}/`;
 
 /** Comment written on the line above the entry. */
 export const TYR_GITIGNORE_COMMENT = "# Tyr";
+
+/**
+ * What `tyr init` says about the root `.gitignore`. Kept here, next to the
+ * policy, so the wording and the default answer are tested together.
+ */
+export const GITIGNORE_MESSAGES = {
+    /** Printed before the question: why the default is to share. */
+    note:
+        ".tyr/tyr.json and .tyr/settings.json are meant to be committed so your team shares one config; " +
+        "state/, logs/ and reports/ are already ignored by .tyr/.gitignore.",
+    /** The yes/no question. Yes ignores the whole directory. */
+    question: `Keep all of .tyr/ out of git instead (add ${TYR_GITIGNORE_ENTRY} to .gitignore)?`,
+    /** Enter keeps the shared setup. */
+    defaultYes: false,
+    added: `Added ${TYR_GITIGNORE_ENTRY} to .gitignore: .tyr/ stays local to this machine`,
+    present: ".gitignore already ignores .tyr/",
+    declined: ".gitignore left unchanged: commit .tyr/tyr.json, .tyr/settings.json and .tyr/.gitignore to share them",
+    /** Shown when nobody could be asked (no terminal, --json). */
+    hint: "Commit .tyr/tyr.json and .tyr/settings.json to share them, or rerun with --gitignore to keep .tyr/ out of git",
+} as const;
 
 /**
  * Spellings that already ignore the whole directory at the root. `.tyr` and
