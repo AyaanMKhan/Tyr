@@ -1,0 +1,90 @@
+---
+title: "Events"
+description: "Every event kind in the journal, and its shape."
+---
+
+Everything Tyr observes or does is appended to `.tyr/state/events.jsonl`, one JSON object per line. `tyr watch --json` prints the same objects.
+
+```json
+{
+  "v": 1,
+  "id": "8c1f0e3a-…",
+  "ts": "2026-11-17T18:07:54.066Z",
+  "source": "check",
+  "kind": "check.failed",
+  "message": "test failed (exit 1)",
+  "data": { "run": { "kind": "test", "outcome": "failed", "exitCode": 1, "…": "…" } }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `v` | Event format version |
+| `id` | Unique id |
+| `ts` | UTC timestamp |
+| `source` | `tyr`, `git`, `fs`, `claude`, `check` or `user` |
+| `kind` | Dotted kind, `<area>.<what>` |
+| `message` | One-line human summary |
+| `data` | Kind-specific payload |
+
+## Tyr
+
+| Kind | When | `data` |
+| --- | --- | --- |
+| `init.completed` | `tyr init` finished | Project summary |
+| `daemon.started` | The background process started | `pid`, `runCount`, `gitWatch`, `fsWatch` (watch mode) |
+| `daemon.stopped` | It stopped cleanly | `pid` |
+| `daemon.crashed` | It crashed | `pid` |
+| `daemon.warning` | A watcher fell back to polling | `watcher`, `mode`, `reason` |
+| `daemon.pong` | Reply to a ping from the CLI | |
+| `review.completed` | A [review](/guides/review) finished | `trigger`, `counts` (by severity), `total`, `regressions`, `new`, `resolved`, `reportId`, `top` (up to 5 findings) |
+
+## Git
+
+| Kind | When | `data` |
+| --- | --- | --- |
+| `git.head` | HEAD moved: a commit, checkout, reset or rebase step | `previous`, `current` (`branch`, `commit`), `commitChanged`, `branchChanged` |
+| `git.index` | What's staged changed | `staged` |
+| `git.refs` | Branches or tags were created, moved or deleted | `changes` |
+| `git.merge-state` | A merge, rebase, cherry-pick or revert started or finished | `started`, `finished` |
+
+## Files
+
+| Kind | When | `data` |
+| --- | --- | --- |
+| `fs.changed` | A burst of file changes settled | `added`, `modified`, `removed` (up to 50 each), `total`, `truncated`; `cause: "git"` when a git operation rewrote them |
+
+## Claude Code
+
+See [Claude Code](/guides/claude-code#what-gets-recorded). All carry `sessionId`, `hookEvent`, `transcriptPath` and `cwd`.
+
+| Kind | Hook |
+| --- | --- |
+| `claude.session_start` | `SessionStart` |
+| `claude.prompt` | `UserPromptSubmit` |
+| `claude.tool_use` | `PreToolUse` |
+| `claude.tool_result` | `PostToolUse`, `PostToolUseFailure` |
+| `claude.stop` | `Stop` |
+| `claude.subagent_stop` | `SubagentStop` |
+| `claude.notification` | `Notification` |
+| `claude.compact` | `PreCompact` |
+| `claude.session_end` | `SessionEnd` |
+| `claude.hook` | Any other hook |
+
+## Checks
+
+| Kind | When | `data` |
+| --- | --- | --- |
+| `check.started` | A check began | `runId`, `kind`, `command`, `cwd`, `trigger`, `headCommit` |
+| `check.passed` | It exited 0 | `run` |
+| `check.failed` | Any other outcome: failed, timeout, error, cancelled | `run` (read `run.outcome`) |
+
+A `run` holds `id`, `kind`, `command`, `cwd`, `trigger` (`reason`: `idle`, `commit`, `claude-stop`, `manual`), `startedAt`, `finishedAt`, `durationMs`, `outcome`, `exitCode`, `signal`, `stdout` and `stderr` (output tails), `outputTruncated` and `headCommit`.
+
+## Reading the journal
+
+```bash
+tyr watch --json --no-follow --since 1d | jq -r 'select(.source == "check") | .message'
+```
+
+Lines that aren't valid JSON are skipped. Fields may be added in later versions, so ignore fields you don't recognise.

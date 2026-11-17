@@ -1,0 +1,68 @@
+---
+title: "Installation"
+description: "Requirements and how to put the tyr command on your PATH."
+---
+
+<Note>
+Tyr is not published to npm yet. Until it is, install it from source as shown below.
+</Note>
+
+## Requirements
+
+| Requirement | Notes |
+| --- | --- |
+| **Node.js** | A current LTS release (22 or newer). Tyr is an ES module built for ES2022. |
+| **npm** | Used to install dependencies and link the command. |
+| **git** | Recommended. Without it Tyr still works, but it falls back to manifest-based root detection and can't watch commits or review diffs. |
+| **Claude Code** | Optional. Needed only for [session observation](/guides/claude-code). |
+
+Tyr runs on macOS, Linux and Windows.
+
+## Build from source
+
+```bash
+git clone https://github.com/AyaanMKhan/Tyr.git
+cd Tyr
+npm install
+npm run build
+```
+
+The build writes the CLI to `dist/cli/index.js`. You can run it directly:
+
+```bash
+node dist/cli/index.js --help
+```
+
+## Put `tyr` on your PATH
+
+```bash
+npm link
+tyr --version
+```
+
+`npm link` symlinks the `tyr` command globally, pointing at your checkout, so `git pull && npm run build` updates it in place.
+
+To remove it:
+
+```bash
+npm unlink -g Tyr
+```
+
+## Set an API key (optional)
+
+Tyr needs an Anthropic API key only for [model review](/guides/review#llm-review), which is off by default. If you already export `ANTHROPIC_API_KEY`, Tyr uses it. Otherwise, store a key in your per-user config. Reading it from stdin keeps it out of your shell history:
+
+```bash
+tyr config set --global ai.apiKey -
+```
+
+The key is stored in `~/.config/tyr/config.json` with file mode `600`, and is never written to the project's committed files.
+
+## Verify
+
+```bash
+tyr --version
+tyr --help
+```
+
+Then follow the [quickstart](/getting-started/quickstart).

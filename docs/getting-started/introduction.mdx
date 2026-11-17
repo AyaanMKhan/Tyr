@@ -1,0 +1,70 @@
+---
+title: "How Tyr works"
+description: "An independent reviewer that watches your repository while AI coding agents work in it, runs your checks and tells you what broke."
+---
+
+AI coding agents write code well inside one session. What they don't do is the work around it: checking their own changes independently, remembering how the project is built and tested, and noticing when something that used to pass now fails.
+
+Tyr does that work. It runs in the background next to Claude Code or any other agent. It learns your project's build, test, lint and typecheck commands from evidence in the repo, runs them when the code changes, and reviews the diff. It tells you, with file and line, what broke, what is new and what got fixed.
+
+## Why a separate reviewer
+
+<CardGroup cols={2}>
+  <Card title="The agent checks its own work" icon="scale-balanced">
+    The agent that writes a change also decides whether it is done. Tyr is a separate process with its own view of the repository, so something independent pushes back.
+  </Card>
+  <Card title="Project knowledge goes stale" icon="book">
+    Each session rediscovers how to build and test the project. Tyr detects the exact commands once, from manifests and config files, and stores them in `.tyr/tyr.json`.
+  </Card>
+  <Card title="Regressions slip through" icon="arrow-trend-down">
+    Tyr remembers which checks passed before. A failure in a check that used to pass is flagged as a regression, not lost in the noise.
+  </Card>
+  <Card title="Agent work is a black box" icon="eye">
+    `tyr watch` shows what Claude Code, git, your files and Tyr's checks are doing, live, in one stream.
+  </Card>
+</CardGroup>
+
+## Key capabilities
+
+<CardGroup cols={3}>
+  <Card title="Project detection" icon="magnifying-glass" href="/cli/init">
+    Languages, package manager, frameworks and the build, test, lint, format and typecheck commands, each with the file that proves it.
+  </Card>
+  <Card title="Claude Code observation" icon="robot" href="/guides/claude-code">
+    Hooks record every session, prompt, tool call and stop, with secrets redacted.
+  </Card>
+  <Card title="Live view" icon="tower-broadcast" href="/guides/watching">
+    One stream of agent activity, git events, file changes and check results.
+  </Card>
+  <Card title="Automatic checks" icon="play" href="/guides/checks">
+    Runs your checks when you go idle, when you commit and when Claude finishes a turn.
+  </Card>
+  <Card title="Review and regressions" icon="shield-check" href="/guides/review">
+    Parses check output into findings, scans the diff for secrets and risky changes, and can ask a model to review against your CLAUDE.md.
+  </Card>
+  <Card title="Reports" icon="file-lines" href="/guides/reports">
+    A JSON and Markdown report in `.tyr/reports/` whenever findings change.
+  </Card>
+</CardGroup>
+
+## The loop
+
+```text
+ Claude Code edits files ──▶ Tyr notices (hooks, file watcher, git)
+                                   │
+                     idle / commit / Claude stops
+                                   ▼
+                 build ─ typecheck ─ lint ─ test  (your commands)
+                                   ▼
+          findings: test failures, type errors, secrets, deleted tests
+                                   ▼
+         regression? new? resolved? ──▶ report + live event in tyr watch
+```
+
+Everything Tyr knows lives in a `.tyr/` folder at the root of your repository: plain JSON files, no server, no account.
+
+<Note>
+Tyr is under active development. Detection, observation, checks and review work today. `tyr status`, `tyr run` and corrective agents that fix problems are planned; see [status and run](/cli/status-run).
+</Note>
+
+Ready to try it? Start with the [quickstart](/getting-started/quickstart), or read the [core concepts](/getting-started/concepts) first.

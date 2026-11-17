@@ -1,0 +1,69 @@
+---
+title: "Troubleshooting"
+description: "Common problems and how to fix them."
+---
+
+<AccordionGroup>
+  <Accordion title="tyr start says the project is not initialized (exit 3)">
+    Run `tyr init` in the repository first, or `tyr init --start` to do both. Tyr looks for `.tyr/` at the git top level, so run commands from anywhere inside the repository, or pass `--cwd`.
+  </Accordion>
+
+  <Accordion title="Checks never run">
+    - **Is the background process running?** `tyr watch` shows it in the header. Start it with `tyr start`.
+    - **Were commands detected?** Look at `commands` in `.tyr/tyr.json`. A `null` command never runs. Fix it with `tyr init --force --interactive`.
+    - **Are the checks enabled?** Run `tyr config` and look at `checks.*`.
+    - **Is Claude mid-turn?** Idle checks wait for Claude Code to stop, for up to 2 minutes.
+    - **Is the file ignored?** Changes to [ignored paths](/configuration/ignore-patterns) don't trigger checks.
+    - **Look at the log:** `tail -f .tyr/logs/tyr.log`, or restart with `tyr start --log-level debug`.
+  </Accordion>
+
+  <Accordion title="A check fails with 'command not found'">
+    The run's outcome is `error`: the tool isn't installed where Tyr runs it. Checks run through your shell at the project root, with `node_modules/.bin` resolved by your package manager. Install the dependencies (`npm install`), or point the command at the right tool with `tyr init --force --interactive`.
+  </Accordion>
+
+  <Accordion title="Checks keep re-running in a loop">
+    Something your build writes inside the project isn't ignored. Tyr already ignores changes during a run and for 3 seconds after it, but slower writers can slip through. Add the output directory to `.tyrignore` and restart: `tyr stop && tyr start`.
+  </Accordion>
+
+  <Accordion title="A check takes too long or hangs">
+    Checks are killed after 10 minutes, along with every process they started. A test runner in watch mode never exits, so make sure the test command runs once, e.g. `vitest run` rather than `vitest`. Tyr sets `CI=1`, which most runners respect.
+  </Accordion>
+
+  <Accordion title="No events from Claude Code">
+    - Run `tyr hooks status`. If the hooks aren't installed, run `tyr hooks install`.
+    - Restart the Claude Code session, or review the hooks under `/hooks` in a running one.
+    - The project needs a `.tyr/`. The hook silently skips projects without one.
+    - With a shared install, the `--command` has to work on each machine. `npx tyr hook` needs `tyr` to be installed.
+  </Accordion>
+
+  <Accordion title="LLM review never runs">
+    - It's off by default: `tyr config set review.llm true`.
+    - It needs a key: `tyr config get ai.apiKey` should show a masked value. Set one with `tyr config set --global ai.apiKey -`, or export `ANTHROPIC_API_KEY`.
+    - It only runs when Claude Code stops or on a commit, not on idle passes.
+    - Skips and API errors are listed as notes in the report and in `tyr.log`.
+  </Accordion>
+
+  <Accordion title="Too many findings, or findings I don't care about">
+    - Raise the threshold: `tyr config set severity.threshold error`.
+    - Suppress one line with a `tyr-ignore` comment. See [diff review rules](/reference/diff-review-rules#suppressing).
+    - Turn the diff review off: `tyr config set review.diff false`.
+  </Accordion>
+
+  <Accordion title="A settings file is invalid (exit 4)">
+    The message names the file. Fix the JSON by hand (`tyr config path` prints the location), or delete `.tyr/settings.json` to start from defaults. A file written by a newer Tyr is never overwritten: upgrade Tyr instead.
+  </Accordion>
+
+  <Accordion title="The background process crashed">
+    Read `.tyr/logs/daemon.log` and `.tyr/logs/tyr.log`. Then run `tyr start`: it cleans up the stale pid file and starts fresh.
+  </Accordion>
+</AccordionGroup>
+
+## Getting more detail
+
+```bash
+tyr <command> --verbose          # extra output, and debug logging
+TYR_DEBUG=1 tyr <command>        # stack traces for unexpected errors
+tyr watch --verbose              # event kinds, ids and details
+```
+
+Still stuck? Open an issue at [github.com/AyaanMKhan/Tyr](https://github.com/AyaanMKhan/Tyr/issues) with the command, its output and the relevant part of `.tyr/logs/tyr.log`.

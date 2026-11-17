@@ -1,0 +1,74 @@
+---
+title: "Watching activity live"
+description: "One live stream of what Claude Code, git, your files and Tyr's checks are doing."
+---
+
+`tyr watch` replays recent history from the [event journal](/getting-started/concepts#the-event-journal), then follows it live until you press `Ctrl-C`.
+
+```bash
+tyr watch
+```
+
+```text
+✓ Background process running (pid 39313, up 23s, ping 394ms)
+
+13:07:37 ● tyr     Initialized (2 files, JavaScript)
+13:07:44 ◆ claude  Edit src/math.ts
+13:07:48 ✎ fs      2 files changed: src/math.ts, src/math.test.ts
+13:07:53 ◆ claude  Claude finished responding
+13:07:53 ▣ check   build passed in 125ms  ✓
+13:07:54 ▣ check   test failed (exit 1)  ✗
+13:07:54 ● tyr     Review: 1 finding, 1 regression, 1 new
+── following live (Ctrl-C to stop) ──
+```
+
+The header shows whether the background process is running. Watching still works without it, but you only see what hooks and commands record: no file, git or check events.
+
+## Sources
+
+| Source | Icon | What |
+| --- | --- | --- |
+| `tyr` | ● | The daemon starting and stopping, `tyr init`, review results |
+| `git` | ⎇ | Commits, checkouts, staging, merges and rebases |
+| `fs` | ✎ | Batches of changed files, including files a git operation rewrote |
+| `claude` | ◆ | Claude Code sessions, prompts and tool calls |
+| `check` | ▣ | Check runs starting, passing and failing |
+| `user` | | Actions you took |
+
+## Filter
+
+```bash
+tyr watch --source claude,check          # only these sources
+tyr watch --kind git. --kind daemon      # kinds: "git." is a prefix, "daemon" matches daemon.*
+tyr watch --kind review                  # only review results
+tyr watch --session 3f2a9c1d             # one Claude session
+```
+
+## History
+
+```bash
+tyr watch -n 100                  # replay the last 100 events, then follow
+tyr watch -n 0                    # only new events
+tyr watch --since 2h --no-follow  # the last two hours, then exit
+tyr watch --since 2026-11-17T09:00:00Z
+```
+
+`--since` takes an age (`10m`, `2h`, `1d`) or an ISO date.
+
+## More detail
+
+`--verbose` adds each event's kind, id and details, such as the changed paths, session ids and errors.
+
+## For scripts
+
+`--json` prints one raw event per line (NDJSON):
+
+```bash
+tyr watch --json --source check | jq -r 'select(.kind == "check.failed") | .message'
+```
+
+See [events](/reference/events) for every kind and its data.
+
+<Tip>
+The journal is append-only and rotates at 5 MiB, keeping three old files. `tyr watch` follows rotation without losing or repeating events.
+</Tip>

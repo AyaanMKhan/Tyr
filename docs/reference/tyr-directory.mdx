@@ -1,0 +1,61 @@
+---
+title: "The .tyr directory"
+description: "Every file Tyr writes, what it's for, and whether it's committed."
+---
+
+```text
+<repo root>/
+├── .tyrignore                 # optional: your ignore patterns
+└── .tyr/
+    ├── .gitignore             # keeps state/, logs/ and reports/ out of git
+    ├── tyr.json               # project profile                       (committed)
+    ├── settings.json          # project settings                      (committed)
+    ├── state/
+    │   ├── state.json         # lifecycle: status, run count, last indexed commit
+    │   ├── engine.json        # last and last-good check runs, open problems, working tree
+    │   ├── findings.json      # every finding of the last review
+    │   ├── events.jsonl       # the event journal (rotated: events.1.jsonl …)
+    │   ├── scan.json          # file fingerprints from the last scan
+    │   ├── daemon.pid         # while the background process runs
+    │   ├── tyr.lock           # short-lived write lock
+    │   └── requests/          # short-lived CLI → background process requests
+    ├── logs/
+    │   ├── tyr.log            # activity log (rotated at 1 MiB, 3 kept)
+    │   └── daemon.log         # background process output (rotated at start)
+    └── reports/
+        └── <date>-<time>-review-<title>.{json,md}
+```
+
+| Path | Purpose | Committed |
+| --- | --- | --- |
+| `tyr.json` | What Tyr detected: languages, package manager, commands. [Details](/configuration/project-profile) | Yes |
+| `settings.json` | Your preferences for this project. [Details](/configuration/settings) | Yes |
+| `.gitignore` | Ignores the per-machine folders below | Yes |
+| `state/state.json` | Whether Tyr is running, stopped or crashed; counters | No |
+| `state/engine.json` | Repository health: each check's last run and last passing run, open problems (with a regression flag), a snapshot of uncommitted changes | No |
+| `state/findings.json` | All findings from the last review, before the severity threshold. Used to tell new from resolved | No |
+| `state/events.jsonl` | One JSON event per line. [Event kinds](/reference/events). Rotated at 5 MiB, 3 old files kept | No |
+| `logs/tyr.log` | Human-readable log, filtered by `--log-level` | No |
+| `reports/` | [Review reports](/guides/reports), JSON and Markdown | No |
+
+## Safety
+
+- **Atomic writes.** Every JSON file is written to a temporary file and then renamed into place. An interrupted write never leaves a half-written file.
+- **A lock.** Commands that change `.tyr/` take `state/tyr.lock`, so two processes never write at once. A lock left by a dead process is broken automatically.
+- **A crash-tolerant journal.** If a crash leaves a half-written line in `events.jsonl`, the next write starts a fresh line, and readers skip the broken one without losing the events after it.
+- **Version checks.** Files written by a newer Tyr are not overwritten. Older formats are migrated when read.
+
+## Starting over
+
+```bash
+tyr stop
+tyr init --reset        # rewrite tyr.json and state; keeps settings.json
+```
+
+To remove Tyr from a project completely:
+
+```bash
+tyr stop
+tyr hooks uninstall
+rm -rf .tyr .tyrignore
+```

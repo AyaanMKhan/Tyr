@@ -1,0 +1,115 @@
+---
+title: "Quickstart"
+description: "Set Tyr up in a repository and see it catch a failing test in about five minutes."
+---
+
+This takes a repository with a test suite from nothing to Tyr running checks and reporting regressions while you or Claude Code work.
+
+<Steps>
+  <Step title="Install Tyr">
+    Tyr is not on npm yet, so build it from source and link the `tyr` command:
+
+    ```bash
+    git clone https://github.com/AyaanMKhan/Tyr.git
+    cd Tyr
+    npm install
+    npm run build
+    npm link
+    tyr --version
+    ```
+
+    See [installation](/getting-started/installation) for requirements and other options.
+  </Step>
+
+  <Step title="Initialize your project">
+    In the repository you want Tyr to watch:
+
+    ```bash
+    cd ~/code/my-app
+    tyr init
+    ```
+
+    Tyr finds the project root, scans the files, and detects your language, package manager and commands. It writes everything to `.tyr/`. Check what it found:
+
+    ```text
+    ✓ Project root: /Users/you/code/my-app
+    ✓ Git repository detected
+    ✓ Branch: main
+    ✓ Files scanned: 48
+    ✓ Project type: TypeScript
+    ✓ Commands checked: 3 ok
+    ✓ Package manager: npm
+    ✓ Build: tsc
+    ✓ Tests: npm
+    ✓ Type checker: tsc
+    - Linter: none detected
+
+    Creating .tyr...
+    ✓ Configuration created
+
+    Tyr initialized successfully.
+    ```
+
+    Tyr checks every detected command without running it: the tool has to resolve and the npm script has to exist. A command it can't verify is marked with `!`.
+
+    If a command is wrong or missing, run `tyr init --force --interactive` to edit it.
+  </Step>
+
+  <Step title="Connect Claude Code (optional)">
+    ```bash
+    tyr hooks install
+    ```
+
+    New Claude Code sessions in this repository now report every prompt, tool call and stop to Tyr. Tyr uses Claude's "stop" to know when a turn is finished and the code is ready to check.
+  </Step>
+
+  <Step title="Start the background process">
+    ```bash
+    tyr start
+    ```
+
+    Tyr now watches your files and git. When you stop typing for a few seconds, commit, or Claude finishes a turn, it runs your checks and reviews the diff.
+  </Step>
+
+  <Step title="Watch it work">
+    In a second terminal:
+
+    ```bash
+    tyr watch
+    ```
+
+    Break a test and save the file. Within a few seconds:
+
+    ```text
+    13:07:48 ✎ fs      1 file changed: a.test.js
+    13:07:53 ▣ check   build passed in 125ms  ✓
+    13:07:54 ▣ check   test failed (exit 1)  ✗
+    13:07:54 ● tyr     Review: 1 finding, 1 regression, 1 new
+    ```
+
+    The full report, with the failing test, file and line, is in `.tyr/reports/`.
+  </Step>
+</Steps>
+
+When you are done, stop the background process:
+
+```bash
+tyr stop
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Core concepts" icon="lightbulb" href="/getting-started/concepts">
+    The daemon, the event journal, checks, findings and reports.
+  </Card>
+  <Card title="Turn on model review" icon="sparkles" href="/guides/review#llm-review">
+    Have a model review each change against your CLAUDE.md and README.
+  </Card>
+  <Card title="Configure checks" icon="sliders" href="/configuration/settings">
+    Choose which checks run and how strict reporting is.
+  </Card>
+  <Card title="Share with your team" icon="users" href="/guides/team-setup">
+    Commit the project profile and settings so everyone uses the same setup.
+  </Card>
+</CardGroup>

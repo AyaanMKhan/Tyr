@@ -1,0 +1,81 @@
+---
+title: "Core concepts"
+description: "The pieces of Tyr and how they fit together."
+---
+
+## The `.tyr/` folder
+
+Everything Tyr knows about a project lives in `.tyr/` at the repository root. It holds plain JSON and text files, with no database and no server.
+
+- **Shared and committed:** `tyr.json` (what Tyr detected) and `settings.json` (what you want Tyr to do).
+- **Per machine and ignored:** `state/`, `logs/` and `reports/`, kept out of git by `.tyr/.gitignore`.
+
+See [the .tyr directory](/reference/tyr-directory) for every file.
+
+## Project profile
+
+`tyr init` inspects the repository and writes `tyr.json`: languages, package manager, frameworks, and the exact **build, test, lint, format and typecheck** commands. Every detected fact records the file that proves it. When Tyr can't prove a command, it records nothing instead of guessing. See [project profile](/configuration/project-profile).
+
+## Settings
+
+What Tyr should *do* is separate from what it detected. Settings resolve in layers, each overriding the one before:
+
+```text
+built-in defaults  <  global ~/.config/tyr/config.json  <  project .tyr/settings.json  <  TYR_* environment variables
+```
+
+See [settings](/configuration/settings).
+
+## The background process
+
+`tyr start` launches a detached process (the daemon) for the project. It:
+
+- watches the project's files, respecting your ignore rules,
+- watches git: commits, checkouts, merges, rebases and staging,
+- runs the **engine**, which decides when to run checks and reviews the results.
+
+`tyr stop` shuts it down. The daemon survives closing your terminal.
+
+## The event journal
+
+Everything that happens is appended as one JSON line to `.tyr/state/events.jsonl`: file changes, git events, Claude Code activity, check results and reviews. The journal is how the pieces talk to each other:
+
+- Claude Code [hooks](/guides/claude-code) write to it, even when the daemon isn't running.
+- The daemon writes git and file events to it, and follows it to drive the engine.
+- [`tyr watch`](/guides/watching) shows it live.
+
+See [events](/reference/events) for every event kind.
+
+## Checks
+
+A **check** is one of your project's detected commands: build, typecheck, lint, test or format. The engine runs the enabled ones in that order:
+
+- **On idle**, a few seconds after files stop changing.
+- **On commit.**
+- **When Claude Code finishes a turn.**
+
+Each run has a timeout. Tyr records its outcome (passed, failed, timeout, error or cancelled), the exit code and the end of its output. See [checks](/guides/checks).
+
+## Findings
+
+A **finding** is one concrete problem, with a severity (`info`, `warning`, `error`, `critical`) and, when possible, a file and line. Findings come from three detectors:
+
+| Detector | Source | Finds |
+| --- | --- | --- |
+| Check output parsers | `check` | Type errors, lint errors, failing tests from your tools' output |
+| Diff review | `diff` | Secrets, deleted or skipped tests, risky patterns, oversized changes |
+| Model review (opt-in) | `llm` | Bugs and violations of your documented conventions |
+
+## Regressions
+
+Tyr compares every review with the previous one. Each finding has a fingerprint that survives line shifts, so Tyr can tell when a finding is:
+
+- **new:** it was not there last time.
+- **resolved:** it was there last time and is gone now.
+- **a regression:** it is new, and its check passed before.
+
+A check that has never passed only has pre-existing failures. See [review](/guides/review).
+
+## Reports
+
+When the findings change, Tyr writes a report to `.tyr/reports/` as JSON and Markdown, and journals a `review.completed` event. See [reports](/guides/reports).

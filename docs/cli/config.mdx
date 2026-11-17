@@ -1,0 +1,47 @@
+---
+title: "tyr config"
+description: "View and change Tyr's settings."
+---
+
+```bash
+tyr config [list|get|set|unset|path] [options]
+```
+
+Settings resolve in layers, each overriding the ones before: defaults, then the global config, then the project's `.tyr/settings.json`, then `TYR_*` environment variables. See [settings](/configuration/settings) for every key.
+
+## Subcommands
+
+| Command | Effect |
+| --- | --- |
+| `tyr config` / `tyr config list` | Every setting, its effective value and its origin |
+| `tyr config get <key>` | One value, printed bare for scripts |
+| `tyr config set <key> <value>` | Store a value in `.tyr/settings.json` |
+| `tyr config unset <key>` | Remove a value from `.tyr/settings.json` |
+| `tyr config path` | Print the settings file's location |
+
+| Option | Applies to | Effect |
+| --- | --- | --- |
+| `-g`, `--global` | `set`, `unset`, `path` | Use your per-user config instead of the project's |
+| `--reveal` | `list`, `get` | Show secrets in full instead of masked |
+| `--show-origin` | `get` | Prefix the value with its origin and a tab |
+
+## Examples
+
+```bash
+tyr config                                       # everything, with origins
+tyr config get severity.threshold
+tyr config set checks.lint false                 # this project
+tyr config set review.llm true
+tyr config set notifications.targets terminal,desktop
+tyr config set notifications.targets none        # an empty list
+tyr config set --global ai.model claude-opus-5-5 # every project
+tyr config set --global ai.apiKey -              # read the key from stdin
+tyr config unset checks.lint                     # back to the global or default value
+$EDITOR "$(tyr config path --global)"
+```
+
+## Notes
+
+- **`set` changes one key at a time.** It refuses to rewrite a file it can't fully understand, such as malformed JSON, so a hand-edited file is never clobbered.
+- **`ai.apiKey` can only be set with `--global`.** The project file is committed.
+- **Typo protection.** A misspelled key is rejected with a suggestion.

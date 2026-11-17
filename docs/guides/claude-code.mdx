@@ -1,0 +1,93 @@
+---
+title: "Claude Code"
+description: "Record what Claude Code does in your repository, and let Tyr check its work when it finishes a turn."
+---
+
+Tyr observes Claude Code through [hooks](https://code.claude.com/docs/en/hooks). Claude Code runs a command at each session start, prompt, tool call and stop, and tells Tyr what is happening. Tyr records each one as an event in the project's journal.
+
+This gives you two things:
+
+- **Visibility.** `tyr watch` shows every prompt and tool call next to the git and file activity it caused.
+- **Better timing for checks.** Tyr holds its idle checks while Claude is mid-turn, so a half-finished refactor isn't tested. It runs them when Claude stops.
+
+## Install the hooks
+
+```bash
+tyr init            # once per project; events are only recorded where .tyr/ exists
+tyr hooks install
+```
+
+```text
+✓ Installed Claude Code hooks in .claude/settings.local.json (10 events)
+New Claude Code sessions pick this up; in a running one, review it under /hooks.
+```
+
+Tyr registers for `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `SubagentStop`, `Notification`, `PreCompact` and `SessionEnd`. The entries are merged into the settings file. Your own hooks and settings are never changed, and installing twice does nothing.
+
+Check what is installed:
+
+```bash
+tyr hooks status
+```
+
+## Just for you, or for the whole team
+
+| | Command | File | Committed |
+| --- | --- | --- | --- |
+| **Personal** (default) | `tyr hooks install` | `.claude/settings.local.json` | No |
+| **Team** | `tyr hooks install --shared --command "npx tyr hook"` | `.claude/settings.json` | Yes |
+
+By default the hook runs the exact Tyr you installed from, by absolute path. That path only exists on your machine, so for a shared install pass a portable `--command` such as `"npx tyr hook"` or `"tyr hook"`.
+
+<Tip>
+Claude Code keeps `settings.local.json` personal. If your `.gitignore` doesn't exclude it, Tyr warns you.
+</Tip>
+
+## What gets recorded
+
+One event per hook, with source `claude`:
+
+| Event | When | Example |
+| --- | --- | --- |
+| `claude.session_start` | A session starts | `Session started (startup)` |
+| `claude.prompt` | You send a prompt | `Prompt: "fix the failing tests"` |
+| `claude.tool_use` | Before a tool runs | `Edit src/a.ts`, `Bash: npm test` |
+| `claude.tool_result` | After a tool runs | `Bash: npm test (failed)` |
+| `claude.stop` | Claude finishes a turn | `Claude finished responding` |
+| `claude.subagent_stop` | A subagent finishes | |
+| `claude.notification` | Claude needs your attention | `Notification: Claude needs your permission` |
+| `claude.compact` | Context is compacted | `Compacting context (auto)` |
+| `claude.session_end` | A session ends | `Session ended (prompt_input_exit)` |
+
+Follow only Claude's activity:
+
+```bash
+tyr watch --source claude
+tyr watch --session 3f2a9c1d     # one session, by id or prefix
+```
+
+## Privacy
+
+The journal is a local file under `.tyr/state/`, which is never committed. Tyr still keeps as little as it needs:
+
+- **Prompts** are stored only as an 80-character preview and their length.
+- **File contents and tool output are never stored.** Tyr records which file or command, not what was written or returned.
+- **Likely secrets are masked** wherever text is kept: API keys, GitHub and Slack tokens, AWS key IDs, JWTs, and values after `password=`, `token:` or `Authorization:`. This is pattern matching, so treat it as a safety net.
+
+## It never gets in Claude's way
+
+The hook always exits 0 and prints nothing. Claude Code treats certain exit codes and output as instructions, so a recording problem could otherwise change the session. The hook also:
+
+- gives up after a few seconds,
+- skips projects without a `.tyr/`,
+- works without the background process running.
+
+## Uninstall
+
+```bash
+tyr hooks uninstall            # both settings files
+tyr hooks uninstall --local    # only settings.local.json
+tyr hooks uninstall --shared   # only settings.json
+```
+
+Only Tyr's own entries are removed. Events already recorded stay in the journal.

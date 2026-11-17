@@ -1,0 +1,73 @@
+---
+title: "Automatic checks"
+description: "When Tyr runs your build, typecheck, lint and test commands, and what it records."
+---
+
+While the background process runs (`tyr start`), Tyr runs your project's checks on its own. You don't need a CI round trip or to remember to run `npm test`.
+
+## What runs
+
+The checks are the commands `tyr init` detected and stored in `tyr.json`, filtered by your [settings](/configuration/settings):
+
+| Check | Setting | Default |
+| --- | --- | --- |
+| build | `checks.build` | on |
+| typecheck | `checks.typecheck` | on |
+| lint | `checks.lint` | on |
+| test | `checks.test` | on |
+| format | `checks.format` | off |
+
+They run one at a time, in that order. **If the build fails, tests are skipped**, because tests against a broken build only repeat the build's failure. A check whose command wasn't detected doesn't run.
+
+```bash
+tyr config set checks.lint false     # stop linting in this project
+```
+
+Commands and settings are re-read before every pass, so edits take effect without restarting.
+
+## When checks run
+
+| Trigger | When |
+| --- | --- |
+| **Idle** | Files changed, then nothing changed for 5 seconds |
+| **Claude stops** | Claude Code finished a turn and files changed since the last run |
+| **Commit** | HEAD moved to a new commit. A burst, such as a rebase, runs once |
+
+Some rules keep checks from running at the wrong moment:
+
+- **Claude mid-turn.** While Claude Code is working, idle runs are held until it stops, so a half-finished change isn't checked. If a session goes quiet for 2 minutes without stopping, for example because it crashed, Tyr stops waiting.
+- **One run at a time.** A trigger during a run is queued, and only the most important waiting trigger is kept.
+- **No self-triggering.** File changes during a run, and for 3 seconds after it, are treated as the check's own output (build artifacts, caches) and ignored, unless Claude was editing at the time.
+- **Files git rewrote.** These don't count as edits. The commit or checkout that caused them is the trigger.
+
+## How a check runs
+
+- **Runs:** through your shell at the project root, with `CI=1` and colors off so output is plain.
+- **Times out:** after 10 minutes. The check and every process it started are killed.
+- **Keeps:** the last 64 KiB of stdout and of stderr.
+- **Is cancelled:** if you `tyr stop` during a run.
+
+Each run ends with one outcome:
+
+| Outcome | Meaning |
+| --- | --- |
+| `passed` | Exit code 0 |
+| `failed` | Non-zero exit code |
+| `timeout` | Killed after the time limit |
+| `error` | Could not run at all: command not found (shell exit 126/127), missing directory |
+| `cancelled` | Stopped by `tyr stop`; not recorded as a result |
+
+## Where results go
+
+- **Live:** `check.started`, `check.passed` and `check.failed` events appear in `tyr watch`. Timeouts and errors are journaled as `check.failed`, with the real outcome in the event data.
+- **Repository state:** `.tyr/state/engine.json` keeps each check's last run and last **passing** run, a snapshot of uncommitted changes, and the list of open problems. A failing check opens a problem; a pass closes it.
+- **Findings and reports:** after every pass Tyr [reviews](/guides/review) the results and writes a [report](/guides/reports) when something changed.
+- **Log:** `.tyr/logs/tyr.log` gets one line per run.
+
+```bash
+tyr watch --source check
+```
+
+<Note>
+A command to run checks on demand (`tyr check`) and per-check timeouts are planned.
+</Note>

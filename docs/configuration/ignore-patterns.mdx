@@ -1,0 +1,77 @@
+---
+title: "Ignore patterns"
+description: "Keep generated files, fixtures and vendored code out of Tyr's scan and file watcher."
+---
+
+Tyr ignores dependencies, build output and binaries out of the box. Add your own patterns to skip anything else: generated code, large fixtures, vendored libraries.
+
+Ignored files don't count in the scan, and changing them doesn't trigger checks.
+
+## Built in
+
+**Directories**, matched by name at any depth:
+
+| Category | Directories |
+| --- | --- |
+| VCS and tooling | `.git` `.idea` `.vscode` `.turbo` `.cache` `.parcel-cache` `.pnpm-store` `.terraform` |
+| JavaScript / TypeScript | `node_modules` `bower_components` `dist` `build` `out` `.next` `.nuxt` `.svelte-kit` `coverage` |
+| Python | `__pycache__` `.venv` `venv` `.mypy_cache` `.pytest_cache` `.ruff_cache` `.tox` |
+| Other output | `target` `vendor` `.gradle` `bin` `obj` `Pods` |
+
+**Extensions:** binaries, archives, images, fonts, media, PDFs and database or model files (`.exe`, `.zip`, `.png`, `.woff2`, `.mp4`, `.sqlite`, `.onnx` and similar).
+
+`.tyr/` itself is never scanned. The file watcher also honors your root `.gitignore`.
+
+## Add your own
+
+Use either place. Both use the same syntax.
+
+<Tabs>
+  <Tab title=".tyrignore">
+    A file at the project root, one pattern per line:
+
+    ```text
+    # generated
+    src/generated/
+    *.snap
+
+    # fixtures, except the small one
+    tests/fixtures/**
+    !tests/fixtures/small.json
+    ```
+  </Tab>
+  <Tab title="tyr.json">
+    `scan.extraIgnore` in `.tyr/tyr.json`:
+
+    ```json
+    {
+      "scan": {
+        "extraIgnore": ["src/generated/", "*.snap"]
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Syntax
+
+A practical subset of `.gitignore`:
+
+| Pattern | Matches |
+| --- | --- |
+| `*.log` | Any `.log` file, at any depth |
+| `build-output/` | Directories only (trailing `/`) |
+| `/config.local.json` | Only at the project root (leading `/`) |
+| `docs/api/*.md` | Anchored to the root, because it contains a `/` |
+| `**/temp` | `temp` at any depth |
+| `src/**/gen` | `gen` anywhere under `src` |
+| `vendor/**` | Everything inside `vendor` |
+| `!keep.json` | Un-ignore. The last matching pattern wins |
+| `# comment` | A comment. Use `\#` for a literal `#` |
+
+- `*` and `?` never match `/`.
+- Character classes like `[abc]` are not supported.
+- Like git, a file can't be re-included once its parent directory is ignored.
+- Your patterns only add to the built-in rules. You can't un-ignore `node_modules` or `.git`.
+
+After changing patterns, re-run `tyr init --force` to refresh the scan, and `tyr stop && tyr start` to restart the watcher.

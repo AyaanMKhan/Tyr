@@ -1,0 +1,53 @@
+---
+title: "tyr start / tyr stop"
+description: "Run and stop Tyr's background process."
+---
+
+## tyr start
+
+```bash
+tyr start
+```
+
+Launches Tyr's background process for the current project. Run `tyr init` first, or use `tyr init --start`.
+
+The process:
+
+- runs detached, so it survives closing the terminal,
+- watches your files and git,
+- runs your [checks](/guides/checks) and [reviews](/guides/review),
+- records its pid in `.tyr/state/daemon.pid` and marks `state.json` as `running`.
+
+Starting twice is harmless: Tyr reports the process that is already running instead of starting another.
+
+```bash
+tyr start --json    # { ok, root, daemon: { pid, alreadyRunning } }
+```
+
+## tyr stop
+
+```bash
+tyr stop
+```
+
+Asks the background process to shut down and waits for it. A check that is running is cancelled, and its processes are killed. If the process hasn't exited after a few seconds, Tyr kills it.
+
+Stopping when nothing is running isn't an error. A stale pid file left by a crash is cleaned up.
+
+```bash
+tyr stop --json     # { ok, root, pid, graceful, staleCleared }
+```
+
+## Logs
+
+| File | Contents |
+| --- | --- |
+| `.tyr/logs/tyr.log` | What Tyr did: checks, reviews, warnings. Rotated at 1 MiB |
+| `.tyr/logs/daemon.log` | The process's raw output, for crashes. Rotated on every start |
+
+```bash
+tyr start --log-level debug     # more detail in tyr.log
+tail -f .tyr/logs/tyr.log
+```
+
+If the process crashes, `state.json` is marked `error` and the crash is logged. The next `tyr start` cleans up and starts fresh.

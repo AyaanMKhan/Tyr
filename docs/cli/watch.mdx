@@ -1,0 +1,38 @@
+---
+title: "tyr watch"
+description: "Follow what Tyr, git and Claude Code are doing, live."
+---
+
+```bash
+tyr watch [options]
+```
+
+Replays recent events from `.tyr/state/events.jsonl`, then prints new ones as they happen until you press `Ctrl-C` (exit code 130). See the [watching guide](/guides/watching).
+
+## Options
+
+| Option | Effect |
+| --- | --- |
+| `-n`, `--lines <n>` | Replay the last `n` events first. `0` for none. Default 20 |
+| `--since <time>` | Replay events since an age (`10m`, `2h`, `1d`) or an ISO date |
+| `--source <list>` | Only these sources, comma-separated: `tyr`, `git`, `fs`, `claude`, `user`, `check` |
+| `--kind <pattern>` | Only these kinds. Repeatable or comma-separated. `git.` is a prefix; `daemon` matches `daemon.*` |
+| `--session <id>` | Only one Claude session, by id or prefix. Repeatable |
+| `--no-follow` | Print the history and exit |
+| `--no-ping` | Don't ping the background process for the header |
+| `--no-color` | Plain output |
+
+Global `--verbose` adds each event's kind, id and details. Global `--json` prints raw events as NDJSON.
+
+## Examples
+
+```bash
+tyr watch                              # last 20 events, then follow
+tyr watch -n 100
+tyr watch --since 2h --no-follow
+tyr watch --source claude
+tyr watch --source check --kind review
+tyr watch --kind git. --kind daemon
+tyr watch --session 3f2a9c1d
+tyr watch --json | jq -r .kind
+```

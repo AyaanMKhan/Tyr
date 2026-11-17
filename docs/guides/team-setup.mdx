@@ -1,0 +1,83 @@
+---
+title: "Team setup"
+description: "Share one project profile, one set of preferences and one Claude Code setup across your team."
+---
+
+Tyr is designed so that a team can commit its configuration once, and everyone who clones the repository gets the same checks and the same review rules.
+
+## What to commit
+
+| File | Commit it? | Why |
+| --- | --- | --- |
+| `.tyr/tyr.json` | Yes | The project profile: the exact build, test, lint and typecheck commands. Portable: the root is stored as `"."` |
+| `.tyr/settings.json` | Yes | Your team's preferences: which checks run, severity threshold, review settings |
+| `.tyr/.gitignore` | Yes | Keeps per-machine files out of git |
+| `.tyr/state/`, `logs/`, `reports/` | No | Per machine. Already ignored by `.tyr/.gitignore` |
+
+`tyr init` sets this up by default. If you'd rather keep Tyr entirely local, run `tyr init --gitignore`. That adds `/.tyr/` to the root `.gitignore`, and each person runs their own `tyr init`.
+
+<Warning>
+API keys never go in `settings.json`. Tyr refuses to write `ai.apiKey` there, and ignores it if added by hand. Each person sets their own key in their global config or environment.
+</Warning>
+
+## Set it up
+
+<Steps>
+  <Step title="Initialize and review the commands">
+    ```bash
+    tyr init --interactive
+    ```
+
+    Confirm or correct each detected command. Commands you type are marked `"source": "user"`, and a later `tyr init --force` keeps them.
+  </Step>
+
+  <Step title="Agree on preferences">
+    ```bash
+    tyr config set checks.format true
+    tyr config set severity.threshold warning
+    tyr config set review.diff true
+    ```
+
+    These are written to `.tyr/settings.json`.
+  </Step>
+
+  <Step title="Share the Claude Code hooks">
+    ```bash
+    tyr hooks install --shared --command "npx tyr hook"
+    ```
+
+    This writes `.claude/settings.json`, which Claude Code applies to everyone working on the repository. Use a portable command: the default is an absolute path that only works on your machine.
+  </Step>
+
+  <Step title="Commit">
+    ```bash
+    git add .tyr/tyr.json .tyr/settings.json .tyr/.gitignore .claude/settings.json
+    git commit -m "Set up Tyr"
+    ```
+  </Step>
+</Steps>
+
+Teammates then run:
+
+```bash
+tyr start
+```
+
+## Personal overrides
+
+Anyone can override the team's choices without touching committed files:
+
+- **Per user:** `tyr config set --global <key> <value>` writes `~/.config/tyr/config.json`. The project's `settings.json` still wins over it.
+- **Per shell:** `TYR_*` environment variables win over every file, e.g. `TYR_REVIEW_LLM=true tyr start`.
+
+See [settings](/configuration/settings#how-settings-resolve).
+
+## Keeping `tyr.json` fresh
+
+When the toolchain changes (a new linter, a renamed script), re-run detection:
+
+```bash
+tyr init --force
+```
+
+`--force` keeps commands you edited, unknown keys and state history. Expect `tyr.json` to change in the diff: the head commit, file count and timestamp are refreshed. `--reset` starts over and discards your edits.

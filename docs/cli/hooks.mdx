@@ -1,0 +1,46 @@
+---
+title: "tyr hooks"
+description: "Connect Tyr to Claude Code through hooks."
+---
+
+```bash
+tyr hooks install|uninstall|status [options]
+```
+
+Registers Tyr with Claude Code so every session start, prompt, tool call and stop is recorded in the project's event journal. See the [Claude Code guide](/guides/claude-code).
+
+## install
+
+```bash
+tyr hooks install [--shared] [--command <cmd>]
+```
+
+| Option | Effect |
+| --- | --- |
+| `--shared` | Write `.claude/settings.json` (committed, applies to everyone) instead of `.claude/settings.local.json` (personal) |
+| `--command <cmd>` | The command Claude Code runs. Default: `node "<path to this Tyr>" hook`. Use a portable command such as `"npx tyr hook"` with `--shared` |
+
+Tyr's entries are merged into the file. Other settings and hooks are untouched, and installing again does nothing. If the file isn't valid JSON, Tyr leaves it alone and exits with code 4.
+
+## status
+
+```bash
+tyr hooks status
+```
+
+```text
+✓ .claude/settings.local.json: installed for all 10 events
+- .claude/settings.json: not installed
+```
+
+## uninstall
+
+```bash
+tyr hooks uninstall [--local | --shared]
+```
+
+Without options, both files are cleaned. Only Tyr's entries are removed, and a settings file left empty is deleted. Recorded events are kept.
+
+## tyr hook
+
+`tyr hook` is the hidden command Claude Code runs for each event. It reads the event from stdin, records it, prints nothing and always exits 0. You don't run it yourself.

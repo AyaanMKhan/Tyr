@@ -1,0 +1,61 @@
+---
+title: "tyr init"
+description: "Inspect the repository and create .tyr/."
+---
+
+```bash
+tyr init [options]
+```
+
+Finds the project root (the git top level, or the nearest directory with a manifest), scans the files, detects the toolchain, and writes `.tyr/` there. See [project profile](/configuration/project-profile) for how detection works.
+
+## Options
+
+| Option | Effect |
+| --- | --- |
+| `-s`, `--start` | Initialize, then start the background process |
+| `-f`, `--force` | Re-initialize an existing `.tyr/`, keeping your edits |
+| `--reset` | Re-initialize from scratch, discarding edits and state history. Implies `--force` |
+| `-i`, `--interactive` | Review and edit detected commands before writing |
+| `--no-verify` | Don't check that detected commands can run |
+| `--gitignore` | Keep all of `.tyr/` out of git: add `/.tyr/` to the root `.gitignore` without asking |
+| `--no-gitignore` | Never touch the root `.gitignore`, and don't ask |
+| `--no-color` | Plain output |
+
+## Examples
+
+```bash
+tyr init                  # first time
+tyr init --start          # initialize and start watching
+tyr init --interactive    # confirm or edit each detected command
+tyr init --force          # re-detect after a toolchain change, keeping your edits
+tyr init --reset          # start over
+tyr init --json           # JSON summary, e.g. for CI
+```
+
+## Re-initializing
+
+`tyr init` refuses to run twice. Choose how much to keep:
+
+| | Re-detects | Keeps your edited commands | Keeps state history | Touches `settings.json` |
+| --- | --- | --- | --- | --- |
+| `--force` | Yes | Yes | Yes | No |
+| `--reset` | Yes | No | No | No |
+
+`settings.json` is created on the first `init` and never rewritten after that.
+
+## Interactive mode
+
+`--interactive` shows each command slot before anything is written:
+
+- **Enter** keeps the command.
+- **A new command** replaces it. It's recorded with evidence `"user"`.
+- **`-`** clears the slot.
+
+Declining the final confirmation writes nothing. Without a terminal (piped output, CI, `--json`) the flag is ignored with a warning.
+
+## The .gitignore question
+
+`.tyr/tyr.json` and `.tyr/settings.json` are portable and meant to be committed. `.tyr/.gitignore` already keeps runtime files out of git. So in a git repository, `init` only asks whether you'd rather ignore all of `.tyr/`. The default is **no**. Without a terminal it prints a hint instead of asking.
+
+See [team setup](/guides/team-setup).

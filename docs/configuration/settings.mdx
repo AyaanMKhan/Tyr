@@ -1,0 +1,114 @@
+---
+title: "Settings"
+description: "Every setting, its default, and how the global, project and environment layers combine."
+---
+
+Settings control what Tyr does: which checks run, how strict reporting is, and whether a model reviews your changes. What Tyr *detected* (your commands) is kept separately in [`tyr.json`](/configuration/project-profile).
+
+## View and change
+
+```bash
+tyr config                               # every setting, its value and where it came from
+tyr config get severity.threshold        # one value, bare, for scripts
+tyr config set checks.lint false         # this project (.tyr/settings.json)
+tyr config set --global ai.model claude-opus-5-5   # every project (your global config)
+tyr config unset checks.lint             # fall back to the global or default value
+```
+
+```text
+KEY                    VALUE            ORIGIN
+checks.build           true             default
+checks.lint            false            project
+severity.threshold     warning          default
+review.llm             true             env (TYR_REVIEW_LLM)
+ai.apiKey              sk-…abcd         global
+```
+
+See [`tyr config`](/cli/config) for every subcommand.
+
+## All settings
+
+| Key | Type | Default | What it does |
+| --- | --- | --- | --- |
+| `checks.build` | boolean | `true` | Run the detected build command |
+| `checks.test` | boolean | `true` | Run the detected test command |
+| `checks.lint` | boolean | `true` | Run the detected linter |
+| `checks.format` | boolean | `false` | Run the detected formatter check |
+| `checks.typecheck` | boolean | `true` | Run the detected type checker |
+| `severity.threshold` | `info` \| `warning` \| `error` | `warning` | Lowest severity that gets reported. Critical is always reported |
+| `review.diff` | boolean | `true` | Review the diff for secrets, deleted tests and risky patterns |
+| `review.llm` | boolean | `false` | Ask a model to review the diff when Claude stops and on commit. Needs an API key |
+| `ai.model` | string | `claude-opus-5-5` | Model used for reviews |
+| `ai.apiKey` | string | not set | Anthropic API key. **Secret**: global config or environment only |
+| `agent.permission` | `read-only` \| `suggest` \| `edit` | `suggest` | What corrective agents may do *(agents are planned)* |
+| `notifications.targets` | list | `["terminal"]` | Where findings are sent, e.g. `terminal`, `desktop`, `webhook:https://…` *(delivery is planned)* |
+
+For lists on the command line, use commas, or `none` for an empty list:
+
+```bash
+tyr config set notifications.targets terminal,desktop
+tyr config set notifications.targets none
+```
+
+## How settings resolve
+
+Four layers, each overriding the ones before it:
+
+```text
+built-in defaults  <  global config  <  project .tyr/settings.json  <  TYR_* environment variables
+```
+
+| Layer | File | Committed | Use it for |
+| --- | --- | --- | --- |
+| Global | `~/.config/tyr/config.json` | No | Your API key and personal defaults for every project |
+| Project | `.tyr/settings.json` | Yes | Team choices for this repository |
+| Environment | `TYR_*` variables | No | CI, scripts, one-off overrides |
+
+`tyr config` shows the origin of every value, so you can always tell which layer won.
+
+### Global config location
+
+| Platform | Path |
+| --- | --- |
+| macOS, Linux | `~/.config/tyr/config.json`, or `$XDG_CONFIG_HOME/tyr/config.json` |
+| Windows | `%APPDATA%\tyr\config.json` |
+| Any | `$TYR_CONFIG_HOME/config.json` when `TYR_CONFIG_HOME` is set |
+
+Tyr creates the global file with mode `600`. It warns if a file holding a key can be read by other users.
+
+## The API key
+
+`ai.apiKey` is a secret, so:
+
+- **Where it can go:** only the global config or the environment. Tyr refuses to write it to the committed `settings.json`, and ignores it there with a warning.
+- **How it's shown:** masked (`sk-…abcd`) unless you pass `tyr config list --reveal`.
+- **Fallbacks:** `TYR_API_KEY` wins. Otherwise Tyr uses `ANTHROPIC_API_KEY`, so an existing Anthropic setup works as is.
+
+```bash
+tyr config set --global ai.apiKey -     # read from stdin, stays out of shell history
+```
+
+## Editing by hand
+
+```bash
+$EDITOR "$(tyr config path)"            # project settings
+$EDITOR "$(tyr config path --global)"   # global config
+```
+
+The file nests keys as the dots suggest:
+
+```json
+{
+  "version": 1,
+  "checks": { "format": true, "lint": false },
+  "severity": { "threshold": "error" },
+  "review": { "llm": true }
+}
+```
+
+Mistakes never stop Tyr:
+
+- **Unknown key or wrong type:** ignored with a warning; the rest of the file still applies.
+- **Malformed JSON:** the whole file is ignored, and Tyr reports an error.
+
+`tyr init` creates `settings.json` once, with only `{ "version": 1 }`. It never overwrites the file, not even with `--force` or `--reset`.

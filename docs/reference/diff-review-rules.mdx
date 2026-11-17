@@ -1,0 +1,80 @@
+---
+title: "Diff review rules"
+description: "Every rule the diff review applies, its severity, and how to suppress it."
+---
+
+The [diff review](/guides/review#diff-review) checks what changed since the last commit, including new files that aren't tracked yet. Line rules look only at **added** lines. Size rules use the whole diff.
+
+## Secrets (critical)
+
+The secret itself never appears in a finding, only its first four characters (`AKIA…`).
+
+| Rule | Finds |
+| --- | --- |
+| `diff/secret-aws-key` | AWS access key IDs |
+| `diff/secret-private-key` | PEM private key blocks |
+| `diff/secret-github-token` | `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_` tokens |
+| `diff/secret-slack-token` | `xox*-` tokens and Slack webhook URLs |
+| `diff/secret-anthropic-key` | `sk-ant-…` keys |
+| `diff/secret-openai-key` | `sk-…` and `sk-proj-…` keys |
+| `diff/secret-jwt` | JSON Web Tokens |
+| `diff/secret-assignment` | `password`, `secret`, `api_key` or token-style names assigned a quoted literal of 12+ characters. Placeholders are ignored |
+| `diff/secret-env-file` | A `.env` file added, or untracked and not ignored. `.env.example`, `.sample` and `.template` are fine |
+
+## Tests (warning)
+
+| Rule | Finds |
+| --- | --- |
+| `diff/deleted-test-file` | A test file deleted (`*.test.*`, `*.spec.*`, `test_*.py`, `*_test.go`, `tests/`, `__tests__/`) |
+| `diff/removed-test-cases` | More test cases removed than added in a test file (`it(`, `test(`, `def test_`, `#[test]`, `func Test`) |
+| `diff/test-focus` | `.only(`, `fit(`, `fdescribe(` added: the rest of the suite stops running |
+| `diff/test-skip` | `.skip(`, `xit(`, `xdescribe(`, `@pytest.mark.skip`, `@unittest.skip`, `t.Skip(`, `#[ignore]` added |
+
+## Risky code
+
+| Rule | Severity | Finds |
+| --- | --- | --- |
+| `diff/exec-interpolated` | error | `exec` / `execSync` with a template or concatenated string (command injection) |
+| `diff/tls-verify-disabled` | error | `rejectUnauthorized: false`, `verify=False`, `NODE_TLS_REJECT_UNAUTHORIZED=0`, `InsecureSkipVerify: true`, `strictSSL: false` |
+| `diff/rm-rf` | warning, error for `/`, `~`, `$HOME` | `rm -rf` |
+| `diff/eval` | warning | `eval(` or `new Function(` outside tests |
+| `diff/no-verify` | warning | `--no-verify`: skipping git hooks |
+| `diff/ts-ignore` | warning | `@ts-ignore` added |
+| `diff/eslint-disable` | warning | An `eslint-disable` comment added |
+| `diff/any-cast` | info | `as any` in TypeScript |
+| `diff/todo` | info | `TODO`, `FIXME`, `XXX` |
+| `diff/console-log` | info | `console.log` in non-test JavaScript/TypeScript |
+| `diff/debugger` | info | `debugger`, Python `breakpoint()` or `pdb` |
+
+## Size and sensitive files
+
+| Rule | Severity | Finds |
+| --- | --- | --- |
+| `diff/large-change` | warning | More than 800 changed lines in total |
+| `diff/many-files` | warning | More than 40 files changed |
+| `diff/large-file-change` | warning | More than 500 changed lines in one file (lockfiles excluded) |
+| `diff/lockfile-without-manifest` | warning | A lockfile changed without its manifest (npm, yarn, pnpm, bun, cargo, poetry, uv, pipenv, bundler, composer, go, mix, CocoaPods) |
+| `diff/ci-config` | info | CI or workflow files changed |
+| `diff/dependency-manifest` | info | A dependency manifest changed |
+
+With the default `severity.threshold` of `warning`, info findings are not reported. Set it to `info` to see them.
+
+## Suppressing
+
+On the line itself:
+
+```python
+API_KEY = "test-key-for-fixtures-only"  # tyr-ignore: diff/secret-assignment
+```
+
+| Comment | Effect |
+| --- | --- |
+| `tyr-ignore` | Hides every finding on this line |
+| `tyr-ignore: diff/todo` | Hides only the named rule |
+| `tyr-ignore: todo, eval` | Short names and lists work too |
+
+Turn the whole diff review off with `tyr config set review.diff false`.
+
+<Note>
+Excluding rules for whole paths, such as test fixtures, is planned.
+</Note>

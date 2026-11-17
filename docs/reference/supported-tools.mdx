@@ -1,0 +1,36 @@
+---
+title: "Supported tools"
+description: "Which tools' output Tyr turns into findings with file and line."
+---
+
+When a check runs, Tyr reads its output and recognises these formats. Several can match one run, for example a build that runs both tsc and ESLint.
+
+| Tool | Recognised output | Finding |
+| --- | --- | --- |
+| **TypeScript** (`tsc`) | `file(l,c): error TS2322: …` and `file:l:c - error TS2322: …` | error, rule `TS2322` |
+| **ESLint** | stylish, unix and compact formats | warning or error, rule id |
+| **node:test** | TAP (`not ok`) and spec (`✖ failing tests`) | error per failing test, with location |
+| **Jest** | `FAIL path` and `● Suite › test` blocks | error per failing test |
+| **Vitest** | `FAIL path > Suite > test` with `❯ file:l:c` | error per failing test |
+| **pytest** | `FAILED path::test - message`, plus `E` lines for detail | error per failing test |
+| **Rust** (cargo, rustc, clippy) | `error[E0308]: …` / `warning: …` with `--> file:l:c`; `test x ... FAILED` | error or warning, lint name |
+| **Go** | `file.go:l:c: message` (build, vet, golangci-lint); `--- FAIL: TestX` | error |
+| **ruff**, **flake8** | `path:l:c: CODE message` | warning for W/C/R codes, otherwise error |
+| **mypy** | `path:l:c: error: message [code]` | error |
+| **Compilers** (gcc, clang and similar) | `path:l:c: error: message` / `warning:` | error or warning |
+
+## How results are classified
+
+- **File paths** are made relative to the project root, with `/` separators on every platform.
+- **Colors and terminal escape codes** are stripped first.
+- **A passing run** only keeps warnings, such as lint warnings in a run that passed.
+- **A failing run with unrecognised output** becomes one summary finding, e.g. `test failed (exit 1)`, with the last 20 lines of output.
+- **A timeout** always adds a `<check> timed out after Ns` finding.
+- **A run that failed with only warnings parsed**, such as ESLint with `--max-warnings 0`, also gets a summary error, so the failure isn't hidden.
+- **A run that couldn't start**, such as command not found, is noted in the report but produces no findings.
+
+Each check reports at most 200 findings.
+
+<Tip>
+Using a tool that isn't listed? If it prints `path:line:col: error: message`, it's already covered by the compiler format.
+</Tip>

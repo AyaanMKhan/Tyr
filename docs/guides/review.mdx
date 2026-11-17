@@ -1,0 +1,103 @@
+---
+title: "Review and regressions"
+description: "How Tyr turns check output and your diff into findings, and how it tells a regression from a known failure."
+---
+
+After every check pass, Tyr reviews what happened. It collects **findings** from up to three detectors (check output, diff review and LLM review), compares them with the previous review, and reports what is new, what is fixed and what regressed.
+
+## Findings
+
+A finding is one concrete problem:
+
+| Field | Example |
+| --- | --- |
+| severity | `critical`, `error`, `warning` or `info` |
+| title | `Type 'string' is not assignable to type 'number'` |
+| file, line | `src/math.ts:12` |
+| rule | `TS2322`, `no-unused-vars`, `diff/secret-aws-key` |
+| source | `check`, `diff` or `llm` |
+| regression | `true` when it broke something that used to pass |
+
+## Check output
+
+Tyr reads your tools' output and turns it into findings with file and line. It recognises tsc, ESLint, node:test, Jest, Vitest, pytest, cargo, Go, ruff, flake8, mypy and compiler-style `path:line:col: error:` output. See [supported tools](/reference/supported-tools).
+
+- **Failures** (compile errors, type errors, failing tests) are `error`. Lint warnings are `warning`.
+- **Passing runs** can still produce lint warnings.
+- **Unrecognised output:** if a failing check's output isn't recognised, you get one summary finding such as `test failed (exit 1)`, with the last 20 lines of output.
+
+## Diff review
+
+Tyr scans what changed since the last commit, including new files that aren't tracked yet, for problems that tests don't catch:
+
+- **Secrets** (critical): AWS, GitHub, Slack, Anthropic and OpenAI keys, private keys, JWTs, hard-coded passwords and `.env` files. The secret itself is never shown, only its first characters (`AKIA…`).
+- **Tests weakened:** a deleted test file, test cases removed, or `.only` / `.skip` added.
+- **Risky code:** `eval`, shell commands built from strings, disabled TLS verification, `rm -rf`, `--no-verify`, `@ts-ignore`, `eslint-disable`.
+- **Changes too big to review:** over 800 changed lines or 40 files, a lockfile changed without its manifest.
+
+It is on by default (`review.diff`). See the full [rule list](/reference/diff-review-rules).
+
+### Suppress a finding
+
+Add `tyr-ignore` to the line:
+
+```ts
+const sample = "AKIA...";  // tyr-ignore: diff/secret-aws-key
+eval(code);                // tyr-ignore
+```
+
+`tyr-ignore` alone hides every finding on that line. `tyr-ignore: <rule>, <rule>` hides only the rules you name.
+
+## LLM review
+
+Tyr can ask a model to review the diff the way a senior engineer would. It looks for bugs, violations of the conventions in your `CLAUDE.md` and `README.md`, and changed behavior without tests. It is told to skip style nitpicks.
+
+It is **off by default** because it costs API calls. Turn it on:
+
+```bash
+tyr config set --global ai.apiKey -     # or export ANTHROPIC_API_KEY
+tyr config set review.llm true
+```
+
+How it runs:
+
+- **When:** only when Claude Code finishes a turn or on a commit, never on idle passes.
+- **Model:** `ai.model` (default `claude-opus-5-5`).
+- **Context it sends:** your root `CLAUDE.md`, any `CLAUDE.md` files in changed directories, the README, the project profile and the diff.
+- **Limits:** large diffs are trimmed to whole files, and the review notes which files were left out. At most 15 findings per review.
+- **Checking the answer:** findings that cite files not in the diff are dropped.
+- **Failures:** with no key it's skipped with a note in the report. An API error never stops the rest of the review.
+
+<Warning>
+Model review sends your diff and docs to the Anthropic API. Leave it off for code that must not leave your machine.
+</Warning>
+
+## Regressions, new and resolved
+
+Every finding gets a **fingerprint** made from its source, rule, file and message, but not its line number. So the same problem is recognised even after the code around it moves.
+
+Tyr keeps the last review in `.tyr/state/findings.json` and compares:
+
+| Status | Meaning |
+| --- | --- |
+| **new** | Not in the previous review |
+| **resolved** | In the previous review, gone now |
+| **regression** | A new failure in a check that **passed before** |
+
+A check that has never passed only has pre-existing failures, so a project that was already red doesn't flood you with "regressions".
+
+## Severity threshold
+
+`severity.threshold` (default `warning`) hides lower-severity findings from reports. Critical findings are always reported.
+
+```bash
+tyr config set severity.threshold error   # only errors and critical
+tyr config set severity.threshold info    # everything, including TODOs
+```
+
+The threshold only affects what is reported. Tyr compares all findings with the previous review, so changing the threshold doesn't make old findings look new.
+
+## Where results go
+
+- **Live:** a `review.completed` event in `tyr watch`, e.g. `Review: 2 findings, 1 regression, 1 new`.
+- **Report:** a [report](/guides/reports) in `.tyr/reports/` when findings changed.

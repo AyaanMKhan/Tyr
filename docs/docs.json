@@ -1,0 +1,85 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Tyr",
+  "description": "A background engineering manager and reviewer for repositories where AI coding agents work.",
+  "colors": {
+    "primary": "#2F5BD3",
+    "light": "#7C9CF0",
+    "dark": "#1E3F99"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": [
+              "getting-started/introduction",
+              "getting-started/quickstart",
+              "getting-started/installation",
+              "getting-started/concepts"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/claude-code",
+              "guides/watching",
+              "guides/checks",
+              "guides/review",
+              "guides/reports",
+              "guides/team-setup"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/settings",
+              "configuration/project-profile",
+              "configuration/ignore-patterns",
+              "configuration/environment-variables"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI reference",
+        "groups": [
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/overview",
+              "cli/init",
+              "cli/start-stop",
+              "cli/watch",
+              "cli/config",
+              "cli/hooks",
+              "cli/status-run"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/tyr-directory",
+              "reference/events",
+              "reference/diff-review-rules",
+              "reference/supported-tools",
+              "reference/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {}
+  }
+}

@@ -1,0 +1,91 @@
+---
+title: "Project profile (tyr.json)"
+description: "What tyr init detects, how it decides, and how to correct it."
+---
+
+`.tyr/tyr.json` is Tyr's profile of your project: what it *is* and how to build and test it. `tyr init` writes it, and every later Tyr command reads it. It's meant to be committed, so your team shares one profile.
+
+## How detection works
+
+Tyr only records what it can prove. Every detected command carries the file that proves it (`evidence`). If Tyr can't prove a command, it records `null` instead of guessing.
+
+<Steps>
+  <Step title="Find the root">
+    The git top level, or the nearest directory with a manifest such as `package.json`, `pyproject.toml`, `Cargo.toml` or `go.mod`. `.tyr/` is created there.
+  </Step>
+  <Step title="Read git">
+    Branch (including a detached HEAD), HEAD commit, working tree status and remotes.
+  </Step>
+  <Step title="Scan files">
+    Walks the tree, skipping build output, dependencies, binaries and your [ignore patterns](/configuration/ignore-patterns). Symlinks are not followed, and the walk stops 25 levels deep.
+  </Step>
+  <Step title="Profile the project">
+    Languages by file count, package manager, frameworks, monorepo workspaces, README and CLAUDE.md.
+  </Step>
+  <Step title="Detect and verify commands">
+    Build, test, lint, format and typecheck commands from scripts and config files. Each is checked without running it: the tool must resolve from `node_modules/.bin` or your `PATH` and answer `--version`, and npm scripts must exist. Skip this step with `--no-verify`.
+  </Step>
+</Steps>
+
+## Package manager
+
+The first match wins:
+
+1. The `packageManager` field in `package.json` (npm, pnpm, yarn, bun)
+2. A lockfile: `bun.lock`/`bun.lockb`, `pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`
+3. `package.json` without a lockfile: npm
+4. Poetry (`poetry.lock` or `[tool.poetry]`), uv, pipenv, pip, cargo, go, bundler, composer
+
+The primary language is the most common *code* language. Markdown, JSON and YAML are counted, but never become primary.
+
+## The commands block
+
+```json
+{
+  "commands": {
+    "build":     { "command": "npm run build", "tool": "tsc",    "evidence": "package.json" },
+    "test":      { "command": "npm test",      "tool": "node:test", "evidence": "package.json" },
+    "lint":      null,
+    "format":    null,
+    "typecheck": { "command": "npx tsc --noEmit", "tool": "tsc", "evidence": "tsconfig.json" }
+  }
+}
+```
+
+These are exactly the commands Tyr runs as [checks](/guides/checks).
+
+## Correct a command
+
+**Interactively**, before anything is written:
+
+```bash
+tyr init --force --interactive
+```
+
+For each command: press Enter to keep it, type a new command to replace it, or type `-` to clear it.
+
+**By hand:** edit `tyr.json`. Mark your change with `"source": "user"` to make it explicit:
+
+```json
+"test": { "command": "pnpm vitest run", "tool": "Vitest", "evidence": "user", "source": "user" }
+```
+
+Either way, `tyr init --force` keeps your commands when it re-detects. It compares each command with what was originally detected (stored under `detected`), so it can tell your edits from detection changes. Only `--reset` discards them.
+
+## Other fields
+
+| Field | Meaning |
+| --- | --- |
+| `version` | Schema version (currently 2). Older files are migrated when read |
+| `project` | Name, root (always `"."` on disk), languages, frameworks, package manager, file count, workspaces |
+| `git` | Branch, detached flag, remote, head commit at init time |
+| `docs` | Paths of README and CLAUDE.md, if found |
+| `scan` | The ignore lists used, plus your `extraIgnore` patterns |
+| `reports` | Optional [report retention](/guides/reports#retention) |
+| `detected` | The originally detected commands, used by `--force` |
+
+Tyr keeps keys it doesn't recognise, so you can add your own.
+
+<Note>
+`tyr.json` is detection only. What Tyr should *do*, such as which checks run, lives in [`settings.json`](/configuration/settings).
+</Note>

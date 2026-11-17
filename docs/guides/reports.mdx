@@ -1,0 +1,91 @@
+---
+title: "Reports"
+description: "Where Tyr writes its findings, what a report contains, and how long reports are kept."
+---
+
+When a review finds something new, or something gets fixed, Tyr writes a report to `.tyr/reports/`. Each report is saved twice:
+
+- **JSON** for scripts and tools.
+- **Markdown** for people.
+
+```text
+.tyr/reports/
+├── 20261117-180754-review-1-regression-1-finding.json
+└── 20261117-180754-review-1-regression-1-finding.md
+```
+
+File names are `<UTC date>-<time>-<kind>-<title>`, so they sort chronologically.
+
+## What a report looks like
+
+```markdown
+# 1 regression, 2 findings
+
+- **Kind:** review
+- **Created:** 2026-11-17T18:07:54.066Z
+- **Git:** main @ 3095f1538f19
+
+## Summary
+
+Triggered by claude-stop. Checks: build passed, test failed.
+Findings: 1 critical, 1 error (2 new, 0 resolved, 1 regression).
+
+## Findings
+
+### Critical (1)
+
+- **Possible AWS access key ID added (AKIA…)** `config.js:1` [diff/secret-aws-key]
+  Secrets in the repository leak with every clone. Move it to the environment
+  or a secret store, and rotate it if it was ever pushed.
+
+### Errors (1)
+
+- **Test failed: adds** `a.test.js:2` [adds]
+  AssertionError [ERR_ASSERTION]: 2 == 3
+```
+
+The JSON version has the same findings and, under `data`:
+
+- the trigger,
+- each check run (command, outcome, exit code, duration; no output),
+- counts by severity,
+- the fingerprints of new and resolved findings,
+- notes, such as a check that couldn't run or a skipped model review.
+
+## When reports are written
+
+Tyr writes a report only when there is something new to say:
+
+- a finding that wasn't reported last time,
+- a finding that was resolved, or
+- a problem worth explaining, such as a check that timed out or couldn't run.
+
+If the same findings come back pass after pass, Tyr doesn't write a new report each time. `findings.json` and the journal are still updated on every pass.
+
+## Retention
+
+By default Tyr keeps the newest **100 reports** and deletes reports older than **30 days**. Change this in `.tyr/tyr.json`:
+
+```json
+{
+  "reports": { "maxCount": 500, "maxAgeDays": 90 }
+}
+```
+
+`0` or a negative number turns that limit off.
+
+## Find the latest report
+
+```bash
+ls -t .tyr/reports/*.md | head -1 | xargs cat
+```
+
+Or follow review results as they happen:
+
+```bash
+tyr watch --kind review
+```
+
+<Note>
+Reports are per machine. `.tyr/.gitignore` keeps them out of git. Showing findings in `tyr status` and sending them to notification targets are planned.
+</Note>
