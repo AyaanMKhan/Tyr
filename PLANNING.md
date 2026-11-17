@@ -96,7 +96,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Keep each command's `tool` and `evidence` in `tyr.json` (`ConfigCommand`, `commandOf`)
 - [x] Check that detected commands actually run: script lookup or `--version` probe, skippable with `--no-verify` (`cli/core/verify-commands.ts`)
 
-### 2.6 `.tyr/` state and storage (`cli/core/scaffold.ts`, `cli/core/types.ts`): 95%, Done
+### 2.6 `.tyr/` state and storage (`cli/core/scaffold.ts`, `cli/core/types.ts`): 100%, Done
 - [x] Layout `.tyr/{tyr.json, state/state.json, logs/tyr.log, reports/, .gitignore}` (`resolveTyrPaths`, `scaffold`)
 - [x] Atomic writes through a temp file and rename in the same directory (`writeFileAtomic`)
 - [x] Safe readers that return `null` on missing or malformed JSON (`readConfig`, `readState`)
@@ -110,7 +110,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Log rotation and `--log-level` (`cli/core/log.ts`: 1 MiB cap, 3 kept; `--log-level`, `TYR_LOG_LEVEL`; daemon inherits the level, `daemon.log` rotated on start)
 - [x] Event/history store (`cli/core/events.ts`: `.tyr/state/events.jsonl`, rotated; daemon start/stop/crash, git events and `tyr init` recorded). Claude Code events arrive with 2.9
 - [x] Decide what is committed: `tyr.json` (root stored as `"."`) and `.tyr/.gitignore` are committed; `state/`, `logs/`, `reports/` are not. The root `/.tyr/` entry stays an opt-in
-- [ ] Follow-ups: put `saveScanManifest` under the lock; reword the init `/.tyr/` gitignore offer now that tyr.json is portable; guard events.jsonl against a crash-truncated last line
+- [x] Follow-ups: `saveScanManifest` writes under the `.tyr/` lock, and init saves it in the same (re-entrant) critical section as `scaffold()`; the init gitignore offer now says `tyr.json` / `settings.json` are meant to be committed and asks whether to ignore all of `.tyr/` instead, default no (`GITIGNORE_MESSAGES`); `appendEvent` ends a crash-truncated last line (one-byte read) before appending, and `parseEventLine` salvages an event glued onto a fragment
 
 ### 2.7 User configuration: 100%, Done
 - [x] `tyr.json` exists and stores detected commands that a user could hand-edit

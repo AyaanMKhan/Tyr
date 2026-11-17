@@ -11,6 +11,21 @@
 // complete line (O_APPEND), so appenders in different processes (daemon,
 // CLI commands, Claude Code hooks) never interleave mid-line.
 //
+// Crash-truncated lines: a writer killed mid-append can leave the file
+// ending in half a line. The next append would then glue its event onto that
+// fragment and both would be lost. So before appending, the writer reads the
+// file's last byte (one positioned read on the handle it appends with, never
+// the whole file) and, when it is not "\n", writes "\n" + line instead. The
+// fragment becomes a line of its own, which readers skip. Trade-offs:
+//   - Two appenders that both see the fragment both add "\n": the result is
+//     one blank line, which readers also skip.
+//   - The check cannot tell a crashed writer from one still in the middle of
+//     its write. A line is a few hundred bytes written with one write(2), so
+//     that window is effectively empty; if it is ever hit, that one event is
+//     split off and lost, and every other event survives.
+//   - Readers also salvage an event glued onto a fragment (files written
+//     before this guard, or the race above): see parseEventLine.
+//
 // Rotation: before appending, if events.jsonl is at or above `maxBytes`
 // (default 5 MiB) it becomes events.1.jsonl, older files shift up
 // (events.1 -> events.2, ...) and only `keep` rotated files (default 3)
@@ -140,6 +155,31 @@ async function rotate(stateDir: string, live: string, keep: number): Promise<voi
 }
 
 /**
+ * Append `line` (which ends in "\n") to `file`, first terminating a
+ * crash-truncated last line if there is one. The check and the write share
+ * one handle opened for append, so the cost over a plain appendFile is a
+ * stat and, for a non-empty file, a one-byte read. See the header comment
+ * for the races this tolerates.
+ */
+async function appendLine(file: string, line: string): Promise<void> {
+    const handle = await fs.open(file, "a+");
+    try {
+        let prefix = "";
+        const { size } = await handle.stat();
+        if (size > 0) {
+            const last = Buffer.alloc(1);
+            const { bytesRead } = await handle.read(last, 0, 1, size - 1);
+            if (bytesRead === 1 && last[0] !== 0x0a) prefix = "\n";
+        }
+        // O_APPEND: lands after whatever is there by now, even if another
+        // process appended since the stat.
+        await handle.appendFile(prefix + line, "utf8");
+    } finally {
+        await handle.close().catch(() => undefined);
+    }
+}
+
+/**
  * Append one event. Returns the stored event, or null if it could not be
  * written. Never throws.
  */
@@ -176,7 +216,7 @@ export async function appendEvent(
             }
         }
 
-        await fs.appendFile(live, line, "utf8");
+        await appendLine(live, line);
         return event;
     } catch {
         return null;
@@ -218,32 +258,55 @@ export function kindMatches(kind: string, pattern: string): boolean {
     return kind === pattern || kind.startsWith(`${pattern}.`);
 }
 
+/** How every line appendEvent writes begins (`v` is always the first key). */
+const EVENT_LINE_START = '{"v":';
+
 /**
  * Parse one JSONL line into an event, or null when it is blank, malformed or
  * not an event. Exported for the live reader in event-stream.ts, which must
  * accept exactly what readEvents accepts.
+ *
+ * A line that is not valid JSON may be a crash-truncated fragment with a
+ * whole event glued onto its end (written before appendEvent guarded against
+ * that, or by the race it documents). Then the event starting at the first
+ * later `{"v":` from which the rest of the line parses is returned; the
+ * fragment itself is lost either way.
  */
 export function parseEventLine(line: string): TyrEvent | null {
     if (line.trim() === "") return null;
+    let value: unknown;
     try {
-        const value: unknown = JSON.parse(line);
-        if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
-        const raw = value as Partial<TyrEvent>;
-        if (typeof raw.ts !== "string" || Number.isNaN(Date.parse(raw.ts))) return null;
-        if (typeof raw.kind !== "string" || typeof raw.source !== "string") return null;
-        const event: TyrEvent = {
-            v: EVENT_VERSION,
-            id: typeof raw.id === "string" ? raw.id : "",
-            ts: raw.ts,
-            source: raw.source as EventSource,
-            kind: raw.kind,
-        };
-        if (typeof raw.message === "string") event.message = raw.message;
-        if (raw.data !== null && typeof raw.data === "object" && !Array.isArray(raw.data)) event.data = raw.data;
-        return event;
+        value = JSON.parse(line);
     } catch {
+        for (let at = line.indexOf(EVENT_LINE_START, 1); at !== -1; at = line.indexOf(EVENT_LINE_START, at + 1)) {
+            try {
+                value = JSON.parse(line.slice(at));
+            } catch {
+                continue;
+            }
+            return toEvent(value);
+        }
         return null;
     }
+    return toEvent(value);
+}
+
+/** Validate a parsed JSON value as an event, or null. */
+function toEvent(value: unknown): TyrEvent | null {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+    const raw = value as Partial<TyrEvent>;
+    if (typeof raw.ts !== "string" || Number.isNaN(Date.parse(raw.ts))) return null;
+    if (typeof raw.kind !== "string" || typeof raw.source !== "string") return null;
+    const event: TyrEvent = {
+        v: EVENT_VERSION,
+        id: typeof raw.id === "string" ? raw.id : "",
+        ts: raw.ts,
+        source: raw.source as EventSource,
+        kind: raw.kind,
+    };
+    if (typeof raw.message === "string") event.message = raw.message;
+    if (raw.data !== null && typeof raw.data === "object" && !Array.isArray(raw.data)) event.data = raw.data;
+    return event;
 }
 
 /** The filtering half of ReadEventsOptions (everything but limit/order). */

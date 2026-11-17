@@ -95,6 +95,63 @@ test("malformed and partial lines are skipped", async () => {
     }
 });
 
+test("appendEvent terminates a crash-truncated last line before appending", async () => {
+    const fragment = '{"v":1,"id":"dead","ts":"2026-11-01T00:00:0';
+    const root = await makeProject({ ".tyr/state/events.jsonl": fragment });
+    try {
+        const first = await appendEvent(root, { source: "tyr", kind: "after.crash" });
+        const second = await appendEvent(root, { source: "tyr", kind: "after.crash.2" });
+        assert.ok(first !== null && second !== null);
+        const raw = await fs.readFile(eventsFile(root), "utf8");
+        // The fragment got its own line; nothing else was prefixed.
+        assert.equal(raw, `${fragment}\n${JSON.stringify(first)}\n${JSON.stringify(second)}\n`);
+        assert.deepEqual((await readEvents(root)).map((e) => e.kind), ["after.crash", "after.crash.2"]);
+    } finally {
+        await removeProject(root);
+    }
+});
+
+test("appendEvent adds no newline to an empty or properly terminated file", async () => {
+    const root = await makeProject({ ".tyr/state/events.jsonl": "" });
+    try {
+        const first = await appendEvent(root, { source: "tyr", kind: "one" });
+        const second = await appendEvent(root, { source: "tyr", kind: "two" });
+        const raw = await fs.readFile(eventsFile(root), "utf8");
+        assert.equal(raw, `${JSON.stringify(first)}\n${JSON.stringify(second)}\n`);
+    } finally {
+        await removeProject(root);
+    }
+});
+
+test("concurrent appends after a crash-truncated line lose no event", async () => {
+    const root = await makeProject({ ".tyr/state/events.jsonl": '{"v":1,"id":"dead"' });
+    try {
+        const results = await Promise.all(
+            Array.from({ length: 20 }, (_, i) => appendEvent(root, { source: "tyr", kind: `c.${i}` })),
+        );
+        assert.ok(results.every((r) => r !== null));
+        const kinds = (await readEvents(root)).map((e) => e.kind).sort();
+        assert.deepEqual(kinds, Array.from({ length: 20 }, (_, i) => `c.${i}`).sort());
+    } finally {
+        await removeProject(root);
+    }
+});
+
+test("readEvents salvages an event glued onto a crash-truncated fragment", async () => {
+    const glued = JSON.stringify({ v: 1, id: "g", ts: "2026-11-01T00:00:01.000Z", source: "tyr", kind: "glued", data: { v: 2 } });
+    const next = JSON.stringify({ v: 1, id: "n", ts: "2026-11-01T00:00:02.000Z", source: "tyr", kind: "next" });
+    const root = await makeProject({
+        // Written by an older Tyr without the newline guard: the fragment
+        // (which itself contains a nested {"v": ...}) runs into the next event.
+        ".tyr/state/events.jsonl": `{"v":1,"id":"dead","data":{"v":3,"x":"tr${glued}\n${next}\n`,
+    });
+    try {
+        assert.deepEqual((await readEvents(root)).map((e) => e.id), ["g", "n"]);
+    } finally {
+        await removeProject(root);
+    }
+});
+
 test("size-based rotation shifts files, keeps N, and reads across them", async () => {
     const root = await makeProject({});
     try {

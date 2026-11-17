@@ -134,6 +134,29 @@ test("followEvents: a line split across writes is delivered once, when complete"
     }
 });
 
+test("followEvents: a crash-truncated line is skipped and the next append still arrives", async () => {
+    const root = await makeProject({ ".tyr/state/events.jsonl": "" });
+    try {
+        const { events, follower, until } = await collect(root);
+        // A writer died mid-line: the follower must hold it as a partial line,
+        // not skip it, since it cannot know the rest will never come.
+        await fs.appendFile(eventsFile(root), '{"v":1,"id":"dead","ts":"2026-11-01T00:00:0');
+        await settle(200);
+        assert.equal(events.length, 0);
+        // appendEvent terminates the fragment first, so it becomes its own
+        // (unparseable, skipped) line instead of swallowing this event.
+        await appendEvent(root, { source: "tyr", kind: "after.crash" });
+        await appendEvent(root, { source: "tyr", kind: "after.crash.2" });
+        await until(2);
+        await settle();
+        assert.deepEqual(events.map((e) => e.kind), ["after.crash", "after.crash.2"]);
+        follower.close();
+        await follower.done;
+    } finally {
+        await removeProject(root);
+    }
+});
+
 test("followEvents: backlog and since replay history, then go live without duplicates", async () => {
     const root = await makeProject({});
     try {
