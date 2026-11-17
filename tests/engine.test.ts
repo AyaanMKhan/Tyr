@@ -9,6 +9,8 @@ import type { InitSnapshot, ProjectCommand } from "../cli/core/types.js";
 import { startEngine, type Engine } from "../cli/engine/engine.js";
 import type { CheckKind, CheckRun } from "../cli/engine/model.js";
 import { readEngineState } from "../cli/engine/repo-state.js";
+import type { ReviewPassResult } from "../cli/engine/review.js";
+import { listReports } from "../cli/core/reports.js";
 import { makeProject, removeProject } from "./helpers.js";
 
 const NODE = JSON.stringify(process.execPath);
@@ -143,6 +145,38 @@ describe("engine", () => {
             assert.ok(Date.now() - began < 10_000);
             assert.deepEqual((await readEngineState(root)).problems, [], "a cancelled run opens no problem");
         } finally {
+            await removeProject(root);
+        }
+    });
+
+    it("reviews each pass: findings from output, a regression after a pass, a report", async () => {
+        const root = await project({ typecheck: node("process.exit(Number(require('fs').readFileSync('mode','utf8')))") });
+        await fs.writeFile(path.join(root, "mode"), "0");
+        const reviews: ReviewPassResult[] = [];
+        const engine = await startEngine(root, {
+            log: () => undefined,
+            scheduler: { idleMs: 50, commitDelayMs: 10, settleMs: 0 },
+            journal: { forcePolling: true, pollIntervalMs: 20 },
+            onReview: (result) => reviews.push(result),
+        });
+        try {
+            engine.scheduler.requestRun("manual");
+            await engine.scheduler.idle();
+            assert.equal(reviews[0]!.findings.length, 0, "passing pass: nothing to report");
+            assert.equal(reviews[0]!.report, null);
+
+            await fs.writeFile(path.join(root, "mode"), "1");
+            engine.scheduler.requestRun("manual");
+            await engine.scheduler.idle();
+            const failing = reviews[1]!;
+            assert.equal(failing.findings.length, 1);
+            assert.equal(failing.findings[0]!.checkKind, "typecheck");
+            assert.equal(failing.regressions.length, 1, "it passed before: a regression");
+            assert.ok(failing.report);
+            assert.equal((await listReports(root)).length, 1);
+            assert.equal((await readEvents(root, { kinds: ["review.completed"] })).length, 2);
+        } finally {
+            await engine.close();
             await removeProject(root);
         }
     });

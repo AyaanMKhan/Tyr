@@ -17,6 +17,12 @@
 //      fold the result into engine.json (open problems, last good run).
 //   If the build does not pass, test is skipped: tests of a broken build only
 //   repeat the build's failure.
+//   4. Review the pass (review.ts): parse the runs' output into findings,
+//      review the working-tree diff (settings review.diff), and on Claude
+//      Code Stop, commit or a manual run also ask the model (review.llm, off
+//      by default because it costs API calls). Regressions are marked against
+//      the previous pass, and a report goes to .tyr/reports/ when something
+//      changed.
 //
 // Only events journaled after the engine starts are considered: the daemon
 // is not meant to replay history into checks on every restart.
@@ -25,10 +31,15 @@
 // appendLog). close() cancels a run in progress, which kills its processes.
 
 import { appendLog } from "../core/scaffold.js";
+import { resolveSettings } from "../core/settings.js";
+import { parseCheckRun } from "./check-parsers.js";
+import { reviewDiff } from "./diff-review.js";
+import { reviewDiffWithLlm } from "./llm-review.js";
+import { reviewPass, type ReviewDetectors, type ReviewPassResult } from "./review.js";
 import { attachJournal, EventBus, publish, type JournalDetach } from "./bus.js";
 import { checkRunToEvent, checkStartedEvent, describeCheckRun, loadCheckCommands, runCheck } from "./executor.js";
 import { CHECK_KINDS, type CheckKind, type CheckRun, type CheckTrigger } from "./model.js";
-import { recordCheckRun, refreshWorkingTree } from "./repo-state.js";
+import { readEngineState, recordCheckRun, refreshWorkingTree } from "./repo-state.js";
 import { createScheduler, type Scheduler, type SchedulerOptions } from "./scheduler.js";
 
 export type EngineLogLevel = "debug" | "info" | "warn" | "error";
@@ -44,6 +55,10 @@ export interface EngineOptions {
     journal?: { forcePolling?: boolean; pollIntervalMs?: number };
     /** Called after every finished check (tests). */
     onRun?: (run: CheckRun) => void;
+    /** Called after every review pass (tests). */
+    onReview?: (result: ReviewPassResult) => void;
+    /** Detector overrides (tests); default: the real parsers, diff review and LLM review. */
+    detectors?: ReviewDetectors;
 }
 
 export interface Engine {
@@ -51,6 +66,9 @@ export interface Engine {
     /** Stop listening, cancel any run in progress and wait for it to end. */
     close(): Promise<void>;
 }
+
+/** Triggers that may spend API calls on an LLM review. */
+const LLM_TRIGGERS: ReadonlySet<CheckTrigger["reason"]> = new Set(["claude-stop", "commit", "manual"]);
 
 /** Checks skipped when the build did not pass. */
 const NEEDS_BUILD: ReadonlySet<CheckKind> = new Set<CheckKind>(["test"]);
@@ -61,15 +79,20 @@ export async function startEngine(root: string, options: EngineOptions = {}): Pr
     const abort = new AbortController();
 
     const runChecks = async (trigger: CheckTrigger): Promise<void> => {
-        const commands = await loadCheckCommands(root);
+        const [commands, resolved] = await Promise.all([loadCheckCommands(root), resolveSettings({ root })]);
+        const settings = resolved.settings;
         const kinds = CHECK_KINDS.filter((kind) => commands[kind] !== undefined);
-        if (kinds.length === 0) {
-            log("debug", `engine: no checks enabled (trigger ${trigger.reason})`);
+        const reviewing = settings.review.diff || settings.review.llm;
+        if (kinds.length === 0 && !reviewing) {
+            log("debug", `engine: no checks or reviews enabled (trigger ${trigger.reason})`);
             return;
         }
+        // Before this pass is recorded: regressions compare against it.
+        const stateBefore = await readEngineState(root);
         await refreshWorkingTree(root).catch((error) => log("warn", `engine: could not snapshot the working tree: ${describe(error)}`));
-        log("info", `engine: running ${kinds.join(", ")} (trigger ${trigger.reason})`);
+        if (kinds.length > 0) log("info", `engine: running ${kinds.join(", ")} (trigger ${trigger.reason})`);
 
+        const runs: CheckRun[] = [];
         let buildPassed = true;
         for (const kind of kinds) {
             if (abort.signal.aborted) return;
@@ -86,6 +109,7 @@ export async function startEngine(root: string, options: EngineOptions = {}): Pr
             if (kind === "build") buildPassed = run.outcome === "passed";
             // Cancelled runs only happen on shutdown; they say nothing about the code.
             if (run.outcome !== "cancelled") {
+                runs.push(run);
                 await recordCheckRun(root, run).catch((error) => log("warn", `engine: could not record ${kind}: ${describe(error)}`));
             }
             await publish(root, checkRunToEvent(run));
@@ -95,6 +119,32 @@ export async function startEngine(root: string, options: EngineOptions = {}): Pr
             } catch {
                 // Test hook; never let it break a pass.
             }
+        }
+        if (abort.signal.aborted) return;
+
+        const detectors: ReviewDetectors = options.detectors ?? {
+            parseCheckRun,
+            ...(settings.review.diff ? { reviewDiff: (ctx) => reviewDiff(ctx) } : {}),
+            reviewDiffWithLlm: (ctx) => reviewDiffWithLlm(ctx, { settings, signal: abort.signal }),
+        };
+        const result = await reviewPass(root, {
+            trigger,
+            runs,
+            stateBefore,
+            threshold: settings.severity.threshold,
+            llm: settings.review.llm && LLM_TRIGGERS.has(trigger.reason),
+            detectors,
+        });
+        for (const note of result.notes) log("warn", `engine: review: ${note}`);
+        log(
+            result.findings.length > 0 ? "warn" : "info",
+            `engine: review found ${result.findings.length} (${result.regressions.length} regressions, ${result.added.length} new, ${result.resolved.length} resolved)` +
+                (result.report ? `; report ${result.report.id}` : ""),
+        );
+        try {
+            options.onReview?.(result);
+        } catch {
+            // Test hook.
         }
     };
 
