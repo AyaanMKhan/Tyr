@@ -20,7 +20,7 @@ It is a TypeScript/Node CLI (`commander`, `figlet`) that builds to `dist/cli/ind
 
 **What works today:** `tyr init` works end to end. It finds the root, takes a git snapshot, scans files, profiles languages, frameworks and toolchain commands, writes `.tyr/` atomically and logs the run. I verified this by building a copy of the repo and running it: `npm ci && npm run build` succeeds, and `tyr init` / `tyr init --force` both produce the full `.tyr/` tree. Every other command is a one-line `console.log` stub. None of the actual product exists yet: the background process, observing Claude Code, the problem detection, the agents and the integrations.
 
-### Overall completion: about 78%
+### Overall completion: about 81%
 
 I weighted each component by how much it contributes to an end-to-end working Tyr, multiplied the weight by that component's completion, and added up the results (see the table in section 3). The groundwork is the most polished part: init, discovery, git snapshot and project profiling are high quality. But it carries less than a third of the weight. The core product (daemon, observation, detection, agents, integrations) is about 45% of the weight and is at 0%.
 
@@ -161,10 +161,11 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] `--json` output: the versioned `StatusReport` (`statusVersion: 1`)
 - [ ] Follow-ups: nothing updates `state.lastIndexedCommit` after `tyr init`, so drift is always against the last init
 
-### 2.13 `tyr run <prompt>` (`cli/commands/run.ts`): 5%, Not started (stub only)
-- [x] Command registered with a required `<prompt>` argument (echoes it)
-- [ ] Route the prompt to the engine or an agent, with repo context from `.tyr/`
-- [ ] Stream progress, then record the result in state and reports
+### 2.13 `tyr run <prompt>` (`cli/commands/run.ts`): 100%, Done
+- [x] Command registered with a required `<prompt>` argument
+- [x] Route the prompt to the engine or an agent, with repo context from `.tyr/`: keyword routing (`cli/engine/intent.ts`, `--mode` overrides) to `checks` (the engine's check pass, extracted to `cli/engine/pass.ts`; every check includes the review), `review` (diff rules plus the model when a key is set, working tree or last commit, `.tyr/` excluded) or `ask` (`cli/engine/ask.ts`: one streamed model call grounded in the profile, CLAUDE.md/README, `tyr status`, recent commits and the trimmed diff)
+- [x] Stream progress, then record the result in state and reports (`cli/engine/run.ts`): per-check progress lines and the streamed answer; `run.started` / `run.completed` journal events, `runCount` / `lastRunAt` in state.json, a `run` report; `--json` prints the versioned RunResult
+- [ ] Follow-ups: the ask route sees a snapshot, not the file system (tool-using agents are 2.14); Ctrl-C exits 130 via the global handler rather than cancelling checks gracefully
 
 ### 2.14 Agents (`agents/`, currently only `agents/AGENTS.md`): 0%, Not started
 - [ ] Define agent roles (reviewer, fixer, test-runner)
@@ -244,7 +245,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 10 | Core engine / orchestration | 9 | 100% | Done | 9.0 |
 | 11 | Problem detection / review | 7 | 100% | Done | 7.0 |
 | 12 | `tyr status` | 3 | 100% | Done | 3.0 |
-| 13 | `tyr run` | 3 | 5% | Not started (stub) | 0.15 |
+| 13 | `tyr run` | 3 | 100% | Done | 3.0 |
 | 14 | Agents | 5 | 0% | Not started | 0 |
 | 15 | Integrations (Claude Code, GitHub) | 5 | 0% | Not started | 0 |
 | 16 | Console UI / reporter | (in 1, 2) | 90% | Partial | — |
@@ -253,7 +254,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 19 | Lint / format / CI | 1 | 0% | Not started | 0 |
 | 20 | Packaging and distribution | 2 | 30% | Partial | 0.6 |
 | 21 | Documentation | 2 | 60% | Partial | 1.2 |
-| | **Total** | **100** | | | **≈ 78.5 → 78%** |
+| | **Total** | **100** | | | **≈ 81.4 → 81%** |
 
 Discovery and the reporter are counted inside the `init` and CLI weights, because their only consumer today is `init`.
 
@@ -283,7 +284,6 @@ No component is 100% done. These individual pieces are complete and work as inte
 - **Error handling and logging:** no typed errors or levels, and warnings and errors go to stdout.
 - **Packaging:** the package name cannot be published, and `files`, `engines`, `prepare` and metadata are missing. `pyproject.toml` is empty.
 - **Docs:** placeholders only.
-- **`run`:** registered stub that only prints a line.
 
 ---
 
