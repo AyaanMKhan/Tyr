@@ -1,17 +1,125 @@
 ---
 title: "tyr run"
-description: "Planned command: ask Tyr to act."
+description: "Ask Tyr to do something now: run checks, review changes, or answer a question."
 ---
 
-<Note>
-`tyr run` is registered but not implemented yet. It prints a placeholder line.
-</Note>
+```bash
+tyr run "<prompt>" [options]
+```
+
+Tells Tyr to act now instead of waiting for the background process. The prompt is plain language. Tyr decides which of three things you mean, does it in the foreground with live progress, and saves the result as a report.
 
 ```bash
+tyr run "run the tests"
+tyr run "check everything"
 tyr run "review my last commit"
 tyr run "why is the build failing?"
 ```
 
-Will send a request in plain language to Tyr's engine or an agent, with the project's context from `.tyr/`, then stream progress and save the result as a report.
+You don't need `tyr start` first: `tyr run` works whether or not the background process is running.
 
-To see what Tyr already knows about the project, use [`tyr status`](/cli/status).
+## What a prompt does
+
+Tyr routes the prompt by keywords. It doesn't call the model to make that decision, so routing is instant and free. If it guesses wrong, use `--mode` to force a route.
+
+| Route | Prompts that pick it | What happens |
+| --- | --- | --- |
+| `checks` | "run the tests", "lint", "typecheck and lint", "check everything", "run all checks", "verify" | Runs the named checks now, using the commands from `tyr.json`. When every check is selected, the review runs too, exactly like a pass of the background process |
+| `review` | "review my changes", "audit the diff", "review the last commit", "review HEAD" | Reviews uncommitted changes, or the last commit, with the diff rules. When an API key is set, the model reviews it too |
+| `ask` | Everything else, including questions about checks such as "why do the tests fail?" | The model answers from what Tyr knows about the project |
+
+A question always goes to `ask`, even when it names a check. A prompt counts as a question when it starts with a word like *why*, *what*, *how*, *is* or *explain*, or ends with `?`. To run a check, use a verb ("run the build") or name only the check ("build").
+
+### checks
+
+- Each check runs one at a time, in the order build, typecheck, lint, test, format.
+- If the build fails, test is skipped.
+- Each run is recorded in `.tyr/state/engine.json`, where [`tyr status`](/cli/status) shows it.
+- Findings are parsed from the output of each check.
+
+When you ask for every check, the full review runs as well, including the diff rules (and the model, if `review.llm` is on). The result becomes the engine's record of open findings in `.tyr/state/findings.json`. When you ask for only some checks, that record is left alone: a partial pass would wrongly mark the other checks' findings as resolved.
+
+Only checks that have a command in `tyr.json` and are turned on in settings (`checks.<kind>`) run. If none of the checks you asked for qualifies, the run fails and says so.
+
+### review
+
+The diff rules check for secrets, deleted tests, risky patterns and very large changes. The model also reviews the diff when an API key is configured, unless you pass `--no-llm`. Asking for a review counts as agreeing to that one call, even if `review.llm` (the automatic review) is off.
+
+- **Uncommitted changes** compares the working tree, including untracked files, with HEAD.
+- **The last commit** compares HEAD with its parent. A repository with a single commit has nothing to compare against.
+- Tyr's own `.tyr/` directory is never reviewed.
+- Findings below `severity.threshold` aren't reported.
+
+A review run doesn't change `.tyr/state/findings.json`, which tracks the background process's passes over the working tree.
+
+### ask
+
+The model gets a snapshot of what Tyr knows:
+
+- the project profile
+- `CLAUDE.md` and the README
+- the latest check results, with excerpts of failing output
+- open problems and findings
+- drift since the last index
+- whether the background process is running
+- the last 15 commits
+- the uncommitted diff, trimmed to about 60 KB, with secrets redacted
+
+It can't open files or run commands; it answers from that snapshot and says when the snapshot isn't enough. The answer streams to the terminal as it arrives.
+
+This route needs an API key: `ai.apiKey` in your global settings, `TYR_API_KEY` or `ANTHROPIC_API_KEY`. The model is `ai.model`. See [settings](/configuration/settings).
+
+## Options
+
+| Option | Effect |
+| --- | --- |
+| `--mode <checks\|review\|ask>` | Skip the guess and use this route. With `checks` and no check named, every check runs |
+| `--no-llm` | Don't ask the model during a review (diff rules only) |
+| `--no-color` | Print without colors |
+
+The [global options](/cli/overview#global-options) apply too. `--quiet` keeps only the answer and problems. `--verbose` lists every finding instead of the first 10. `--json` prints the result as JSON (see below).
+
+## What gets recorded
+
+Every run, whatever its route or outcome, leaves a trace:
+
+- **Journal:** `run.started` and `run.completed` events, which [`tyr watch`](/cli/watch) shows.
+- **State:** `runCount` and `lastRunAt` in `.tyr/state/state.json`.
+- **Report:** a `run` report in `.tyr/reports/`, as JSON and Markdown. It holds the prompt, the route, the outcome, the findings and, for a question, the answer. [`tyr status`](/cli/status) lists recent reports.
+
+## Exit codes
+
+| Code | When |
+| --- | --- |
+| 0 | The run succeeded: every check passed, the review found nothing at `error` or above, or the question was answered |
+| 1 | A check failed, the review found an `error` or `critical` finding, or the run couldn't be done (nothing configured, no API key, an API error) |
+| 2 | Usage error: empty prompt, unknown `--mode` |
+| 3 | The project isn't initialized. Run `tyr init` |
+| 4 | `.tyr/tyr.json` exists but can't be used |
+| 130 | Interrupted with Ctrl-C |
+
+## JSON output
+
+With `--json`, stdout gets exactly one object. The answer to a question is in it rather than streamed.
+
+```bash
+tyr run "run all checks" --json | jq '.status, .checks'
+```
+
+| Field | Meaning |
+| --- | --- |
+| `runVersion` | Format version, currently `1`. It changes only on a breaking change |
+| `id` | Id of the `run.started` journal event |
+| `prompt` | The prompt as given |
+| `intent` | The route: `{ mode: "checks", checks, all }`, `{ mode: "review", scope: "working-tree" \| "last-commit" }` or `{ mode: "ask", question }` |
+| `status` | `succeeded`, `failed`, `error` or `cancelled` |
+| `summary` | The one-line result |
+| `startedAt`, `finishedAt`, `durationMs` | Timing |
+| `checks` | Each check that ran: `{ kind, command, outcome, exitCode, durationMs }` |
+| `skipped` | Checks skipped because the build failed |
+| `findings` | Findings at or above the threshold, most severe first: `{ severity, title, detail?, file?, line?, rule?, source, fingerprint, ... }` |
+| `counts` | Number of findings per severity |
+| `answer` | The model's answer (the `ask` route), else `null` |
+| `model` | The model that answered or reviewed, else `null` |
+| `notes` | Things worth knowing that aren't findings, for example "LLM review skipped: no API key" |
+| `report` | `{ id, jsonFile, mdFile }` of the saved report, or `null` if it couldn't be written |

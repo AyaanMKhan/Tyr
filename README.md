@@ -101,7 +101,7 @@ The code follows a few design principles that are already visible:
 | `tyr config` (`list`, `get`, `set`, `unset`, `path`) and the layered settings resolver | Implemented |
 | `tyr watch`: live view of the event journal (history replay, filters, NDJSON) | Implemented |
 | `tyr status`: project profile, background process, last run, checks, open findings, drift, `--json` | Implemented |
-| `tyr run` | **Stub**: prints one placeholder line |
+| `tyr run`: run checks, review changes or answer a question about the repo, recorded as a report | Implemented |
 | Claude Code session observation (`tyr hooks`, see [Claude Code integration](#claude-code-integration)) | Implemented |
 | Background observer of Claude Code, problem detection, corrective agents | **Planned** |
 | Integrations (Claude Code, GitHub, Git) | **Planned** (`integrations/INTEGRATIONS.md`) |
@@ -472,18 +472,11 @@ Lists such as `notifications.targets` are replaced, never merged: a project that
 
 ### `tyr run <prompt>`
 
-**Status: stub.** It echoes the prompt.
-
 ```
-tyr run <prompt>
+tyr run <prompt> [--mode checks|review|ask] [--no-llm]
 ```
 
-```text
-$ tyr run "fix the failing tests"
-Running the user command... fix the failing tests
-```
-
-Intended purpose: *"Explicitly tell Tyr to perform something"*, an on-demand instruction to Tyr instead of waiting for it to act on its own. `TyrState.runCount` and `lastRunAt` exist to track these runs.
+Ask Tyr to act now. The prompt is routed by keywords: "run the tests" runs checks, "review my last commit" reviews a diff (diff rules plus the model when a key is set), and anything else, such as "why is the build failing?", is answered by the model from what Tyr knows. Progress streams to the terminal; every run is journaled, counted in `state.json` (`runCount`, `lastRunAt`) and saved as a `run` report. See [docs/cli/run.mdx](docs/cli/run.mdx).
 
 ### `tyr hooks`
 
@@ -934,7 +927,7 @@ Tyr/
 │   │   ├── status.ts            # `tyr status`: what Tyr knows about the project
 │   │   ├── config.ts            # `tyr config` list/get/set/unset/path wiring
 │   │   ├── hooks.ts             # `tyr hook` (run by Claude Code), `tyr hooks` install/uninstall/status
-│   │   └── run.ts               # stub
+│   │   └── run.ts               # tyr run: route, run, record
 │   ├── core/
 │   │   ├── types.ts             # Shared contracts: DiscoveryResult, GitInfo, ProjectProfile,
 │   │   │                        #   TyrConfig, TyrState, Reporter, TaskHandle
@@ -1016,7 +1009,7 @@ These items come from stated intent in the code, command descriptions and the `*
 - [ ] **Corrective agents**: dispatch focused agents (`agents/`) to fix detected problems, coordinated by the engine in `core/`
 - [x] **`tyr status`**: show what Tyr knows (`tyr.json`), its lifecycle (`state.json`) and live git state
 - [x] **`tyr watch`**: live view of the event journal (daemon, git, files, Claude Code)
-- [ ] **`tyr run <prompt>`**: on-demand instructions to Tyr, tracked via `runCount` / `lastRunAt`
+- [x] **`tyr run <prompt>`**: on-demand instructions to Tyr, tracked via `runCount` / `lastRunAt`
 - [ ] **Integrations**: Claude Code, GitHub, Git
 - [ ] Configurable ignore lists / `.gitignore` awareness
 - [ ] Test suite and linting for Tyr itself
@@ -1044,7 +1037,7 @@ npx tsc --noEmit              # type-check only (the command Tyr detects for its
 
 ## Known limitations and quirks
 
-- Only `init` does real work. `start`, `watch` and `run` are placeholders, and `--start` only warns.
+- Corrective agents are not implemented yet: `tyr run` runs checks, reviews and answers questions, but never edits files.
 - The ASCII banner prints on every invocation, including `--version` and `--help`, and before machine-readable output.
 - The help header reads `Usage: Tyr` (the program name is set to `"Tyr"`), while the installed binary is `tyr`.
 - `tyr.json` is portable since schema v2 (`project.root` is stored as `"."`), but it still churns when someone re-runs `tyr init --force`: `git.headCommit`, `project.fileCount` and `initializedAt` change. Preferences in `settings.json` are not affected (see [What gets committed](#what-gets-committed)).
