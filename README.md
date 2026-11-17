@@ -954,6 +954,11 @@ Tyr/
 │   │   ├── scheduler.ts         # When checks run: idle, commit, Claude Code Stop
 │   │   ├── executor.ts          # Runs a check: timeout, tree kill, output tail, outcome
 │   │   ├── repo-state.ts        # .tyr/state/engine.json: diff, last good runs, problems
+│   │   ├── findings.ts          # Findings contract: EngineFinding, fingerprints, ordering
+│   │   ├── check-parsers.ts     # Check output (tsc, eslint, test runners, ...) -> findings
+│   │   ├── diff-review.ts       # Heuristic diff rules: secrets, deleted tests, risky code, size
+│   │   ├── llm-review.ts        # Model review against CLAUDE.md / README (opt-in)
+│   │   ├── review.ts            # Merge findings, regressions, threshold, review reports
 │   │   └── engine.ts            # Wires them together; started by the daemon
 │   └── ui/
 │       ├── event-view.ts        # One-line rendering of journal events for `tyr watch`

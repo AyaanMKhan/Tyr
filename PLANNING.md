@@ -20,7 +20,7 @@ It is a TypeScript/Node CLI (`commander`, `figlet`) that builds to `dist/cli/ind
 
 **What works today:** `tyr init` works end to end. It finds the root, takes a git snapshot, scans files, profiles languages, frameworks and toolchain commands, writes `.tyr/` atomically and logs the run. I verified this by building a copy of the repo and running it: `npm ci && npm run build` succeeds, and `tyr init` / `tyr init --force` both produce the full `.tyr/` tree. Every other command is a one-line `console.log` stub. None of the actual product exists yet: the background process, observing Claude Code, the problem detection, the agents and the integrations.
 
-### Overall completion: about 64%
+### Overall completion: about 75%
 
 I weighted each component by how much it contributes to an end-to-end working Tyr, multiplied the weight by that component's completion, and added up the results (see the table in section 3). The groundwork is the most polished part: init, discovery, git snapshot and project profiling are high quality. But it carries less than a third of the weight. The core product (daemon, observation, detection, agents, integrations) is about 45% of the weight and is at 0%.
 
@@ -145,12 +145,13 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Wired into the daemon (`cli/engine/engine.ts`, started by `runDaemon`): runs enabled checks in order (build, typecheck, lint, test, format), skips test when the build fails, journals `check.started`/`check.passed`/`check.failed` (visible in `tyr watch`), cancels a running check on `tyr stop`
 - [ ] Follow-ups: findings/report output from check runs (2.11); show `engine.json` in `tyr status` (2.12); a manual `tyr check` trigger; per-check timeouts in settings; Windows tree-kill path untested
 
-### 2.11 Problem detection / review: 0%, Not started
-- [ ] Run build, test, lint and typecheck after changes, then parse the results into findings
-- [ ] Regression detection (passed before, fails now)
-- [ ] Diff review: risky patterns, deleted tests, large unreviewed changes, secrets
-- [ ] LLM-based review of diffs against CLAUDE.md and README conventions
-- [ ] Findings model with severity, persisted to `reports/`
+### 2.11 Problem detection / review (`cli/engine/`): 100%, Done
+- [x] Run build, test, lint and typecheck after changes, then parse the results into findings: the engine runs them (2.10) and `cli/engine/check-parsers.ts` turns output into file/line findings for tsc, ESLint (stylish/unix/compact), node:test (TAP/spec), Jest, Vitest, pytest, cargo/rustc/clippy, Go, ruff/flake8/mypy and a generic `path:l:c: error:` fallback; an unrecognized failure becomes one summary finding with the output tail
+- [x] Regression detection (passed before, fails now): per check in `engine.json` (`Problem.regression`) and per finding in `cli/engine/review.ts`, comparing fingerprints (stable across line drift) with the previous pass in `.tyr/state/findings.json`; reports also list new and resolved findings
+- [x] Diff review: risky patterns, deleted tests, large unreviewed changes, secrets (`cli/engine/diff-review.ts`, 24 rules, masked secrets, `tyr-ignore[: rule]` line suppression); untracked files are reviewed too. Setting `review.diff` (on)
+- [x] LLM-based review of diffs against CLAUDE.md and README conventions (`cli/engine/llm-review.ts`, `@anthropic-ai/sdk`, structured output, prompt caching, findings validated against the diff). Setting `review.llm` (off by default; runs on Claude Code Stop, commit or manual triggers only). Not yet exercised against the live API
+- [x] Findings model with severity, persisted to `reports/` (`cli/engine/findings.ts`: `EngineFinding` extends the reports.ts `Finding` with source and fingerprint); a `review` report is written when findings change, filtered by `severity.threshold`; `review.completed` is journaled for `tyr watch`
+- [ ] Follow-ups: per-path rule exclusions for diff review (test fixtures trip the risky-pattern rules); show findings in `tyr status` (2.12); notify on new regressions (2.15)
 
 ### 2.12 `tyr status` (`cli/commands/status.ts`): 5%, Not started (stub only)
 - [x] Command registered (prints a placeholder)
@@ -234,12 +235,12 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 3 | Discovery / file scanning | (in 2) | 85% | Partial | — |
 | 4 | Git integration | 8 | 100% | Done | 8.0 |
 | 5 | Project profiling | 5 | 90% | Partial | 4.5 |
-| 6 | `.tyr/` state and storage | 8 | 55% | Partial | 4.4 |
+| 6 | `.tyr/` state and storage | 8 | 100% | Done | 8.0 |
 | 7 | User configuration | 4 | 100% | Done | 4.0 |
 | 8 | Background process (`start`/`stop`) | 9 | 100% | Done | 9.0 |
 | 9 | Observation (`watch`, Claude Code, fs, git events) | 9 | 100% | Done | 9.0 |
 | 10 | Core engine / orchestration | 9 | 100% | Done | 9.0 |
-| 11 | Problem detection / review | 7 | 0% | Not started | 0 |
+| 11 | Problem detection / review | 7 | 100% | Done | 7.0 |
 | 12 | `tyr status` | 3 | 5% | Not started (stub) | 0.15 |
 | 13 | `tyr run` | 3 | 5% | Not started (stub) | 0.15 |
 | 14 | Agents | 5 | 0% | Not started | 0 |
@@ -250,7 +251,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 19 | Lint / format / CI | 1 | 0% | Not started | 0 |
 | 20 | Packaging and distribution | 2 | 30% | Partial | 0.6 |
 | 21 | Documentation | 2 | 10% | Partial | 0.2 |
-| | **Total** | **100** | | | **≈ 64.0 → 64%** |
+| | **Total** | **100** | | | **≈ 74.6 → 75%** |
 
 Discovery and the reporter are counted inside the `init` and CLI weights, because their only consumer today is `init`.
 
