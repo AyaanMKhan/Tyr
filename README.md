@@ -44,6 +44,7 @@ Tyr is a command-line tool that sits **beside** your AI coding agent instead of 
   - [`tyr.json` schema](#tyrjson-schema)
   - [`state/state.json` schema](#statestatejson-schema)
   - [`logs/tyr.log` format](#logstyrlog-format)
+- [Notifications](#notifications)
 - [Claude Code integration](#claude-code-integration)
   - [Install](#install)
   - [What is recorded](#what-is-recorded)
@@ -106,7 +107,8 @@ The code follows a few design principles that are already visible:
 | Agents: `tyr run --agent reviewer\|test-runner\|fixer`, dry run by default, permission gate, approval, worktree isolation (`--apply`, `--isolate`, `--yes`); `tyr agents list\|clean` | Implemented (not yet exercised against the live API) |
 | Correcting a live Claude Code session through its hooks (`agents.correct`: `off`, `context`, `block`) | Implemented |
 | Claude Code session observation (`tyr hooks`, see [Claude Code integration](#claude-code-integration)) | Implemented |
-| Integrations (Claude Code, GitHub, Git) | **Planned** (`integrations/INTEGRATIONS.md`) |
+| Notifications: terminal (`tyr watch`, with a bell) and desktop (Windows toast, macOS, `notify-send`) on regressions, new failures, new serious problems and recoveries; `tyr notify` to test | Implemented (`integrations/INTEGRATIONS.md`) |
+| Integrations: GitHub (PR comments, check runs, issues), Slack and webhook notifications | **Planned** (`integrations/INTEGRATIONS.md`) |
 | Python component (`pyproject.toml`) | Placeholder (empty file) |
 | Test suite / linter | None yet |
 
@@ -724,7 +726,7 @@ Keys nest as dotted paths suggest (`checks.test` is `{ "checks": { "test": … }
 | `severity.threshold` | `info` \| `warning` \| `error` | `warning` | Lowest severity that gets reported |
 | `agent.permission` | `read-only` \| `suggest` \| `edit` | `suggest` | Reserved for corrective agents. Not read yet: the `tyr run --agent` flags decide what an agent run may do |
 | `agents.correct` | `off` \| `context` \| `block` | `context` | Feed problems back into a live Claude Code session through its hooks. `context` adds them to Claude's context. `block` also asks Claude to fix `error`/`critical` ones before it stops, at most twice in a row. `off` never answers. Env `TYR_AGENTS_CORRECT` |
-| `notifications.targets` | array of strings | `["terminal"]` | Where findings are sent, e.g. `"terminal"`, `"desktop"`, `"webhook:https://…"` |
+| `notifications.targets` | array of strings | `["terminal"]` | Where the background process sends notifications: `"terminal"` (highlighted in `tyr watch`, with a bell) and `"desktop"` (native notification). See [Notifications](integrations/INTEGRATIONS.md#notifications) |
 | `ai.model` | non-empty string | `claude-opus-5-5` | Model used for reviews |
 | `ai.apiKey` | string or null | `null` | API key. **Not allowed here**, see below |
 
@@ -831,6 +833,26 @@ Levels are `DEBUG`, `INFO`, `WARN` and `ERROR`. Continuation lines of multi-line
 - **Rotation.** Before each append, a `tyr.log` of 1 MiB or more is rotated to `tyr.log.1`, `tyr.log.2`, `tyr.log.3` (oldest dropped). `daemon.log` is rotated the same way each time the daemon starts. Concurrent rotation by two processes is safe and loses no lines.
 
 ---
+
+## Notifications
+
+While the background process runs, Tyr tells you when a check pass changes something: a check **regressed** (it passed before) or **started failing**, the diff review found a **new error or critical problem**, or failing checks **pass again**. That is at most one notification per pass, and the same news is not repeated within 10 minutes (at most 5 a minute).
+
+Where they go is `notifications.targets` (env `TYR_NOTIFY`):
+
+| Target | Delivery |
+|---|---|
+| `terminal` (default) | A highlighted `notification` line in `tyr watch`, which rings the terminal bell |
+| `desktop` | A native notification: Windows 10+ toast (via PowerShell, nothing to install), macOS Notification Center, `notify-send` on Linux |
+
+```
+$ tyr config set notifications.targets terminal,desktop
+$ tyr notify                     # send a test notification now
+✓ desktop: sent
+✓ terminal: recorded; shown by tyr watch
+```
+
+Every notification is journaled whatever the targets, with where it was delivered and which targets failed (a failing target is also logged once to `.tyr/logs/tyr.log`). `tyr run` never notifies, since you are watching it. Slack and webhook targets are not supported yet. Details: [`integrations/INTEGRATIONS.md`](integrations/INTEGRATIONS.md#notifications).
 
 ## Claude Code integration
 

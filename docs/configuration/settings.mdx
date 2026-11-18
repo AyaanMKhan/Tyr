@@ -42,7 +42,7 @@ See [`tyr config`](/cli/config) for every subcommand.
 | `ai.apiKey` | string | not set | Anthropic API key. **Secret**: global config or environment only |
 | `agent.permission` | `read-only` \| `suggest` \| `edit` | `suggest` | Reserved for corrective agents. *Not read yet*: what an agent run may do is decided by the `tyr run --agent` flags (`--apply`, `--isolate`, `--yes`) |
 | `agents.correct` | `off` \| `context` \| `block` | `context` | Feed problems back into a live Claude Code session through its hooks: `context` adds them to Claude's context, `block` also asks Claude to fix serious ones before it stops (at most twice in a row), `off` never answers |
-| `notifications.targets` | list | `["terminal"]` | Where findings are sent, e.g. `terminal`, `desktop`, `webhook:https://…` *(delivery is planned)* |
+| `notifications.targets` | list | `["terminal"]` | Where the background process sends notifications (regressions, new serious problems, recoveries): `terminal` (highlighted in `tyr watch`, with a bell) and `desktop` (native notification). Slack and webhooks are not supported yet. Test with `tyr notify` |
 
 For lists on the command line, use commas, or `none` for an empty list:
 

@@ -20,7 +20,7 @@ It is a TypeScript/Node CLI (`commander`, `figlet`) that builds to `dist/cli/ind
 
 **What works today:** `tyr init` works end to end. It finds the root, takes a git snapshot, scans files, profiles languages, frameworks and toolchain commands, writes `.tyr/` atomically and logs the run. I verified this by building a copy of the repo and running it: `npm ci && npm run build` succeeds, and `tyr init` / `tyr init --force` both produce the full `.tyr/` tree. Every other command is a one-line `console.log` stub. None of the actual product exists yet: the background process, observing Claude Code, the problem detection, the agents and the integrations.
 
-### Overall completion: about 86%
+### Overall completion: about 89%
 
 I weighted each component by how much it contributes to an end-to-end working Tyr, multiplied the weight by that component's completion, and added up the results (see the table in section 3). The groundwork is the most polished part: init, discovery, git snapshot and project profiling are high quality. But it carries less than a third of the weight. The core product (daemon, observation, detection, agents, integrations) is about 45% of the weight and is at 0%.
 
@@ -151,7 +151,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Diff review: risky patterns, deleted tests, large unreviewed changes, secrets (`cli/engine/diff-review.ts`, 24 rules, masked secrets, `tyr-ignore[: rule]` line suppression); untracked files are reviewed too. Setting `review.diff` (on)
 - [x] LLM-based review of diffs against CLAUDE.md and README conventions (`cli/engine/llm-review.ts`, `@anthropic-ai/sdk`, structured output, prompt caching, findings validated against the diff). Setting `review.llm` (off by default; runs on Claude Code Stop, commit or manual triggers only). Not yet exercised against the live API
 - [x] Findings model with severity, persisted to `reports/` (`cli/engine/findings.ts`: `EngineFinding` extends the reports.ts `Finding` with source and fingerprint); a `review` report is written when findings change, filtered by `severity.threshold`; `review.completed` is journaled for `tyr watch`
-- [ ] Follow-ups: per-path rule exclusions for diff review (test fixtures trip the risky-pattern rules); show findings in `tyr status` (2.12); notify on new regressions (2.15)
+- [ ] Follow-ups: per-path rule exclusions for diff review (test fixtures trip the risky-pattern rules); show findings in `tyr status` (2.12). Notifying on new regressions is done (2.15, `cli/engine/alerts.ts`)
 
 ### 2.12 `tyr status` (`cli/commands/status.ts`): 100%, Done
 - [x] Command registered
@@ -176,10 +176,11 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Orchestration and wiring: `cli/agents/agent.ts` `runAgent()` goes key, then role, then an up-front refusal when nobody can approve, then the worktree, context, gate, tools filtered to the role, the loop, cleanup and an `AgentRunResult` with changes, the worktree, usage and the safety summary. It never throws. `--correct` queues the summary as an `agent` correction. `tyr run --agent <role>` (with `--apply`, `--isolate`, `--yes`, `--correct`) streams tool calls as progress lines and is recorded like every route (`run.started`/`run.completed`, a `run` report, `RunResult.agent` in `--json`) through a `RunAgentDelegate`, so `cli/engine/` never imports `cli/agents/`. Keyword routing never picks an agent; agents are always explicit. Tests: `tests/agents-*.test.ts` (scripted client: reviewer read-only, fixer dry run, `--apply --isolate` writing only in the worktree, no key, refusal, correction, run recording) and the `tyr run --agent` / `tyr agents` CLI tests
 - [ ] Follow-ups: not yet exercised against the live API (all tests use a scripted client); an isolated run leaves its changes uncommitted in the worktree (no commit on the `tyr/` branch, no PR); the `agent.permission` setting is still not read (the `tyr run` flags decide); the daemon does not dispatch agents on its own (e.g. a fixer after a regression); no streaming of the agent's text while a turn is in progress
 
-### 2.15 Integrations (`integrations/`, currently only `integrations/INTEGRATIONS.md`): 0%, Not started
-- [ ] Claude Code: hook installation and session/transcript reading
+### 2.15 Integrations (`cli/integrations/`, documented in `integrations/INTEGRATIONS.md`): 55%, Partial
+- [x] Claude Code: hook installation and session/transcript reading: built in 2.9 (`tyr hooks install|uninstall|status`, `cli/core/claude-hooks.ts`, `cli/core/claude-transcripts.ts`); the hook also answers with corrections since 2.14 (`agents.correct`)
 - [ ] GitHub: PR comments, check runs, issues (via `gh` or the REST API)
-- [ ] Notifications (terminal, desktop, Slack). Optional
+- [x] Notifications, terminal and desktop: `cli/engine/alerts.ts` turns each daemon check pass into at most one notification (error: a check regressed or the diff review found a new error/critical finding; warning: a check started failing that never passed; info: failing checks pass again; a still-failing check says nothing). `cli/integrations/notify.ts` delivers it to `notifications.targets`, read at send time: `terminal` is a journaled `notification` event that `tyr watch` highlights and rings the bell for (live, TTY only); `desktop` is a native notification (`cli/integrations/desktop.ts`: WinRT toast via `powershell.exe -EncodedCommand` with the text in env vars, `osascript` argv on macOS, `notify-send --` on Linux). Every notification is journaled with where it was delivered; the daemon's notifier drops the same news within 10 minutes, caps 5 a minute and logs a broken target once. `tyr notify [message] [-t target]` sends one now to test the setup. Verified with a real toast on Windows 10
+- [ ] Follow-ups: Slack and webhook targets (accepted by the setting, reported as unsupported); a `notifications.minSeverity` setting; desktop delivery untested on macOS and Linux; `tyr run` and agent runs never notify
 
 ### 2.16 Console UI (`cli/ui/reporter.ts`): 90%, Partial
 - [x] Spinner tasks with succeed, fail, skip and update, one spinner per line
@@ -249,14 +250,14 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 12 | `tyr status` | 3 | 100% | Done | 3.0 |
 | 13 | `tyr run` | 3 | 100% | Done | 3.0 |
 | 14 | Agents | 5 | 100% | Done | 5.0 |
-| 15 | Integrations (Claude Code, GitHub) | 5 | 0% | Not started | 0 |
+| 15 | Integrations (Claude Code, notifications, GitHub) | 5 | 55% | Partial | 2.75 |
 | 16 | Console UI / reporter | (in 1, 2) | 90% | Partial | — |
 | 17 | Error handling and logging | 2 | 50% | Partial | 1.0 |
 | 18 | Tests | 3 | 0% | Not started | 0 |
 | 19 | Lint / format / CI | 1 | 0% | Not started | 0 |
 | 20 | Packaging and distribution | 2 | 30% | Partial | 0.6 |
 | 21 | Documentation | 2 | 60% | Partial | 1.2 |
-| | **Total** | **100** | | | **≈ 86.3 → 86%** |
+| | **Total** | **100** | | | **≈ 89.1 → 89%** |
 
 Discovery and the reporter are counted inside the `init` and CLI weights, because their only consumer today is `init`.
 

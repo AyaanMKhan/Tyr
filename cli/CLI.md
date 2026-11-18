@@ -11,6 +11,7 @@ in `docs/cli/`, and settings are in `docs/configuration/settings.mdx`.
 | `tyr agents list` / `clean` | Agent roles, and the worktrees of isolated agent runs |
 | `tyr config` | View and change settings |
 | `tyr hooks install` / `uninstall` / `status` | Connect Tyr to Claude Code |
+| `tyr notify [message]` | Send a notification to your targets now, to check they work |
 
 ## `tyr run`
 
@@ -57,3 +58,16 @@ removes every agent worktree and its `tyr/` branch, or only the one at
 |---|---|---|---|
 | `agents.correct` (`TYR_AGENTS_CORRECT`) | `off`, `context`, `block` | `context` | How `tyr hook` feeds problems back to Claude Code: `context` adds them to the context on prompt, session start and tool result. `block` also asks Claude to fix `error`/`critical` ones before stopping, at most twice in a row. `off` never answers |
 | `ai.apiKey`, `ai.model` | | | Key (global config or env only) and model for agents, reviews and questions |
+
+## `tyr notify`
+
+```
+tyr notify [message] [-t|--target terminal|desktop ...] [--title <title>] [--severity info|warning|error]
+```
+
+Sends one notification now, to `notifications.targets` or the `--target`
+list, and reports each target (`--json` for a machine-readable result).
+Exit 1 when no target accepted it, exit 2 when there are no targets. The
+background process sends the same kind of notification on its own when a
+check regresses, starts failing or recovers, or the diff review finds a new
+serious problem; see `integrations/INTEGRATIONS.md`.

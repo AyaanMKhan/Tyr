@@ -23,7 +23,13 @@ checks, runs them, and keeps a model of the repository's health.
   `RunAgentDelegate` into `executeRun` (`run.ts`) instead, so the engine
   only sees the outcome. `cli/commands/` wires the layers together.
 
-All three are inside `tsconfig.include` (`cli/**/*.ts`). The old top-level
+- `cli/integrations/` is **delivery to the outside world** (see
+  `integrations/INTEGRATIONS.md`): notifications to the terminal (through
+  the journal) and the desktop. Like `cli/core/` it knows nothing about the
+  engine; the engine decides *what* to say (`alerts.ts`) and hands it to a
+  `Notifier`.
+
+All four are inside `tsconfig.include` (`cli/**/*.ts`). The old top-level
 `core/` placeholder directory is gone.
 
 ## Modules
@@ -40,7 +46,8 @@ All three are inside `tsconfig.include` (`cli/**/*.ts`). The old top-level
 | `diff-review.ts`  | Heuristic diff review: secrets, deleted or skipped tests, risky patterns, oversized changes. Pure, rule registry. |
 | `llm-review.ts`   | Model review of a diff against CLAUDE.md, README and the tyr.json profile (`@anthropic-ai/sdk`, injectable client); never throws, skips without a key. |
 | `review.ts`       | Review pass: merges detector findings, marks regressions/new/resolved against the last pass (`.tyr/state/findings.json`), applies the severity threshold, writes a `review` report and journals `review.completed`. |
-| `engine.ts`       | Wires bus + scheduler + executor + repo state together; started by the daemon. |
+| `alerts.ts`       | What a finished pass is worth telling the user: at most one notification per pass (regression, new failure, new serious diff finding, recovery). Pure. |
+| `engine.ts`       | Wires bus + scheduler + executor + repo state together, and sends each pass's alert to the notifier; started by the daemon. |
 
 ## Conventions
 
