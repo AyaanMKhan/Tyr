@@ -15,6 +15,10 @@ import { readState, resolveTyrPaths } from "../cli/core/scaffold.js";
 import type { TyrState } from "../cli/core/types.js";
 import { makeProject, removeProject } from "./helpers.js";
 
+// The spawned daemon inherits this: never pop desktop notifications from a test,
+// whatever the developer's global config lists.
+process.env.TYR_NOTIFY = "none";
+
 /** A minimal initialized project: just enough of `.tyr/` for the daemon. */
 async function makeInitializedProject(): Promise<string> {
     const now = new Date().toISOString();

@@ -430,6 +430,32 @@ function renderCheck(event: TyrEvent, data: Record<string, unknown>, glyphs: typ
     return { summary: text, tone: "normal" };
 }
 
+/** A `notification` event (cli/integrations/notify.ts): title, first body line, delivery in details. */
+function renderNotification(event: TyrEvent, data: Record<string, unknown>): Rendered {
+    const title = str(data.title) ?? firstLine(event.message ?? "notification");
+    const body = (str(data.body) ?? "").split(/\r?\n/).filter((line) => line.trim() !== "");
+    const severity = str(data.severity);
+    const toneFor: Tone = severity === "error" ? "bad" : severity === "warning" ? "warn" : "good";
+    const details = [...body];
+    const delivered = Array.isArray(data.delivered) ? data.delivered.filter((t): t is string => typeof t === "string") : [];
+    if (delivered.length > 0) details.push(`sent to ${delivered.join(", ")}`);
+    if (Array.isArray(data.failed)) {
+        for (const failure of data.failed) {
+            const f = record(failure);
+            if (f) details.push(`not sent to ${str(f.target) ?? "?"}: ${str(f.reason) ?? "failed"}`);
+        }
+    }
+    const summary = body.length > 0 && body[0] !== title ? `${title} - ${body[0]}` : title;
+    return { summary, tone: toneFor, details };
+}
+
+/** True when a live `tyr watch` should ring the bell for this event. */
+export function wantsBell(event: TyrEvent): boolean {
+    if (event.kind !== "notification") return false;
+    const targets = event.data?.targets;
+    return Array.isArray(targets) && targets.includes("terminal");
+}
+
 function render(event: TyrEvent, options: EventViewOptions): Rendered {
     const data = event.data ?? {};
     const glyphs = options.unicode ? UNICODE_GLYPHS : ASCII_GLYPHS;
@@ -439,6 +465,7 @@ function render(event: TyrEvent, options: EventViewOptions): Rendered {
     if (event.kind.startsWith("fs.")) return renderFs(event, data);
     if (event.kind.startsWith("claude.")) return renderClaude(event, data, options, glyphs);
     if (event.kind.startsWith("check.")) return renderCheck(event, data, glyphs);
+    if (event.kind === "notification") return renderNotification(event, data);
     if (event.kind === "init.completed") {
         const files = num(data.fileCount);
         const language = str(data.primaryLanguage);

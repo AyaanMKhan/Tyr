@@ -11,6 +11,7 @@ import type { CheckKind, CheckRun } from "../cli/engine/model.js";
 import { readEngineState } from "../cli/engine/repo-state.js";
 import type { ReviewPassResult } from "../cli/engine/review.js";
 import { listReports } from "../cli/core/reports.js";
+import type { TyrNotification } from "../cli/integrations/notify.js";
 import { makeProject, removeProject } from "./helpers.js";
 
 const NODE = JSON.stringify(process.execPath);
@@ -54,6 +55,7 @@ async function start(root: string, expectRuns: number): Promise<{ engine: Engine
     let resolve!: (runs: CheckRun[]) => void;
     const runs = new Promise<CheckRun[]>((r) => (resolve = r));
     const engine = await startEngine(root, {
+        notifier: false,
         log: () => undefined,
         scheduler: { idleMs: 50, commitDelayMs: 10, settleMs: 0 },
         journal: { forcePolling: true, pollIntervalMs: 20 },
@@ -154,6 +156,7 @@ describe("engine", () => {
         await fs.writeFile(path.join(root, "mode"), "0");
         const reviews: ReviewPassResult[] = [];
         const engine = await startEngine(root, {
+            notifier: false,
             log: () => undefined,
             scheduler: { idleMs: 50, commitDelayMs: 10, settleMs: 0 },
             journal: { forcePolling: true, pollIntervalMs: 20 },
@@ -175,6 +178,44 @@ describe("engine", () => {
             assert.ok(failing.report);
             assert.equal((await listReports(root)).length, 1);
             assert.equal((await readEvents(root, { kinds: ["review.completed"] })).length, 2);
+        } finally {
+            await engine.close();
+            await removeProject(root);
+        }
+    });
+
+    it("notifies once when a check regresses, and again when it recovers", async () => {
+        const root = await project({ typecheck: node("process.exit(Number(require('fs').readFileSync('mode','utf8')))") });
+        await fs.writeFile(path.join(root, "mode"), "0");
+        const sent: TyrNotification[] = [];
+        const engine = await startEngine(root, {
+            notifier: { notify: async (note) => (sent.push(note), { sent: true, results: [], event: null }) },
+            log: () => undefined,
+            scheduler: { idleMs: 50, commitDelayMs: 10, settleMs: 0 },
+            journal: { forcePolling: true, pollIntervalMs: 20 },
+        });
+        try {
+            engine.scheduler.requestRun("manual");
+            await engine.scheduler.idle();
+            assert.equal(sent.length, 0, "passing from the start: nothing to say");
+
+            await fs.writeFile(path.join(root, "mode"), "1");
+            engine.scheduler.requestRun("manual");
+            await engine.scheduler.idle();
+            assert.equal(sent.length, 1);
+            assert.equal(sent[0]!.title, "Tyr: typecheck regressed");
+            assert.equal(sent[0]!.severity, "error");
+
+            engine.scheduler.requestRun("manual");
+            await engine.scheduler.idle();
+            assert.equal(sent.length, 1, "still failing: no news");
+
+            await fs.writeFile(path.join(root, "mode"), "0");
+            engine.scheduler.requestRun("manual");
+            await engine.scheduler.idle();
+            assert.equal(sent.length, 2);
+            assert.equal(sent[1]!.title, "Tyr: typecheck passing again");
+            assert.equal(sent[1]!.severity, "info");
         } finally {
             await engine.close();
             await removeProject(root);

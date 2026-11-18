@@ -17,10 +17,14 @@
 // appendLog). close() cancels a run in progress, which kills its processes.
 
 import { appendLog } from "../core/scaffold.js";
+import { resolveSettings } from "../core/settings.js";
+import { createNotifier, type Notifier } from "../integrations/notify.js";
+import { passNotification } from "./alerts.js";
 import type { ReviewDetectors, ReviewPassResult } from "./review.js";
 import { attachJournal, EventBus, type JournalDetach } from "./bus.js";
 import type { CheckRun, CheckTrigger } from "./model.js";
 import { runCheckPass } from "./pass.js";
+import { readEngineState } from "./repo-state.js";
 import { createScheduler, type Scheduler, type SchedulerOptions } from "./scheduler.js";
 
 export type EngineLogLevel = "debug" | "info" | "warn" | "error";
@@ -40,6 +44,12 @@ export interface EngineOptions {
     onReview?: (result: ReviewPassResult) => void;
     /** Detector overrides (tests); default: the real parsers, diff review and LLM review. */
     detectors?: ReviewDetectors;
+    /**
+     * Where pass outcomes are announced (cli/engine/alerts.ts). Default: a
+     * notifier reading `notifications.targets` at send time; false turns
+     * notifications off (tests).
+     */
+    notifier?: Notifier | false;
 }
 
 export interface Engine {
@@ -52,8 +62,17 @@ export async function startEngine(root: string, options: EngineOptions = {}): Pr
     const log = options.log ?? ((level, message) => void appendLog(root, level, message));
     const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error));
     const abort = new AbortController();
+    const notifier: Notifier | null =
+        options.notifier === false
+            ? null
+            : (options.notifier ??
+              createNotifier(root, {
+                  targets: async () => (await resolveSettings({ root })).settings.notifications.targets,
+                  onFailure: (failure) => log("warn", `engine: notification to ${failure.target} failed: ${failure.reason}`),
+              }));
 
     const runChecks = async (trigger: CheckTrigger): Promise<void> => {
+        const before = notifier ? await readEngineState(root) : null;
         const result = await runCheckPass(root, trigger, {
             signal: abort.signal,
             log,
@@ -66,6 +85,14 @@ export async function startEngine(root: string, options: EngineOptions = {}): Pr
                 options.onReview?.(result.review);
             } catch {
                 // Test hook.
+            }
+        }
+        if (notifier && before && !result.cancelled && !result.empty) {
+            try {
+                const note = passNotification({ before, after: await readEngineState(root), review: result.review });
+                if (note) await notifier.notify(note);
+            } catch (error) {
+                log("warn", `engine: could not send a notification: ${describe(error)}`);
             }
         }
     };

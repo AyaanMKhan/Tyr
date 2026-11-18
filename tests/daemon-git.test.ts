@@ -20,6 +20,10 @@ import type { TyrEvent } from "../cli/core/events.js";
 import type { TyrState } from "../cli/core/types.js";
 import { makeProject, removeProject } from "./helpers.js";
 
+// The spawned daemon inherits this: never pop desktop notifications from a test,
+// whatever the developer's global config lists.
+process.env.TYR_NOTIFY = "none";
+
 const WAIT_MS = 20_000;
 
 function gitAvailable(): boolean {

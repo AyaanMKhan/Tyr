@@ -35,7 +35,7 @@ import { followEvents } from "../core/event-stream.js";
 import { readGlobals, verbosityOf } from "../core/globals.js";
 import { resolveTyrPaths } from "../core/scaffold.js";
 import { withoutBanner } from "../ui/banner.js";
-import { createEventFormatter, formatUptime, parseSince } from "../ui/event-view.js";
+import { createEventFormatter, formatUptime, parseSince, wantsBell } from "../ui/event-view.js";
 import { createReporter, detectColor, detectUnicode, paint, SGR } from "../ui/reporter.js";
 
 export const DEFAULT_WATCH_LINES = 20;
@@ -65,6 +65,8 @@ export interface WatchOptions {
     unicode?: boolean;
     /** Terminal width for truncating lines; undefined = never truncate. */
     width?: number;
+    /** Ring the bell for live notifications sent to the "terminal" target. Default false. */
+    bell?: boolean;
     /** Ping the daemon for the header's latency. Default true. */
     ping?: boolean;
 }
@@ -165,6 +167,7 @@ Examples:
                     color: options.color === false ? false : detectColor(stdout),
                     unicode: detectUnicode(),
                     width: stdout.isTTY === true && !json ? stdout.columns : undefined,
+                    bell: stdout.isTTY === true && !json,
                     ping: options.ping !== false,
                 },
                 { root, stdout, stderr: process.stderr },
@@ -254,7 +257,9 @@ export async function runWatch(options: WatchOptions, context: WatchContext): Pr
             context.stdout.write(`${JSON.stringify(event)}\n`);
             return;
         }
-        context.stdout.write(`${format(event)}\n`);
+        // The "terminal" notification target: ring for live notifications, never for history.
+        const bell = options.bell === true && live && !quiet && wantsBell(event) ? "\u0007" : "";
+        context.stdout.write(`${format(event)}\n${bell}`);
         if (live && !quiet) announceLifecycle(event, context.stdout, color);
     };
 
