@@ -9,6 +9,7 @@
 //   tools.ts       the tools agents can call (read/list/search files, run checks, edit files)
 //   safety.ts      permission model, dry-run, worktree isolation, human approval
 //   coordinate.ts  watching and correcting a live Claude Code session
+//   agent.ts       runAgent(): one run end to end, from key to result
 //
 // Layering: cli/agents/ may import cli/core/ and cli/engine/; neither imports
 // cli/agents/. Modules never print and never throw for normal conditions;
@@ -147,4 +148,31 @@ export interface AgentRunResult {
     worktree?: { path: string; branch: string };
     turns: number;
     usage?: { inputTokens: number; outputTokens: number };
+    /** The model that ran (agent.ts fills it in once a key was found). */
+    model?: string;
+    /** How the run was gated, and what the gate refused (agent.ts). */
+    safety?: AgentSafetySummary;
+    /** Things worth knowing that are not the summary: worktree cleanup, a queued correction. */
+    notes?: string[];
+    /** Id of the correction queued from this run's summary (coordinate.ts), when one was asked for. */
+    correctionId?: string;
+    startedAt?: string;
+    durationMs?: number;
+}
+
+/** The gate's decisions for one run, summarized for the run record. */
+export interface AgentSafetySummary {
+    dryRun: boolean;
+    isolate: boolean;
+    approval: AgentRunOptions["approval"];
+    /** Why these settings (resolveRunSafety's explanation), when the caller passed it. */
+    explanation?: string;
+    /** Tool calls the gate checked, and how many it refused. */
+    checks: number;
+    denied: number;
+    /** Changes put to approval, approved and refused (a dry run records changes without asking). */
+    approved: number;
+    refused: number;
+    /** What was refused and why, oldest first (bounded). */
+    refusals: Array<{ tool: string; path?: string; reason: string }>;
 }

@@ -9,6 +9,9 @@
 //   ask     anything else, including questions about checks ("why is the
 //           build failing?"): answered by the model with the repository
 //           context Tyr has in .tyr/
+//   agent   a tool-using agent (cli/agents/): only by `tyr run --agent
+//           <role>`, never guessed. Agent runs take many model turns and the
+//           fixer can edit files, so they are always an explicit choice.
 //
 // Routing is deterministic keyword matching, not a model call: it is free,
 // instant, testable, and `--mode` overrides it when it guesses wrong.
@@ -31,7 +34,9 @@ export type RunIntent =
           all: boolean;
       }
     | { mode: "review"; scope: ReviewScope }
-    | { mode: "ask"; question: string };
+    | { mode: "ask"; question: string }
+    /** Only from `--agent`; routePrompt never returns it. `role` is an agent role id (cli/agents/roles.ts). */
+    | { mode: "agent"; role: string; task: string };
 
 /** Words that name each check. Matched as whole words on the lowercased prompt. */
 const CHECK_WORDS: Record<CheckKind, readonly string[]> = {
@@ -106,5 +111,7 @@ export function describeIntent(intent: RunIntent): string {
             return intent.scope === "last-commit" ? "review the last commit" : "review uncommitted changes";
         case "ask":
             return "answer a question about the repository";
+        case "agent":
+            return `run the ${intent.role} agent`;
     }
 }

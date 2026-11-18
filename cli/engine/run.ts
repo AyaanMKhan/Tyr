@@ -11,6 +11,10 @@
 //            run reports its findings but does not replace findings.json:
 //            that file tracks the engine's passes over the working tree.
 //   ask      askRepository (ask.ts): a streamed answer from the model.
+//   agent    `--agent <role>`: a tool-using agent run. The engine never
+//            imports cli/agents/ (see ENGINE.md), so the caller hands in a
+//            RunAgentDelegate (cli/agents/agent.ts builds it) and the engine
+//            only records what it returns, like every other route.
 //
 // Recording: `run.started` and `run.completed` go to the event journal (so
 // `tyr watch` shows them), state.json counts the run (runCount,
@@ -70,7 +74,7 @@ export interface RunResult {
     /** Findings at or above the severity threshold, most severe first. */
     findings: EngineFinding[];
     counts: Record<FindingSeverity, number>;
-    /** The model's answer (ask route); null otherwise. */
+    /** The model's answer (ask route) or the agent's final summary (agent route); null otherwise. */
     answer: string | null;
     /** Model used for the answer or the LLM review; null when none was called. */
     model: string | null;
@@ -78,6 +82,29 @@ export interface RunResult {
     notes: string[];
     /** The `run` report written for this run; null when it could not be written. */
     report: { id: string; jsonFile: string; mdFile: string } | null;
+    /** The agent route's full record (an AgentRunResult, cli/agents/model.ts); null for other routes. */
+    agent: object | null;
+}
+
+/** What a delegated agent run hands back to be recorded. */
+export interface DelegatedOutcome {
+    status: RunStatus;
+    summary: string;
+    findings: EngineFinding[];
+    /** The agent's final text, kept as the run's answer. */
+    answer: string | null;
+    model: string | null;
+    notes: string[];
+    /** The full record, kept as RunResult.agent and in the report's data. */
+    record: object;
+}
+
+/** Runs an agent for the `agent` route. Built outside the engine (cli/agents/agent.ts). */
+export interface RunAgentDelegate {
+    /** The role id, recorded in the intent. */
+    role: string;
+    /** Runs the agent on the task. May throw; a throw is recorded as an error. */
+    run(task: string, signal?: AbortSignal): Promise<DelegatedOutcome>;
 }
 
 export interface RunProgress {
@@ -96,6 +123,8 @@ export interface RunProgress {
 export interface ExecuteRunOptions extends RunProgress {
     /** Force the route (`--mode`). */
     mode?: RunMode;
+    /** Run this agent instead of routing the prompt (`--agent`); the prompt is its task. */
+    agent?: RunAgentDelegate;
     /** Ask the model during a review (default: when an API key is set). false = never. */
     llm?: boolean;
     signal?: AbortSignal;
@@ -129,12 +158,15 @@ interface Outcome {
     model: string | null;
     notes: string[];
     data: Record<string, unknown>;
+    agent?: object;
 }
 
 export async function executeRun(root: string, prompt: string, options: ExecuteRunOptions = {}): Promise<RunResult> {
     const clock = options.now ?? (() => new Date());
     const started = clock();
-    const intent = routePrompt(prompt, options.mode);
+    const intent: RunIntent = options.agent
+        ? { mode: "agent", role: options.agent.role, task: prompt.trim() }
+        : routePrompt(prompt, options.mode);
     safely(() => options.onIntent?.(intent));
 
     const startedEvent = await appendEvent(root, {
@@ -150,6 +182,7 @@ export async function executeRun(root: string, prompt: string, options: ExecuteR
     try {
         if (intent.mode === "checks") outcome = await runChecks(root, intent, options);
         else if (intent.mode === "review") outcome = await runReview(root, intent, options);
+        else if (intent.mode === "agent") outcome = await runAgentRoute(intent, options);
         else outcome = await runAsk(root, intent.question, options);
     } catch (error) {
         outcome = {
@@ -185,6 +218,7 @@ export async function executeRun(root: string, prompt: string, options: ExecuteR
         model: outcome.model,
         notes: outcome.notes,
         report: report === null ? null : { id: report.id, jsonFile: report.jsonFile, mdFile: report.mdFile },
+        agent: outcome.agent ?? null,
     };
 
     await appendEvent(root, {
@@ -367,6 +401,22 @@ async function runAsk(root: string, question: string, options: ExecuteRunOptions
         model: result.model,
         notes,
         data: { stopReason: result.stopReason ?? null, usage: result.usage ?? null },
+    };
+}
+
+async function runAgentRoute(intent: Extract<RunIntent, { mode: "agent" }>, options: ExecuteRunOptions): Promise<Outcome> {
+    const delegated = await options.agent!.run(intent.task, options.signal);
+    return {
+        status: delegated.status,
+        summary: delegated.summary,
+        checks: [],
+        skipped: [],
+        findings: delegated.findings,
+        answer: delegated.answer,
+        model: delegated.model,
+        notes: delegated.notes,
+        data: { agent: delegated.record },
+        agent: delegated.record,
     };
 }
 

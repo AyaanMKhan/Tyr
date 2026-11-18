@@ -78,5 +78,14 @@ describe("describeIntent", () => {
         assert.equal(describeIntent(routePrompt("review my last commit")), "review the last commit");
         assert.equal(describeIntent(routePrompt("review")), "review uncommitted changes");
         assert.equal(describeIntent(routePrompt("why?")), "answer a question about the repository");
+        assert.equal(describeIntent({ mode: "agent", role: "fixer", task: "fix it" }), "run the fixer agent");
+    });
+});
+
+describe("agents are never guessed", () => {
+    it("keeps fix-style prompts on the built-in routes (--agent is explicit)", () => {
+        for (const prompt of ["fix the failing tests", "please fix the build", "fix it", "review and fix my changes"]) {
+            assert.notEqual((routePrompt(prompt) as { mode: string }).mode, "agent", prompt);
+        }
     });
 });
