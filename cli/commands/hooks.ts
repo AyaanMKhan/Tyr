@@ -8,10 +8,16 @@
 // `tyr hook` is the odd one out. Claude Code runs it synchronously for every
 // tool call, prompt and stop, and gives meaning to its exit code and stdout
 // (exit 2 blocks a PreToolUse, stdout on UserPromptSubmit / SessionStart is
-// fed to the model as context). So it never prints, always exits 0, and
-// gives up fast: a hard limit on reading stdin, a timer that ends the
-// process regardless, and every error swallowed. Losing one journal entry
+// fed to the model as context). So it always exits 0, prints nothing on
+// stderr, and gives up fast: a hard limit on reading stdin, a timer that ends
+// the process regardless, and every error swallowed. Losing one journal entry
 // is always better than slowing or derailing the session it observes.
+//
+// Its only output is deliberate: after recording the event, Tyr may answer
+// with one line of hook JSON on stdout carrying pending corrections (context
+// for the prompt / tool result / session start, or a bounded Stop block),
+// per the `agents.correct` setting. See cli/agents/coordinate.ts. Any
+// failure there prints nothing.
 //
 // Normalization and the settings-file editing live in core/claude-hooks.ts.
 
@@ -33,6 +39,7 @@ import {
     type HooksEdit,
     type HooksStatus,
 } from "../core/claude-hooks.js";
+import { respondToHook, type RespondDeps } from "../agents/coordinate.js";
 import { EXIT_CODES, TyrError } from "../core/errors.js";
 import { withoutBanner } from "../ui/banner.js";
 import { createReporter } from "../ui/reporter.js";
@@ -179,6 +186,32 @@ export async function recordHookPayload(raw: string, deps: RecordHookDeps = {}):
     }
 }
 
+/**
+ * The line `tyr hook` prints for Claude Code after recording `raw`: Tyr's
+ * correction reply (cli/agents/coordinate.ts) as one line of JSON, or null
+ * to print nothing. Only for an initialized project; never throws.
+ */
+export async function answerHookPayload(raw: string, root: string | null, deps: RespondDeps = {}): Promise<string | null> {
+    if (root === null) return null;
+    try {
+        const reply = await respondToHook(root, JSON.parse(raw), deps);
+        return reply === null ? null : JSON.stringify(reply);
+    } catch {
+        return null;
+    }
+}
+
+/** Write `line` to stdout and wait until it is handed off, so exit cannot cut it short. */
+function writeStdout(line: string): Promise<void> {
+    return new Promise((resolve) => {
+        try {
+            process.stdout.write(`${line}\n`, () => resolve());
+        } catch {
+            resolve();
+        }
+    });
+}
+
 function registerHookCommand(program: Command): void {
     withoutBanner(
         program
@@ -196,9 +229,13 @@ function registerHookCommand(program: Command): void {
                 deadline.unref();
                 try {
                     const raw = await readHookStdin(process.stdin);
-                    if (raw !== null) await recordHookPayload(raw);
+                    if (raw !== null) {
+                        const recorded = await recordHookPayload(raw);
+                        const reply = await answerHookPayload(raw, recorded.root);
+                        if (reply !== null) await writeStdout(reply);
+                    }
                 } catch {
-                    // Never let a journal problem reach Claude Code.
+                    // Never let a journal or correction problem reach Claude Code.
                 }
                 process.exitCode = EXIT_CODES.OK;
             }),
@@ -254,6 +291,11 @@ stop. "tyr hooks install" registers Tyr for those events in the project's
 one is recorded in .tyr/state/events.jsonl for "tyr watch" and the
 background process. Nothing is recorded until the project has a .tyr/ (run
 "tyr init"), and recording never slows down or blocks Claude Code.
+
+Tyr also answers through these hooks: problems its checks find are added to
+Claude's context (setting agents.correct, default "context"); with
+"block" Claude is also asked to fix serious ones before it stops (at most
+twice in a row), and "off" turns this off.
 
 Examples:
   $ tyr hooks install              Just for you (settings.local.json)

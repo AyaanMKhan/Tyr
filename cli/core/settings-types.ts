@@ -16,6 +16,15 @@ export const SEVERITIES: readonly Severity[] = ["info", "warning", "error"];
 export type AgentPermission = "read-only" | "suggest" | "edit";
 export const AGENT_PERMISSIONS: readonly AgentPermission[] = ["read-only", "suggest", "edit"];
 
+/**
+ * How Tyr corrects a live Claude Code session (cli/agents/coordinate.ts):
+ *   off      never answer hooks; only observe
+ *   context  add pending problems to the session's context (prompt, tool result, session start)
+ *   block    also hold Claude's Stop while serious problems are pending (a bounded number of times)
+ */
+export type CorrectMode = "off" | "context" | "block";
+export const CORRECT_MODES: readonly CorrectMode[] = ["off", "context", "block"];
+
 export interface TyrSettings {
     /** Which detected commands Tyr runs as checks. */
     checks: {
@@ -28,6 +37,11 @@ export interface TyrSettings {
     /** Findings below this severity are not reported. */
     severity: { threshold: Severity };
     agent: { permission: AgentPermission };
+    /** Tyr's own agents (cli/agents/). */
+    agents: {
+        /** Whether and how Tyr feeds problems back into a running Claude Code session. */
+        correct: CorrectMode;
+    };
     /** What runs after each check pass (cli/engine/review.ts). */
     review: {
         /** Heuristic review of the working-tree diff: secrets, deleted tests, risky patterns. */
@@ -49,6 +63,7 @@ export const DEFAULT_SETTINGS: TyrSettings = {
     checks: { build: true, test: true, lint: true, format: false, typecheck: true },
     severity: { threshold: "warning" },
     agent: { permission: "suggest" },
+    agents: { correct: "context" },
     review: { diff: true, llm: false },
     notifications: { targets: ["terminal"] },
     ai: { model: "claude-opus-5-5", apiKey: null },
@@ -87,6 +102,7 @@ export const SETTING_KEYS: readonly SettingKeySpec[] = [
     { key: "checks.typecheck", type: "boolean", env: "TYR_CHECKS_TYPECHECK", description: "Run the detected type checker" },
     { key: "severity.threshold", type: "enum", values: SEVERITIES, env: "TYR_SEVERITY", description: "Lowest severity that gets reported" },
     { key: "agent.permission", type: "enum", values: AGENT_PERMISSIONS, env: "TYR_AGENT_PERMISSION", description: "What the reviewing agent may do" },
+    { key: "agents.correct", type: "enum", values: CORRECT_MODES, env: "TYR_AGENTS_CORRECT", description: "Feed problems back into Claude Code: off, context (add to its context) or block (also hold its Stop)" },
     { key: "review.diff", type: "boolean", env: "TYR_REVIEW_DIFF", description: "Review the working-tree diff for secrets, deleted tests and risky patterns" },
     { key: "review.llm", type: "boolean", env: "TYR_REVIEW_LLM", description: "Ask the model to review the diff on Claude Code Stop and on commit (needs ai.apiKey)" },
     { key: "notifications.targets", type: "string-list", env: "TYR_NOTIFY", description: "Comma-separated notification targets" },
