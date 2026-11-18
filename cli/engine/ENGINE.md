@@ -15,8 +15,16 @@ checks, runs them, and keeps a model of the repository's health.
   with one exception: `cli/core/daemon.ts` hosts the engine (`startEngine`) for
   the lifetime of the background process.
 
-Both are inside `tsconfig.include` (`cli/**/*.ts`). The old top-level `core/`
-placeholder directory is gone.
+- `cli/agents/` is **agents** (see `agents/AGENTS.md`): tool-using model
+  runs, their safety gate and worktree isolation, and the corrections fed
+  back to a live Claude Code session. It sits on top of both: it may import
+  `cli/core/` and `cli/engine/`, and neither imports it. Where the engine
+  has to record an agent run (`tyr run --agent`), the command passes a
+  `RunAgentDelegate` into `executeRun` (`run.ts`) instead, so the engine
+  only sees the outcome. `cli/commands/` wires the layers together.
+
+All three are inside `tsconfig.include` (`cli/**/*.ts`). The old top-level
+`core/` placeholder directory is gone.
 
 ## Modules
 

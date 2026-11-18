@@ -20,7 +20,7 @@ It is a TypeScript/Node CLI (`commander`, `figlet`) that builds to `dist/cli/ind
 
 **What works today:** `tyr init` works end to end. It finds the root, takes a git snapshot, scans files, profiles languages, frameworks and toolchain commands, writes `.tyr/` atomically and logs the run. I verified this by building a copy of the repo and running it: `npm ci && npm run build` succeeds, and `tyr init` / `tyr init --force` both produce the full `.tyr/` tree. Every other command is a one-line `console.log` stub. None of the actual product exists yet: the background process, observing Claude Code, the problem detection, the agents and the integrations.
 
-### Overall completion: about 81%
+### Overall completion: about 86%
 
 I weighted each component by how much it contributes to an end-to-end working Tyr, multiplied the weight by that component's completion, and added up the results (see the table in section 3). The groundwork is the most polished part: init, discovery, git snapshot and project profiling are high quality. But it carries less than a third of the weight. The core product (daemon, observation, detection, agents, integrations) is about 45% of the weight and is at 0%.
 
@@ -165,14 +165,16 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Command registered with a required `<prompt>` argument
 - [x] Route the prompt to the engine or an agent, with repo context from `.tyr/`: keyword routing (`cli/engine/intent.ts`, `--mode` overrides) to `checks` (the engine's check pass, extracted to `cli/engine/pass.ts`; every check includes the review), `review` (diff rules plus the model when a key is set, working tree or last commit, `.tyr/` excluded) or `ask` (`cli/engine/ask.ts`: one streamed model call grounded in the profile, CLAUDE.md/README, `tyr status`, recent commits and the trimmed diff)
 - [x] Stream progress, then record the result in state and reports (`cli/engine/run.ts`): per-check progress lines and the streamed answer; `run.started` / `run.completed` journal events, `runCount` / `lastRunAt` in state.json, a `run` report; `--json` prints the versioned RunResult
-- [ ] Follow-ups: the ask route sees a snapshot, not the file system (tool-using agents are 2.14); Ctrl-C exits 130 via the global handler rather than cancelling checks gracefully
+- [ ] Follow-ups: the ask route sees a snapshot, not the file system (addressed by 2.14: `tyr run --agent reviewer` is the tool-using version, mentioned in `--help` and the docs); Ctrl-C exits 130 via the global handler rather than cancelling checks gracefully
 
-### 2.14 Agents (`agents/`, currently only `agents/AGENTS.md`): 0%, Not started
-- [ ] Define agent roles (reviewer, fixer, test-runner)
-- [ ] LLM provider client (likely the Anthropic API or the Claude Agent SDK) with API key config
-- [ ] Prompting with repo context (profile, diff, failing output)
-- [ ] Safety: permission model, dry-run, branch or worktree isolation, human approval before changes
-- [ ] Coordinating with and correcting a live Claude Code session
+### 2.14 Agents (`cli/agents/`, documented in `agents/AGENTS.md`): 100%, Done
+- [x] Define agent roles (reviewer, fixer, test-runner): `cli/agents/roles.ts` defines each role as data: a permission ceiling (reviewer read, test-runner execute, fixer write), the tools at or below it, a turn cap (12/20/30) and constant instructions so the cached prompt prefix is stable. The reviewer reports `<severity> path:line - problem` lines, which `agent.ts` turns into findings. The fixer must not weaken checks. Shared contract in `cli/agents/model.ts`
+- [x] LLM provider client with API key config: `cli/agents/provider.ts` resolves the key and model from the same settings chain as reviews (`ai.apiKey`, `TYR_API_KEY`, `ANTHROPIC_API_KEY`, `ai.model`; no key means skipped). `runToolLoop` is a manual tool-use loop over the Messages API (`@anthropic-ai/sdk`, injectable client) with prompt caching on the system prompt and the conversation, a turn cap, cancellation, per-request timeouts, progress events and key-scrubbed errors. Tools in `cli/agents/tools.ts`: `read_file`, `list_files` (gitignore-aware), `search`, `git_diff`, `run_check` (only configured checks), `edit_file` (exact unique replace) and `write_file`, all confined to the workspace with bounded output
+- [x] Prompting with repo context (profile, diff, failing output): `cli/agents/context.ts` builds the system prompt from the role instructions, then the `tyr.json` profile, CLAUDE.md/README, the working-tree diff (`.tyr/` excluded, untracked files included, secrets masked, trimmed whole-file to about 60 KB) and the failing checks and open findings from `.tyr/state/`, each with its own budget. Context is marked as material, not instructions
+- [x] Safety: permission model, dry-run, branch or worktree isolation, human approval before changes: `cli/agents/safety.ts` gates every tool call by the role ceiling and a path policy. Secrets are never read. `.git/` is never touched. Lockfiles, `.claude/settings*.json` and `.tyr/` are never written. Paths outside the workspace are refused, including symlinks pointing out. Every decision is recorded and summarized in the run record. `resolveRunSafety` maps `--apply`/`--isolate`/`--yes` and whether a terminal is present to dry-run, auto, ask or deny (dry run unless `--apply`). Isolated runs use a `tyr/<role>-<time>` branch checked out under `.tyr/worktrees/`, with the user's uncommitted changes copied in and staged so the worktree's diff is only the agent's. An unused worktree is removed and a kept one is listed and removed by `tyr agents list|clean`. In-place changes are approved one by one by a `y/N` prompter that refuses without a terminal
+- [x] Coordinating with and correcting a live Claude Code session: `cli/agents/coordinate.ts` keeps a fingerprinted corrections queue (`.tyr/state/corrections.json`) derived from open problems and serious findings, resolved when they go away, plus user and agent entries. `tyr hook` answers with `additionalContext` on UserPromptSubmit, SessionStart and PostToolUse, or in mode `block` with a bounded Stop block (at most two in a row per session, honoring `stop_hook_active`). Setting `agents.correct` (`off`/`context`/`block`, default `context`, env `TYR_AGENTS_CORRECT`)
+- [x] Orchestration and wiring: `cli/agents/agent.ts` `runAgent()` goes key, then role, then an up-front refusal when nobody can approve, then the worktree, context, gate, tools filtered to the role, the loop, cleanup and an `AgentRunResult` with changes, the worktree, usage and the safety summary. It never throws. `--correct` queues the summary as an `agent` correction. `tyr run --agent <role>` (with `--apply`, `--isolate`, `--yes`, `--correct`) streams tool calls as progress lines and is recorded like every route (`run.started`/`run.completed`, a `run` report, `RunResult.agent` in `--json`) through a `RunAgentDelegate`, so `cli/engine/` never imports `cli/agents/`. Keyword routing never picks an agent; agents are always explicit. Tests: `tests/agents-*.test.ts` (scripted client: reviewer read-only, fixer dry run, `--apply --isolate` writing only in the worktree, no key, refusal, correction, run recording) and the `tyr run --agent` / `tyr agents` CLI tests
+- [ ] Follow-ups: not yet exercised against the live API (all tests use a scripted client); an isolated run leaves its changes uncommitted in the worktree (no commit on the `tyr/` branch, no PR); the `agent.permission` setting is still not read (the `tyr run` flags decide); the daemon does not dispatch agents on its own (e.g. a fixer after a regression); no streaming of the agent's text while a turn is in progress
 
 ### 2.15 Integrations (`integrations/`, currently only `integrations/INTEGRATIONS.md`): 0%, Not started
 - [ ] Claude Code: hook installation and session/transcript reading
@@ -246,7 +248,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 11 | Problem detection / review | 7 | 100% | Done | 7.0 |
 | 12 | `tyr status` | 3 | 100% | Done | 3.0 |
 | 13 | `tyr run` | 3 | 100% | Done | 3.0 |
-| 14 | Agents | 5 | 0% | Not started | 0 |
+| 14 | Agents | 5 | 100% | Done | 5.0 |
 | 15 | Integrations (Claude Code, GitHub) | 5 | 0% | Not started | 0 |
 | 16 | Console UI / reporter | (in 1, 2) | 90% | Partial | — |
 | 17 | Error handling and logging | 2 | 50% | Partial | 1.0 |
@@ -254,7 +256,7 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 19 | Lint / format / CI | 1 | 0% | Not started | 0 |
 | 20 | Packaging and distribution | 2 | 30% | Partial | 0.6 |
 | 21 | Documentation | 2 | 60% | Partial | 1.2 |
-| | **Total** | **100** | | | **≈ 81.4 → 81%** |
+| | **Total** | **100** | | | **≈ 86.3 → 86%** |
 
 Discovery and the reporter are counted inside the `init` and CLI weights, because their only consumer today is `init`.
 

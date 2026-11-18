@@ -1,6 +1,6 @@
 ---
 title: "tyr run"
-description: "Ask Tyr to do something now: run checks, review changes, or answer a question."
+description: "Ask Tyr to do something now: run checks, review changes, answer a question, or run an agent."
 ---
 
 ```bash
@@ -17,6 +17,8 @@ tyr run "why is the build failing?"
 ```
 
 You don't need `tyr start` first: `tyr run` works whether or not the background process is running.
+
+To hand the prompt to a tool-using agent instead (a reviewer, a test-runner or a fixer), use `--agent`. See [Agents](#agents).
 
 ## What a prompt does
 
@@ -65,9 +67,51 @@ The model gets a snapshot of what Tyr knows:
 - the last 15 commits
 - the uncommitted diff, trimmed to about 60 KB, with secrets redacted
 
-It can't open files or run commands; it answers from that snapshot and says when the snapshot isn't enough. The answer streams to the terminal as it arrives.
+It can't open files or run commands; it answers from that snapshot and says when the snapshot isn't enough. The answer streams to the terminal as it arrives. When the snapshot isn't enough, `tyr run --agent reviewer "<question>"` is the tool-using version: it opens and searches files itself.
 
 This route needs an API key: `ai.apiKey` in your global settings, `TYR_API_KEY` or `ANTHROPIC_API_KEY`. The model is `ai.model`. See [settings](/configuration/settings).
+
+## Agents
+
+```bash
+tyr run --agent reviewer "review my changes"
+tyr run --agent test-runner "why does the test check fail?"
+tyr run --agent fixer "fix the failing typecheck"                 # dry run
+tyr run --agent fixer --apply --isolate "fix the failing tests"   # on a new tyr/ branch
+```
+
+`--agent <role>` skips the keyword routing and gives the prompt to an agent as its task. Keywords never pick an agent: agent runs make many model calls and the fixer can edit files, so you always ask for one explicitly. Agents need an API key, like `ask`.
+
+| Role | May | What it does |
+| --- | --- | --- |
+| `reviewer` | read | Reads the code around the change and reports problems as `<severity> path:line - <problem>`. Those lines become findings, so an `error` makes the run fail |
+| `test-runner` | read, run checks | Runs the configured checks and reports the root cause of each failure. A failing check makes the run fail |
+| `fixer` | read, run checks, edit | Makes the smallest fix, re-runs the checks to verify it, and explains the change |
+
+Each tool call shows as a progress line. The agent's final message prints like an answer, followed by the changes it proposed or made and anything the safety gate refused.
+
+The fixer only writes when you pass `--apply`:
+
+| Flags | What happens |
+| --- | --- |
+| *(none)* | Dry run. Each edit is described with its patch (`--verbose` prints the patches); nothing is written |
+| `--apply` | Asks `y/N` before each change in your working tree. Without a terminal (CI, a pipe, `--json`) the run is refused instead |
+| `--apply --yes` | Applies changes in your working tree without asking |
+| `--apply --isolate` | Works on a new `tyr/<role>-<time>` branch in `.tyr/worktrees/`, with a copy of your uncommitted changes. Your working tree isn't touched. `git -C <worktree> diff` shows only the agent's changes, and `git -C <worktree> diff \| git apply`, run from the repository root, takes them |
+
+A worktree is kept only when the agent changed something. [`tyr agents list`](#managing-agent-worktrees) shows the kept worktrees and `tyr agents clean` removes them. `--correct` also queues the agent's summary for a live Claude Code session; see `agents.correct` in [settings](/configuration/settings).
+
+Agents can't read likely secrets (`.env`, keys) or anything under `.git/`. They can't write lockfiles, `.claude/settings*.json` or `.tyr/`, or anything outside the workspace. The full policy is in `agents/AGENTS.md`.
+
+### Managing agent worktrees
+
+```bash
+tyr agents list                  # roles, then agent worktrees
+tyr agents clean                 # remove every agent worktree and its tyr/ branch
+tyr agents clean <path> --keep-branch
+```
+
+`clean` refuses a worktree with uncommitted changes unless you pass `--force`. It never touches a worktree outside `.tyr/worktrees/` or a branch outside `tyr/`. Both commands support `--json`.
 
 ## Options
 
@@ -75,6 +119,11 @@ This route needs an API key: `ai.apiKey` in your global settings, `TYR_API_KEY` 
 | --- | --- |
 | `--mode <checks\|review\|ask>` | Skip the guess and use this route. With `checks` and no check named, every check runs |
 | `--no-llm` | Don't ask the model during a review (diff rules only) |
+| `--agent <reviewer\|test-runner\|fixer>` | Run that agent on the prompt instead of routing it. Can't be combined with `--mode` |
+| `--apply` | With `--agent fixer`: make the changes instead of a dry run |
+| `--isolate` | With `--agent`: work in a new git worktree on a `tyr/` branch |
+| `-y`, `--yes` | With `--apply`: apply in place without asking |
+| `--correct` | With `--agent`: queue the agent's summary for the live Claude Code session |
 | `--no-color` | Print without colors |
 
 The [global options](/cli/overview#global-options) apply too. `--quiet` keeps only the answer and problems. `--verbose` lists every finding instead of the first 10. `--json` prints the result as JSON (see below).
@@ -91,9 +140,9 @@ Every run, whatever its route or outcome, leaves a trace:
 
 | Code | When |
 | --- | --- |
-| 0 | The run succeeded: every check passed, the review found nothing at `error` or above, or the question was answered |
-| 1 | A check failed, the review found an `error` or `critical` finding, or the run couldn't be done (nothing configured, no API key, an API error) |
-| 2 | Usage error: empty prompt, unknown `--mode` |
+| 0 | The run succeeded: every check passed, the review found nothing at `error` or above, the question was answered, or the agent finished without reporting an error |
+| 1 | A check failed, the review found an `error` or `critical` finding, an agent reported one (or a failing check) or ran out of turns, or the run couldn't be done (nothing configured, no API key, nobody to approve changes, an API error) |
+| 2 | Usage error: empty prompt, unknown `--mode` or `--agent`, `--agent` with `--mode`, or `--apply`/`--isolate`/`--yes`/`--correct` without `--agent` |
 | 3 | The project isn't initialized. Run `tyr init` |
 | 4 | `.tyr/tyr.json` exists but can't be used |
 | 130 | Interrupted with Ctrl-C |
@@ -111,7 +160,7 @@ tyr run "run all checks" --json | jq '.status, .checks'
 | `runVersion` | Format version, currently `1`. It changes only on a breaking change |
 | `id` | Id of the `run.started` journal event |
 | `prompt` | The prompt as given |
-| `intent` | The route: `{ mode: "checks", checks, all }`, `{ mode: "review", scope: "working-tree" \| "last-commit" }` or `{ mode: "ask", question }` |
+| `intent` | The route: `{ mode: "checks", checks, all }`, `{ mode: "review", scope: "working-tree" \| "last-commit" }`, `{ mode: "ask", question }` or `{ mode: "agent", role, task }` |
 | `status` | `succeeded`, `failed`, `error` or `cancelled` |
 | `summary` | The one-line result |
 | `startedAt`, `finishedAt`, `durationMs` | Timing |
@@ -119,7 +168,8 @@ tyr run "run all checks" --json | jq '.status, .checks'
 | `skipped` | Checks skipped because the build failed |
 | `findings` | Findings at or above the threshold, most severe first: `{ severity, title, detail?, file?, line?, rule?, source, fingerprint, ... }` |
 | `counts` | Number of findings per severity |
-| `answer` | The model's answer (the `ask` route), else `null` |
+| `answer` | The model's answer (the `ask` route) or the agent's final message (`--agent`), else `null` |
 | `model` | The model that answered or reviewed, else `null` |
 | `notes` | Things worth knowing that aren't findings, for example "LLM review skipped: no API key" |
 | `report` | `{ id, jsonFile, mdFile }` of the saved report, or `null` if it couldn't be written |
+| `agent` | With `--agent`: the agent's record, `{ role, status, summary, reason?, toolCalls, changes: [{ tool, path, summary, patch? }], worktree?: { path, branch }, turns, usage?, model, safety: { dryRun, isolate, approval, explanation, checks, denied, approved, refused, refusals }, notes, correctionId?, startedAt, durationMs }`. `status` is `completed`, `max-turns`, `denied`, `skipped`, `error` or `cancelled`. Otherwise `null` |

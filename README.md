@@ -28,6 +28,7 @@ Tyr is a command-line tool that sits **beside** your AI coding agent instead of 
   - [`tyr config`](#tyr-config)
     - [How settings resolve](#how-settings-resolve)
   - [`tyr run <prompt>`](#tyr-run-prompt)
+  - [`tyr agents`](#tyr-agents)
   - [`tyr hooks`](#tyr-hooks)
   - [Exit codes](#exit-codes)
 - [How `tyr init` works, step by step](#how-tyr-init-works-step-by-step)
@@ -73,7 +74,7 @@ Claude Code, Cursor, GitHub Copilot, Aider and Codex CLI each handle in-session 
 | **Memory is prose, not state** | Where persistent memory exists (`CLAUDE.md`, rules files, chat history), it is natural-language text for the model to read. No structured record says "last indexed at commit X, N files, status Y". | `.tyr/state/state.json` records lifecycle status, the last indexed commit, file count and run counters, so later runs can tell **what changed since last time**. *(Schema and writer implemented. Consumers planned.)* |
 | **State is tied to one tool and one session** | Context lives in a vendor's session, IDE workspace or conversation, and it is lost or fragmented when you switch tools, restart or run agents in parallel. | `.tyr/` lives at the **repository root**, is tool-agnostic plain JSON, and `tyr.json` is designed to be committed so a whole team shares one profile. *(Implemented.)* |
 | **No awareness of git state** | Agents often learn about branch, uncommitted changes, divergence from upstream or merge conflicts only when a command fails. | `tyr init` collects branch (including detached-HEAD labels), HEAD commit, staged, modified, untracked and conflicted files, ahead/behind counts and remotes. The HEAD hash is recorded for change detection. *(Implemented.)* |
-| **No coordination between agents** | When several agents or sessions work on one repo, none of them oversees the others. | Tyr is designed to **coordinate corrective agents**: detect a problem, then send a focused agent to fix it. *(Planned. See `agents/` and `cli/engine/`.)* |
+| **No coordination between agents** | When several agents or sessions work on one repo, none of them oversees the others. | Tyr **coordinates corrective agents**: it feeds the problems it detects back into a live Claude Code session through its hooks (`agents.correct`), and `tyr run --agent` sends a focused reviewer, test-runner or fixer, gated by a permission model and optionally isolated in a git worktree. *(Implemented. See [`agents/AGENTS.md`](agents/AGENTS.md).)* |
 | **Opaque progress** | Long agent runs are a black box until they finish. | `tyr watch` streams what Tyr, git and Claude Code are doing, live. `tyr status` summarizes the project, background process, checks, open findings and drift since the last index. |
 
 In short, existing tools are **actors**. Tyr is meant to be the **supervisor**: persistent, independent of any one agent, and grounded in facts about the repository instead of in a conversation.
@@ -102,8 +103,9 @@ The code follows a few design principles that are already visible:
 | `tyr watch`: live view of the event journal (history replay, filters, NDJSON) | Implemented |
 | `tyr status`: project profile, background process, last run, checks, open findings, drift, `--json` | Implemented |
 | `tyr run`: run checks, review changes or answer a question about the repo, recorded as a report | Implemented |
+| Agents: `tyr run --agent reviewer\|test-runner\|fixer`, dry run by default, permission gate, approval, worktree isolation (`--apply`, `--isolate`, `--yes`); `tyr agents list\|clean` | Implemented (not yet exercised against the live API) |
+| Correcting a live Claude Code session through its hooks (`agents.correct`: `off`, `context`, `block`) | Implemented |
 | Claude Code session observation (`tyr hooks`, see [Claude Code integration](#claude-code-integration)) | Implemented |
-| Background observer of Claude Code, problem detection, corrective agents | **Planned** |
 | Integrations (Claude Code, GitHub, Git) | **Planned** (`integrations/INTEGRATIONS.md`) |
 | Python component (`pyproject.toml`) | Placeholder (empty file) |
 | Test suite / linter | None yet |
@@ -199,6 +201,7 @@ Tyr's settings resolve in layers, lowest precedence first: built-in defaults, th
 | `TYR_CHECKS_TYPECHECK` | `checks.typecheck` | same as above |
 | `TYR_SEVERITY` | `severity.threshold` | `info` \| `warning` \| `error` |
 | `TYR_AGENT_PERMISSION` | `agent.permission` | `read-only` \| `suggest` \| `edit` |
+| `TYR_AGENTS_CORRECT` | `agents.correct` | `off` \| `context` \| `block` |
 | `TYR_NOTIFY` | `notifications.targets` | Comma-separated targets (`terminal,desktop`), or `none` for no targets |
 | `TYR_MODEL` | `ai.model` | Any model id |
 | `TYR_API_KEY` | `ai.apiKey` (secret) | Any string |
@@ -474,9 +477,33 @@ Lists such as `notifications.targets` are replaced, never merged: a project that
 
 ```
 tyr run <prompt> [--mode checks|review|ask] [--no-llm]
+tyr run <prompt> --agent reviewer|test-runner|fixer [--apply] [--isolate] [-y|--yes] [--correct]
 ```
 
-Ask Tyr to act now. The prompt is routed by keywords: "run the tests" runs checks, "review my last commit" reviews a diff (diff rules plus the model when a key is set), and anything else, such as "why is the build failing?", is answered by the model from what Tyr knows. Progress streams to the terminal; every run is journaled, counted in `state.json` (`runCount`, `lastRunAt`) and saved as a `run` report. See [docs/cli/run.mdx](docs/cli/run.mdx).
+This tells Tyr to act now. Keywords in the prompt pick the route:
+
+- "run the tests" runs checks.
+- "review my last commit" reviews a diff with the diff rules, plus the model when an API key is set.
+- Anything else, such as "why is the build failing?", is answered by the model from what Tyr knows.
+
+Progress streams to the terminal. Every run is journaled, counted in `state.json` (`runCount`, `lastRunAt`) and saved as a `run` report. See [docs/cli/run.mdx](docs/cli/run.mdx).
+
+`--agent <role>` gives the prompt to a tool-using agent instead. Keywords never pick an agent.
+
+- `reviewer` reads and searches the code and reports problems with `path:line`. It is the tool-using version of the `ask` route.
+- `test-runner` runs the configured checks and diagnoses the failures.
+- `fixer` makes the smallest fix and re-runs the checks to verify it.
+
+The fixer is a dry run unless you pass `--apply`. Then it asks before each change, or skips the question with `--yes`. With `--isolate` it works on a new `tyr/<role>-<time>` branch in `.tyr/worktrees/` and leaves your working tree alone. `--correct` queues the agent's summary for a live Claude Code session. Roles, the safety policy and isolation are documented in [agents/AGENTS.md](agents/AGENTS.md).
+
+### `tyr agents`
+
+```
+tyr agents list
+tyr agents clean [path] [--force] [--keep-branch]
+```
+
+`list` shows the agent roles and the worktrees that isolated agent runs kept, which are the ones where the agent changed something. `clean` removes them with their `tyr/` branches, or just the one at `path`. `--force` also removes worktrees with uncommitted changes, and `--keep-branch` keeps the branches. Only worktrees under `.tyr/worktrees/` on a `tyr/` branch are ever touched. Both commands support `--json`.
 
 ### `tyr hooks`
 
@@ -695,7 +722,8 @@ Keys nest as dotted paths suggest (`checks.test` is `{ "checks": { "test": … }
 | `checks.format` | boolean | `false` | Run the detected formatter check |
 | `checks.typecheck` | boolean | `true` | Run the detected type checker |
 | `severity.threshold` | `info` \| `warning` \| `error` | `warning` | Lowest severity that gets reported |
-| `agent.permission` | `read-only` \| `suggest` \| `edit` | `suggest` | What the reviewing agent may do: read only, propose patches, or edit files |
+| `agent.permission` | `read-only` \| `suggest` \| `edit` | `suggest` | Reserved for corrective agents. Not read yet: the `tyr run --agent` flags decide what an agent run may do |
+| `agents.correct` | `off` \| `context` \| `block` | `context` | Feed problems back into a live Claude Code session through its hooks. `context` adds them to Claude's context. `block` also asks Claude to fix `error`/`critical` ones before it stops, at most twice in a row. `off` never answers. Env `TYR_AGENTS_CORRECT` |
 | `notifications.targets` | array of strings | `["terminal"]` | Where findings are sent, e.g. `"terminal"`, `"desktop"`, `"webhook:https://…"` |
 | `ai.model` | non-empty string | `claude-opus-5-5` | Model used for reviews |
 | `ai.apiKey` | string or null | `null` | API key. **Not allowed here**, see below |
@@ -927,7 +955,8 @@ Tyr/
 │   │   ├── status.ts            # `tyr status`: what Tyr knows about the project
 │   │   ├── config.ts            # `tyr config` list/get/set/unset/path wiring
 │   │   ├── hooks.ts             # `tyr hook` (run by Claude Code), `tyr hooks` install/uninstall/status
-│   │   └── run.ts               # tyr run: route, run, record
+│   │   ├── agents.ts            # `tyr agents` list/clean: roles and agent worktrees
+│   │   └── run.ts               # tyr run: route (or --agent), run, record
 │   ├── core/
 │   │   ├── types.ts             # Shared contracts: DiscoveryResult, GitInfo, ProjectProfile,
 │   │   │                        #   TyrConfig, TyrState, Reporter, TaskHandle
@@ -956,10 +985,19 @@ Tyr/
 │   │   ├── llm-review.ts        # Model review against CLAUDE.md / README (opt-in)
 │   │   ├── review.ts            # Merge findings, regressions, threshold, review reports
 │   │   └── engine.ts            # Wires them together; started by the daemon
+│   ├── agents/                  # Tool-using agents on top of engine/ (see agents/AGENTS.md)
+│   │   ├── model.ts             # Contract: roles, permissions, tools, gate, run options/result
+│   │   ├── roles.ts             # reviewer, test-runner, fixer: ceiling, tools, turn cap, prompt
+│   │   ├── context.ts           # Repo context for prompts: profile, conventions, diff, failures
+│   │   ├── provider.ts          # Key/model resolution and the tool-use loop (Messages API)
+│   │   ├── tools.ts             # read_file, list_files, search, git_diff, run_check, edit/write_file
+│   │   ├── safety.ts            # Permission gate, dry-run/approval policy, worktree isolation
+│   │   ├── coordinate.ts        # Corrections queue and hook replies to a live Claude Code session
+│   │   └── agent.ts             # runAgent(): one run end to end
 │   └── ui/
 │       ├── event-view.ts        # One-line rendering of journal events for `tyr watch`
 │       └── reporter.ts          # Dependency-free animated console reporter
-├── agents/AGENTS.md             # Planned: Tyr's AI agents
+├── agents/AGENTS.md             # The agent system: roles, safety policy, isolation, corrections
 ├── integrations/INTEGRATIONS.md # Planned: Claude Code, GitHub, Git integrations
 ├── .tyr/                        # Tyr's own profile of this repo (dogfooding)
 ├── package.json                 # bin: tyr -> dist/cli/index.js; ESM ("type": "module")
@@ -989,10 +1027,10 @@ findProjectRoot ──► isInitialized? ──► collectGitInfo ──► scan
 - `ui/reporter.ts` owns **every** line of user output. Exactly one spinner owns the current line at a time.
 - Modules communicate only through the types in `core/types.ts`, which the file calls "a fixed API".
 
-**Top-level `agents/` and `integrations/`** contain only description files for now. Their stated intent:
+**Top-level `agents/` and `integrations/`** contain only description files. The agent code lives in `cli/agents/`.
 
-- **`agents/`**: the AI agents Tyr will coordinate.
-- **`integrations/`**: "Will support Claude Code, Github, Git etc."
+- **`agents/AGENTS.md`**: documentation of the agent system.
+- **`integrations/`**: "Will support Claude Code, Github, Git etc." (planned).
 
 ---
 
@@ -1006,7 +1044,7 @@ These items come from stated intent in the code, command descriptions and the `*
 - [x] **Observe Claude Code**: hooks record every prompt, tool call and stop in the event journal (`tyr hooks install`)
 - [ ] **Change detection**: compare the current HEAD and file count with `lastIndexedCommit` / `lastScanFileCount` and re-index incrementally
 - [ ] **Review and problem detection**: run the recorded `commands.*` (build, test, lint, typecheck) against the agent's changes and write findings to `.tyr/reports/`
-- [ ] **Corrective agents**: dispatch focused agents (`agents/`) to fix detected problems, coordinated by the engine in `core/`
+- [x] **Corrective agents**: `tyr run --agent reviewer|test-runner|fixer` (`cli/agents/`), and problems fed back into a live Claude Code session (`agents.correct`)
 - [x] **`tyr status`**: show what Tyr knows (`tyr.json`), its lifecycle (`state.json`) and live git state
 - [x] **`tyr watch`**: live view of the event journal (daemon, git, files, Claude Code)
 - [x] **`tyr run <prompt>`**: on-demand instructions to Tyr, tracked via `runCount` / `lastRunAt`
@@ -1037,7 +1075,7 @@ npx tsc --noEmit              # type-check only (the command Tyr detects for its
 
 ## Known limitations and quirks
 
-- Corrective agents are not implemented yet: `tyr run` runs checks, reviews and answers questions, but never edits files.
+- Agents only run when you ask (`tyr run --agent`). The background process doesn't start them on its own. An isolated fixer run leaves its changes uncommitted in its worktree rather than committing them on the `tyr/` branch. The agent loop has not yet been exercised against the live API.
 - The ASCII banner prints on every invocation, including `--version` and `--help`, and before machine-readable output.
 - The help header reads `Usage: Tyr` (the program name is set to `"Tyr"`), while the installed binary is `tyr`.
 - `tyr.json` is portable since schema v2 (`project.root` is stored as `"."`), but it still churns when someone re-runs `tyr init --force`: `git.headCommit`, `project.fileCount` and `initializedAt` change. Preferences in `settings.json` are not affected (see [What gets committed](#what-gets-committed)).
