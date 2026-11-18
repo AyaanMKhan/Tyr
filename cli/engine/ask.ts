@@ -10,7 +10,8 @@
 //            finally the question
 //
 // One streamed request, no tools: the model sees a snapshot, not the file
-// system. Tool-using agents are PLANNING.md 2.14. Text arrives through
+// system. `tyr run --agent reviewer` is the tool-using version (it reads and
+// searches files itself; cli/agents/, PLANNING.md 2.14). Text arrives through
 // `onText` as it streams.
 //
 // askRepository never throws: a missing key is `skipped`, API failures are

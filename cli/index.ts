@@ -13,6 +13,7 @@ import { registerWatchCommand } from "./commands/watch.js";
 import { registerRunCommand } from "./commands/run.js";
 import { registerConfigCommand } from "./commands/config.js";
 import { registerHooksCommand } from "./commands/hooks.js";
+import { registerAgentsCommand } from "./commands/agents.js";
 import { TYR_VERSION } from "./core/version.js";
 import { readGlobals, registerGlobalOptions } from "./core/globals.js";
 import { runCli } from "./core/fatal.js";
@@ -67,6 +68,7 @@ registerStatusCommand(program);
 registerRunCommand(program);
 registerConfigCommand(program);
 registerHooksCommand(program);
+registerAgentsCommand(program);
 
 // parseAsync, not parse: the actions are async, and only an awaited parse
 // lets their failures reach the top-level handler instead of surfacing as

@@ -110,6 +110,56 @@ test("tyr run: --mode overrides the route; questions without a key fail clearly"
     }, true);
 });
 
+test("tyr run --agent: flag validation, no key, and the --json record", async () => {
+    await withProject(async (root, env) => {
+        const stray = tyr(root, env, "run", "--apply", "fix it");
+        assert.equal(stray.status, EXIT_CODES.USAGE);
+        assert.match(stray.stderr, /--apply only works with --agent/);
+
+        const both = tyr(root, env, "run", "--agent", "reviewer", "--mode", "ask", "hi");
+        assert.equal(both.status, EXIT_CODES.USAGE);
+        assert.match(both.stderr, /--agent and --mode/);
+
+        const unknown = tyr(root, env, "run", "--agent", "janitor", "hi");
+        assert.equal(unknown.status, EXIT_CODES.USAGE);
+
+        const text = tyr(root, env, "run", "--agent", "reviewer", "review my changes");
+        assert.equal(text.status, EXIT_CODES.FAILURE, text.stdout + text.stderr);
+        assert.match(text.stdout + text.stderr, /Tyr will run the reviewer agent\./);
+        assert.match(text.stdout + text.stderr, /Cannot run the reviewer agent: no API key/);
+
+        const json = tyr(root, env, "run", "--agent", "fixer", "--apply", "--isolate", "fix the tests", "--json");
+        assert.equal(json.status, EXIT_CODES.FAILURE, json.stderr);
+        const parsed = JSON.parse(json.stdout) as RunResult;
+        assert.deepEqual(parsed.intent, { mode: "agent", role: "fixer", task: "fix the tests" });
+        assert.equal(parsed.status, "error");
+        assert.equal((parsed.agent as { status?: string } | null)?.status, "skipped");
+        assert.ok(parsed.report !== null);
+    }, true);
+});
+
+test("tyr agents list --json shows the roles and no worktrees", async () => {
+    await withProject(async (root, env) => {
+        const result = tyr(root, env, "agents", "list", "--json");
+        assert.equal(result.status, EXIT_CODES.OK, result.stderr);
+        const parsed = JSON.parse(result.stdout) as { ok: boolean; roles: Array<{ id: string; permission: string }>; worktrees: unknown[] };
+        assert.equal(parsed.ok, true);
+        assert.deepEqual(
+            parsed.roles.map((r) => [r.id, r.permission]),
+            [
+                ["reviewer", "read"],
+                ["fixer", "write"],
+                ["test-runner", "execute"],
+            ],
+        );
+        assert.deepEqual(parsed.worktrees, []);
+
+        const clean = tyr(root, env, "agents", "clean", "--json");
+        assert.equal(clean.status, EXIT_CODES.OK, clean.stderr);
+        assert.deepEqual(JSON.parse(clean.stdout), { ok: true, removed: [], failed: [] });
+    }, true);
+});
+
 test("runExitCode maps statuses", () => {
     assert.equal(runExitCode({ status: "succeeded" }), EXIT_CODES.OK);
     assert.equal(runExitCode({ status: "failed" }), EXIT_CODES.FAILURE);
