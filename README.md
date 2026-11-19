@@ -189,6 +189,13 @@ Commands:
 |---|---|
 | `-v`, `--version` | Print the Tyr version (`1.0.0`) |
 | `-h`, `--help` | Show help. `tyr help <command>` or `tyr <command> --help` shows help for one command. |
+| `-C`, `--cwd <dir>` | Run as if Tyr was started in `<dir>` |
+| `--verbose` / `-q`, `--quiet` | More detail / only warnings and errors |
+| `--json` | Machine-readable JSON on stdout; text goes to stderr |
+| `--log-level <level>` | Minimum level written to `.tyr/logs/tyr.log` |
+| `--debug` | Print the stack trace (and cause chain) of every error, expected ones included, and log at debug level. Same as `TYR_DEBUG=1` |
+
+Warnings and errors go to **stderr**, everything else to stdout, so `tyr init > out.txt` still shows problems on the terminal. Under `--json` all text goes to stderr and stdout holds only the JSON.
 
 ### Environment variables
 
@@ -212,6 +219,7 @@ Tyr's settings resolve in layers, lowest precedence first: built-in defaults, th
 | `TYR_VERBOSE` | `--verbose` | Boolean. Ignored when `--quiet` or `--verbose` is passed. Implies debug logging unless `--log-level` or `TYR_LOG_LEVEL` is set |
 | `TYR_JSON` | `--json` | Boolean. `TYR_JSON=0` turns an inherited `TYR_JSON=1` off |
 | `TYR_LOG_LEVEL` | `--log-level` | `debug` \| `info` \| `warn` \| `error` \| `silent`. Inherited by the background process |
+| `TYR_DEBUG` | `--debug` | Boolean: stack traces for every error |
 
 - **Empty means unset.** A variable set to an empty or whitespace-only value is ignored, as if it were not set. CI systems often export missing secrets as `""`, and that should never wipe a configured value. So `TYR_API_KEY=""` still falls back to `ANTHROPIC_API_KEY`. To turn notifications off from the environment, use `TYR_NOTIFY=none` (`tyr config set notifications.targets none` is the same spelling for the files).
 - **Bad values never stop Tyr.** An invalid value (`TYR_SEVERITY=fatal`) is ignored with a warning naming the variable, and the lower layers apply. Warnings never include the value of `TYR_API_KEY` or `ANTHROPIC_API_KEY`.
@@ -378,6 +386,17 @@ $ tyr watch --no-follow --json -n 2
 $ tyr watch --json --source claude | jq -r 'select(.kind=="claude.tool_result" and .data.success==false) | .data.input'
 ```
 
+On an interactive terminal, a **live panel** stays pinned under the events while following and is redrawn in place every second:
+
+```
+── live ──────────────────────────────────────────────────────────
+daemon   ● running, pid 4120, up 12m · claude ● working: Edit cli/x.ts (4.0s)
+checks   build ✓  typecheck ✓  test ✗ · running lint 3.0s
+problems 1: test regressed · findings 2 (1 serious) · alert: Tyr: test regressed (2m 00s ago)
+```
+
+It starts from `.tyr/state/engine.json` and `findings.json` and follows the live events: the background process, Claude Code (working or idle, and its current tool), the last result of each check and the one running now, open problems, the last review's findings and the last notification. It is left out with `--no-panel`, any filter (`--source`, `--kind`, `--session`, since it would only see the filtered events), `--json`, `--quiet`, pipes, CI and `TERM=dumb`. Panel lines are cut to the terminal width.
+
 `Ctrl-C` exits with `130`, like every other Tyr command (and `tail -f`), so a script can tell an interrupted follow from `--no-follow`'s `0`. Under `--json` the interrupt adds one final line, `{"ok":false,"error":{"message":"Interrupted","code":"INTERRUPTED","exitCode":130}}`, so the stream stays valid NDJSON. `tyr watch` draws no banner, since its output is a log.
 
 ### `tyr status`
@@ -530,10 +549,23 @@ Every command exits with one of these codes (defined in `cli/core/errors.ts`), s
 | `4` | `CONFIG` | `.tyr/` or a settings file is invalid or was written by a newer Tyr. Fix the file rather than re-running `tyr init`. |
 | `130` | `INTERRUPTED` | Stopped with `Ctrl-C`. The hidden cursor is restored first. |
 
-Errors are printed to stderr as `error: <message>`, sometimes followed by a `hint:` line. An unexpected error (a bug) also says how to see its stack trace: rerun with `--verbose` or set `TYR_DEBUG=1`. If the project already has a `.tyr/` directory, the stack is also appended to `.tyr/logs/tyr.log`. With `--json`, a failure that stops a command before it can print its own result writes a single object to stdout instead, so stdout is always JSON:
+Errors are printed to stderr as `error: <message>`, sometimes followed by a `hint:` line. An unexpected error (a bug) also says how to see its stack trace: rerun with `--verbose`, `--debug` or `TYR_DEBUG=1`. `--debug` also prints the stack and cause chain of expected errors (a bad config file, a missing `.tyr/`), which helps when the message alone is not enough. If the project already has a `.tyr/` directory, the stack is also appended to `.tyr/logs/tyr.log`. With `--json`, a failure that stops a command before it can print its own result writes a single object to stdout instead, so stdout is always JSON:
 
 ```json
 { "ok": false, "error": { "message": "unknown option '--bogus'", "code": "USAGE", "exitCode": 2 } }
+```
+
+Failures Tyr anticipates are typed (`cli/core/errors.ts`), and `--json` names the type in `error.type` so a script can be more precise than the exit code:
+
+| `error.type` | Exit code | When |
+|---|---|---|
+| `UsageError` | `2` | A bad flag combination, an empty prompt, an unknown setting or value |
+| `NotInitializedError` | `3` | The command needs `.tyr/` and there is none |
+| `ConfigError` | `4` | A file Tyr reads or edits is invalid (`.tyr/tyr.json`, a settings file, `.claude/settings.json`) |
+| `GitUnavailableError` | `1` | The command needs a git repository |
+
+```json
+{ "ok": false, "error": { "message": "Tyr is not initialized in /repo.", "code": "NOT_INITIALIZED", "exitCode": 3, "hint": "Run \"tyr init\" first.", "type": "NotInitializedError" } }
 ```
 
 Commands that report their own `--json` result, such as `tyr start` and `tyr stop`, keep that shape on failure, and the process still exits with the matching code.

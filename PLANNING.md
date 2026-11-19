@@ -20,7 +20,7 @@ It is a TypeScript/Node CLI (`commander`, `figlet`) that builds to `dist/cli/ind
 
 **What works today:** `tyr init` works end to end. It finds the root, takes a git snapshot, scans files, profiles languages, frameworks and toolchain commands, writes `.tyr/` atomically and logs the run. I verified this by building a copy of the repo and running it: `npm ci && npm run build` succeeds, and `tyr init` / `tyr init --force` both produce the full `.tyr/` tree. Every other command is a one-line `console.log` stub. None of the actual product exists yet: the background process, observing Claude Code, the problem detection, the agents and the integrations.
 
-### Overall completion: about 89%
+### Overall completion: about 90%
 
 I weighted each component by how much it contributes to an end-to-end working Tyr, multiplied the weight by that component's completion, and added up the results (see the table in section 3). The groundwork is the most polished part: init, discovery, git snapshot and project profiling are high quality. But it carries less than a third of the weight. The core product (daemon, observation, detection, agents, integrations) is about 45% of the weight and is at 0%.
 
@@ -182,21 +182,23 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Notifications, terminal and desktop: `cli/engine/alerts.ts` turns each daemon check pass into at most one notification (error: a check regressed or the diff review found a new error/critical finding; warning: a check started failing that never passed; info: failing checks pass again; a still-failing check says nothing). `cli/integrations/notify.ts` delivers it to `notifications.targets`, read at send time: `terminal` is a journaled `notification` event that `tyr watch` highlights and rings the bell for (live, TTY only); `desktop` is a native notification (`cli/integrations/desktop.ts`: WinRT toast via `powershell.exe -EncodedCommand` with the text in env vars, `osascript` argv on macOS, `notify-send --` on Linux). Every notification is journaled with where it was delivered; the daemon's notifier drops the same news within 10 minutes, caps 5 a minute and logs a broken target once. `tyr notify [message] [-t target]` sends one now to test the setup. Verified with a real toast on Windows 10
 - [ ] Follow-ups: Slack and webhook targets (accepted by the setting, reported as unsupported); a `notifications.minSeverity` setting; desktop delivery untested on macOS and Linux; `tyr run` and agent runs never notify
 
-### 2.16 Console UI (`cli/ui/reporter.ts`): 90%, Partial
+### 2.16 Console UI (`cli/ui/reporter.ts`): 100%, Done
 - [x] Spinner tasks with succeed, fail, skip and update, one spinner per line
 - [x] TTY, CI, `NO_COLOR` and `TERM=dumb` detection. ASCII fallback for legacy Windows consoles
 - [x] Cursor restored on exit, SIGINT and SIGTERM
-- [ ] Send `warn` and `error` to stderr (everything goes to stdout today)
-- [ ] JSON/quiet reporter variant for `--json` and scripting
-- [ ] Live multi-line view for `tyr watch`
+- [x] Send `warn` and `error` to stderr: the reporter's `errorStream` (default `process.stderr` when the main stream is stdout; a caller that already moved output to stderr for `--json`, or a test capturing one stream, keeps one stream). A live spinner steps aside for a line on either stream
+- [x] JSON/quiet reporter variant for `--json` and scripting: every command takes the global `--json` (stdout holds only JSON; text moves to stderr via `verbosityOf()` = quiet and a stderr reporter) and `-q`/`--quiet` (warnings and errors only), with `TYR_JSON` / `TYR_QUIET` for scripts; failures under `--json` are one JSON error object (2.17)
+- [x] Live multi-line view for `tyr watch` (`cli/ui/watch-panel.ts`): a four-line panel pinned under the scrolling events on a TTY while following: daemon (pid, uptime, crashed), Claude Code (working/idle, current tool), last result per check and the running one with its elapsed time, open problems, findings of the last review, last notification. Seeded from `engine.json` / `findings.json`, folded from live events by a pure `applyPanelEvent`, redrawn in place (cursor up + clear, one write per update, lines cut to the width, 1 s timer). Off with `--no-panel`, filters, `--json`, `--quiet`, pipes, CI, `TERM=dumb`
+- [ ] Follow-ups: the panel is untested on a real Windows console (escape handling verified with a fake stream only); a terminal resize mid-follow keeps the width read at start
 
-### 2.17 Error handling and logging: 50%, Partial
+### 2.17 Error handling and logging: 100%, Done
 - [x] Detection modules return a value on every path and degrade to null or empty instead of throwing
 - [x] Init failures are reported plainly and set a non-zero exit code
 - [x] Best-effort append-only log at `.tyr/logs/tyr.log`
-- [ ] Typed error classes (`NotInitializedError`, `GitUnavailableError`, ...) with user-facing hints
-- [ ] Log levels, rotation, and a debug flag that dumps stack traces
-- [ ] Daemon-level crash logging
+- [x] Typed error classes with user-facing hints (`cli/core/errors.ts`): `UsageError` (2), `NotInitializedError` (3, default hint "Run tyr init first"), `ConfigError` (4, with the offending `file`) and `GitUnavailableError` (1), all `TyrError`s; the throw sites in `run`, `watch`, `hooks`, `notify`, `claude-hooks.ts` and `settings-edit.ts` use them, and `--json` errors name the class in `error.type`
+- [x] Log levels, rotation, and a debug flag that dumps stack traces: `cli/core/log.ts` (debug/info/warn/error/silent via `--log-level`, `TYR_LOG_LEVEL`, `--verbose`; rotation at 1 MiB keeping 3); the new global `--debug` (= `TYR_DEBUG=1`) prints the stack and cause chain of every error, expected ones included, and logs at debug level; unexpected errors are appended to `tyr.log` (`cli/core/fatal.ts`)
+- [x] Daemon-level crash logging: `runDaemon` routes `uncaughtException` / `unhandledRejection` to a shutdown that logs the stack to `tyr.log` and `daemon.log` (stderr), journals `daemon.crashed` (shown by `tyr watch` and its panel), marks state as error and removes its PID file; `daemon-main.ts` covers failures before that
+- [ ] Follow-ups: `tyr start` and `tyr status` still report "not initialized" themselves rather than throwing `NotInitializedError` (same exit code 3); `GitUnavailableError` has no call site yet beyond its definition
 
 ### 2.18 Tests: 0%, Not started
 - [ ] Pick a test runner (Vitest or `node:test`) and add an `npm test` script
@@ -251,13 +253,13 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 13 | `tyr run` | 3 | 100% | Done | 3.0 |
 | 14 | Agents | 5 | 100% | Done | 5.0 |
 | 15 | Integrations (Claude Code, notifications, GitHub) | 5 | 55% | Partial | 2.75 |
-| 16 | Console UI / reporter | (in 1, 2) | 90% | Partial | — |
-| 17 | Error handling and logging | 2 | 50% | Partial | 1.0 |
+| 16 | Console UI / reporter | (in 1, 2) | 100% | Done | — |
+| 17 | Error handling and logging | 2 | 100% | Done | 2.0 |
 | 18 | Tests | 3 | 0% | Not started | 0 |
 | 19 | Lint / format / CI | 1 | 0% | Not started | 0 |
 | 20 | Packaging and distribution | 2 | 30% | Partial | 0.6 |
 | 21 | Documentation | 2 | 60% | Partial | 1.2 |
-| | **Total** | **100** | | | **≈ 89.1 → 89%** |
+| | **Total** | **100** | | | **≈ 90.1 → 90%** |
 
 Discovery and the reporter are counted inside the `init` and CLI weights, because their only consumer today is `init`.
 
