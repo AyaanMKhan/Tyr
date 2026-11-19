@@ -275,11 +275,19 @@ test("handle: a failing or hanging logger never masks the original error", async
     assert.equal(failing.exitCode, 1);
 
     const hanging = fakeProcess();
-    await createFatalHandler({
-        proc: hanging,
-        logUnexpected: () => new Promise(() => undefined),
-        logTimeoutMs: 10,
-    }).handle(new Error("original"));
+    // The handler unrefs its log timeout (a crash report must never keep the
+    // process alive) and the hanging logger holds no handle, so keep the
+    // event loop busy until the timeout has fired.
+    const keepAlive = setInterval(() => undefined, 1000);
+    try {
+        await createFatalHandler({
+            proc: hanging,
+            logUnexpected: () => new Promise(() => undefined),
+            logTimeoutMs: 10,
+        }).handle(new Error("original"));
+    } finally {
+        clearInterval(keepAlive);
+    }
     assert.match(hanging.err, /^error: original\n/);
 });
 

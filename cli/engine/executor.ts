@@ -217,10 +217,19 @@ function groupAlive(pid: number): boolean {
  * Running a check
  * ---------------------------------------------------------------------- */
 
-/** Shell exit codes that mean "the command itself could not be run". */
-function notRunnableReason(code: number, platform: NodeJS.Platform): string | null {
+/** cmd.exe's message for an unknown command (English; other locales fall back to the exit code). */
+const WINDOWS_NOT_RECOGNIZED = /is not recognized as an internal or external command/i;
+
+/**
+ * Shell exit codes that mean "the command itself could not be run".
+ * `cmd /d /s /c` (how Node runs a shell command on Windows) exits 1 for an
+ * unknown command, not the 9009 an interactive prompt reports, so on Windows
+ * the message on stderr decides; 9009 still counts when a script passes it on.
+ */
+export function notRunnableReason(code: number, platform: NodeJS.Platform, stderr = ""): string | null {
     if (platform === "win32") {
-        return code === 9009 ? "command not found (exit 9009)" : null;
+        if (code === 9009) return "command not found (exit 9009)";
+        return code === 1 && WINDOWS_NOT_RECOGNIZED.test(stderr) ? "command not found (exit 1)" : null;
     }
     if (code === 127) return "command not found (exit 127)";
     if (code === 126) return "command not executable (exit 126)";
@@ -434,7 +443,7 @@ function execute(args: ExecuteArgs): Promise<RawResult> {
                 return;
             }
             if (code !== null) {
-                const reason = notRunnableReason(code, platform);
+                const reason = notRunnableReason(code, platform, platform === "win32" ? args.stderr.text() : "");
                 resolve(reason === null
                     ? { outcome: "failed", exitCode: code, signal }
                     : { outcome: "error", exitCode: code, signal, error: reason });

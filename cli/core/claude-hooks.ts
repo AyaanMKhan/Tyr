@@ -56,7 +56,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { ConfigError, TyrError } from "./errors.js";
+import { ConfigError } from "./errors.js";
 import type { TyrEventInput } from "./events.js";
 import { writeFileAtomic } from "./scaffold.js";
 
@@ -408,7 +408,7 @@ export function tyrHookGroup(event: string, command: string): Json {
 
 /** Quote one argument for the POSIX-style shell Claude Code runs hooks in. */
 export function shellQuote(arg: string): string {
-    if (/^[A-Za-z0-9_\/.:@%+=,-]+$/.test(arg)) return arg;
+    if (/^[A-Za-z0-9_/.:@%+=,-]+$/.test(arg)) return arg;
     return `"${arg.replace(/(["\\$`])/g, "\\$1")}"`;
 }
 
@@ -416,9 +416,15 @@ export function shellQuote(arg: string): string {
  * The default hook command: `node "<abs path to cli/index.js>" hook`.
  * An absolute script path works in dev checkouts and when `tyr` is not on
  * the PATH Claude Code sees, at the price of being machine-specific.
+ *
+ * On Windows the path is written with forward slashes (`D:/Tyr/dist/...`):
+ * node accepts them, they need no escaping in bash (which Claude Code uses
+ * for hooks on Windows) or cmd, and the settings file stays readable instead
+ * of holding `"D:\\Tyr\\..."`.
  */
-export function defaultHookCommand(cliScript: string): string {
-    return `node ${shellQuote(cliScript)} hook`;
+export function defaultHookCommand(cliScript: string, platform: NodeJS.Platform = process.platform): string {
+    const script = platform === "win32" ? cliScript.replace(/\\/g, "/") : cliScript;
+    return `node ${shellQuote(script)} hook`;
 }
 
 async function readSettings(file: string): Promise<Json | null> {

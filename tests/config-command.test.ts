@@ -324,7 +324,7 @@ test("tyr config set / unset round-trip through the project file", async () => {
     await withProject(async (fixture) => {
         const set = tyr(fixture, ["config", "set", "checks.lint", "false"]);
         assert.equal(set.status, 0, set.stderr);
-        assert.match(set.stdout, /Set checks\.lint = false in \.tyr\/settings\.json/);
+        assert.match(set.stdout, /Set checks\.lint = false in \.tyr[\\/]settings\.json/);
         assert.equal(tyr(fixture, ["config", "get", "checks.lint"]).stdout, "false\n");
 
         const none = tyr(fixture, ["config", "set", "notifications.targets", "none"]);

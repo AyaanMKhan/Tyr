@@ -16,6 +16,7 @@ import {
     checkRunToEvent,
     checkStartedEvent,
     loadCheckCommands,
+    notRunnableReason,
     runCheck,
     runCheckSerialized,
     type CheckStart,
@@ -108,11 +109,23 @@ test("a command that does not exist is an error, not a failure", async () => {
         const result = await runCheck(root, "lint", "tyr-definitely-not-a-command-xyz --flag", base);
         assert.equal(result.outcome, "error");
         assert.ok(result.error !== undefined && /not found/.test(result.error), String(result.error));
-        assert.equal(result.exitCode, isWindows ? 9009 : 127);
+        // cmd /d /s /c exits 1 (not 9009) for an unknown command; stderr tells it apart.
+        assert.equal(result.exitCode, isWindows ? 1 : 127);
         assert.match(checkRunToEvent(result).message ?? "", /^lint could not run: command not found/);
     } finally {
         await removeProject(root);
     }
+});
+
+test("notRunnableReason: shell codes per platform, cmd.exe's message on Windows", () => {
+    assert.equal(notRunnableReason(127, "linux"), "command not found (exit 127)");
+    assert.equal(notRunnableReason(126, "darwin"), "command not executable (exit 126)");
+    assert.equal(notRunnableReason(1, "linux"), null);
+    assert.equal(notRunnableReason(9009, "win32"), "command not found (exit 9009)");
+    const cmdMessage = "'eslint' is not recognized as an internal or external command,\r\noperable program or batch file.\r\n";
+    assert.equal(notRunnableReason(1, "win32", cmdMessage), "command not found (exit 1)");
+    assert.equal(notRunnableReason(1, "win32", "2 tests failed"), null, "a real failure stays a failure");
+    assert.equal(notRunnableReason(2, "win32", cmdMessage), null, "only cmd's own exit code 1");
 });
 
 test("a missing working directory is an error", async () => {

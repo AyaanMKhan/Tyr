@@ -350,6 +350,12 @@ test("defaultHookCommand quotes paths with spaces and shell characters", () => {
     assert.equal(defaultHookCommand('/a b/$x"y/index.js'), 'node "/a b/\\$x\\"y/index.js" hook');
 });
 
+test("defaultHookCommand writes Windows paths with forward slashes", () => {
+    assert.equal(defaultHookCommand("D:\\Tyr\\dist\\cli\\index.js", "win32"), "node D:/Tyr/dist/cli/index.js hook");
+    assert.equal(defaultHookCommand("C:\\Program Files\\tyr\\index.js", "win32"), 'node "C:/Program Files/tyr/index.js" hook');
+    assert.equal(defaultHookCommand("/opt/a\\b.js", "linux"), 'node "/opt/a\\\\b.js" hook', "a backslash elsewhere is a real character");
+});
+
 /* -------------------------------------------------------------------------
  * Recording (core of `tyr hook`)
  * ---------------------------------------------------------------------- */
@@ -388,7 +394,15 @@ test("readHookStdin: reads to end, gives up on TTYs, timeouts and oversized payl
     assert.equal(await reading, '{"a":1}');
 
     assert.equal(await readHookStdin(Object.assign(new PassThrough(), { isTTY: true })), null);
-    assert.equal(await readHookStdin(new PassThrough(), 20), null);
+    // readHookStdin unrefs its timer on purpose (a hook must never keep node
+    // alive), and a PassThrough holds no handle either: without this, the
+    // event loop can drain before the 20 ms timeout fires.
+    const keepAlive = setInterval(() => undefined, 1000);
+    try {
+        assert.equal(await readHookStdin(new PassThrough(), 20), null);
+    } finally {
+        clearInterval(keepAlive);
+    }
 
     const big = new PassThrough();
     const reading2 = readHookStdin(big, 1000, 4);
@@ -476,7 +490,7 @@ test("tyr hooks install / status / uninstall round-trip, with --json", async () 
         const shared = tyr(root, ["hooks", "install", "--shared", "--json"]);
         const sharedJson = JSON.parse(shared.stdout);
         assert.equal(sharedJson.file, path.join(root, ".claude", "settings.json"));
-        assert.ok(sharedJson.command.includes(CLI));
+        assert.ok(sharedJson.command.includes(process.platform === "win32" ? CLI.replace(/\\/g, "/") : CLI), sharedJson.command);
         assert.equal(sharedJson.warnings.length, 2); // machine-specific path, installed twice
 
         const status = JSON.parse(tyr(root, ["hooks", "status", "--json"]).stdout);
@@ -486,7 +500,7 @@ test("tyr hooks install / status / uninstall round-trip, with --json", async () 
 
         const removed = tyr(root, ["hooks", "uninstall", "--shared"]);
         assert.equal(removed.status, 0);
-        assert.match(removed.stdout, /Removed Tyr's hooks from \.claude\/settings\.json/);
+        assert.match(removed.stdout, /Removed Tyr's hooks from \.claude[\\/]settings\.json/);
         assert.equal((await hooksStatus(claudeSettingsFile(root, "local"))).missing.length, 0);
 
         const quiet = tyr(root, ["hooks", "uninstall", "--quiet"]);
@@ -512,6 +526,14 @@ test("the hook command is hidden from help", () => {
  * ---------------------------------------------------------------------- */
 
 test("encodeProjectPath replaces every non-alphanumeric character with '-'", () => {
+    if (process.platform === "win32") {
+        // The drive colon and backslashes become '-' too: Claude Code keeps
+        // D:\Tyr's transcripts in ~/.claude/projects/D--Tyr.
+        assert.equal(encodeProjectPath("D:\\Tyr"), "D--Tyr");
+        assert.equal(encodeProjectPath("C:\\Users\\me\\Unreal\\My_Game"), "C--Users-me-Unreal-My-Game");
+        assert.equal(encodeProjectPath("D:\\repo\\.claude\\worktrees\\x"), "D--repo--claude-worktrees-x");
+        return;
+    }
     assert.equal(encodeProjectPath("/Users/me/Tyr"), "-Users-me-Tyr");
     assert.equal(encodeProjectPath("/Users/me/Unreal/My_Game"), "-Users-me-Unreal-My-Game");
     assert.equal(encodeProjectPath("/repo/.claude/worktrees/x"), "-repo--claude-worktrees-x");
@@ -521,7 +543,8 @@ test("findSessionTranscripts and readTranscriptSummary read a fake ~/.claude tol
     const home = await makeProject({});
     try {
         const projectRoot = "/work/my_app";
-        const dir = path.join(home, ".claude", "projects", "-work-my-app");
+        // "-work-my-app" on POSIX, "<drive>--work-my-app" on Windows (encoding tested above).
+        const dir = path.join(home, ".claude", "projects", encodeProjectPath(projectRoot));
         await fs.mkdir(dir, { recursive: true });
         const lines = [
             { type: "mode", mode: "normal", sessionId: "s-1" },

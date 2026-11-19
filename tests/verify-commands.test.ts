@@ -17,9 +17,16 @@ function profile(partial: Partial<Commands>): Commands {
     return { build: null, test: null, lint: null, format: null, typecheck: null, ...partial };
 }
 
-/** Make `relative` under root an executable file. */
+/**
+ * Make `relative` under root an executable file and return its path. On
+ * Windows a bare name is never executable (the lookup needs a PATHEXT
+ * extension), so an extensionless fixture becomes `<name>.EXE` (PATHEXT spelling). Not `.cmd`:
+ * verifyCommands deliberately never probes batch shims (they need a shell),
+ * and these fixtures only ever reach the fake spawner.
+ */
 async function makeExecutable(root: string, relative: string, body = "#!/bin/sh\nexit 0\n"): Promise<string> {
-    const file = path.join(root, relative);
+    const named = process.platform === "win32" && path.extname(relative) === "" ? `${relative}.EXE` : relative;
+    const file = path.join(root, named);
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, body, "utf8");
     await fs.chmod(file, 0o755);
@@ -135,7 +142,7 @@ test("bare tool resolves from PATH", async () => {
         const pytest = await makeExecutable(root, "fakebin/pytest");
         const { spawn, calls } = fakeSpawn({ stdout: "pytest 8.2.0" });
         const result = await verifyCommands(root, profile({ test: cmd("pytest") }), {
-            path: [path.join(root, "nothing-here"), binDir].join(":"),
+            path: [path.join(root, "nothing-here"), binDir].join(path.delimiter),
             spawn,
         });
         assert.equal(result.test?.status, "ok");
