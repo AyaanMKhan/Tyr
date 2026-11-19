@@ -20,7 +20,7 @@ It is a TypeScript/Node CLI (`commander`, `figlet`) that builds to `dist/cli/ind
 
 **What works today:** `tyr init` works end to end. It finds the root, takes a git snapshot, scans files, profiles languages, frameworks and toolchain commands, writes `.tyr/` atomically and logs the run. I verified this by building a copy of the repo and running it: `npm ci && npm run build` succeeds, and `tyr init` / `tyr init --force` both produce the full `.tyr/` tree. Every other command is a one-line `console.log` stub. None of the actual product exists yet: the background process, observing Claude Code, the problem detection, the agents and the integrations.
 
-### Overall completion: about 90%
+### Overall completion: about 94%
 
 I weighted each component by how much it contributes to an end-to-end working Tyr, multiplied the weight by that component's completion, and added up the results (see the table in section 3). The groundwork is the most polished part: init, discovery, git snapshot and project profiling are high quality. But it carries less than a third of the weight. The core product (daemon, observation, detection, agents, integrations) is about 45% of the weight and is at 0%.
 
@@ -200,17 +200,18 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 - [x] Daemon-level crash logging: `runDaemon` routes `uncaughtException` / `unhandledRejection` to a shutdown that logs the stack to `tyr.log` and `daemon.log` (stderr), journals `daemon.crashed` (shown by `tyr watch` and its panel), marks state as error and removes its PID file; `daemon-main.ts` covers failures before that
 - [ ] Follow-ups: `tyr start` and `tyr status` still report "not initialized" themselves rather than throwing `NotInitializedError` (same exit code 3); `GitUnavailableError` has no call site yet beyond its definition
 
-### 2.18 Tests: 0%, Not started
-- [ ] Pick a test runner (Vitest or `node:test`) and add an `npm test` script
-- [ ] Unit tests: `git.ts` parsers (`getStatus`, `parseBranchLine`, `unquotePath`, `getHeadCommit`), `project.ts` detectors (fixture repos), `discovery.ts` (ignore rules, symlinks, depth), `scaffold.ts` (atomic write, malformed JSON)
-- [ ] Reporter tests against a fake stream (TTY and non-TTY)
-- [ ] Integration test: run `tyr init` in temporary repos (git, non-git, empty repo, detached HEAD)
-- [ ] Cross-platform test coverage (Windows paths and line endings)
+### 2.18 Tests: 100%, Done
+- [x] Pick a test runner (Vitest or `node:test`) and add an `npm test` script: `node:test`, compiled by `tsconfig.test.json` into `.test-build/`; `npm test` works without a POSIX shell. 785 tests in `tests/*.test.ts`
+- [x] Unit tests: git parsers (`git-status`, `git-diff`, `git-history`), project detection (`project-name`, `workspaces`), discovery and ignore rules (`scan-diff`, `fs-watch`), scaffold/state (`state-store`, `migrate`, `reinit-merge`, `schema`), plus every engine, agents, integrations and UI module
+- [x] Reporter tests against a fake stream (TTY and non-TTY): `tests/reporter.test.ts`, `tests/console-errors.test.ts`
+- [x] Integration tests: the compiled CLI is spawned against temporary repos (`smoke`, `run-command`, `status-command`, `config-command`, `watch-command`, `claude-hooks`), and real daemons in `daemon.test.ts` / `daemon-git.test.ts`
+- [x] Cross-platform coverage: the whole suite passes on Windows (it had 21 failing and 14 cancelled tests). Fixed in production: the executor treats cmd.exe's "is not recognized" (exit 1, not 9009) as command-not-found; the default hook command uses forward slashes on Windows. Fixed in the tests: fixture cleanup retries on `EBUSY`; `tests/helpers.ts` pins `core.autocrlf=false`, a git identity and no signing via `GIT_CONFIG_COUNT`; deliberately unref'd timers are awaited with the loop held open; Windows paths, separators and PATHEXT fixtures. CI runs it on Linux, macOS and Windows (2.19)
+- [ ] Follow-ups: some timing-sensitive tests (fs-watch polling, daemon lifecycle) have been flaky under load; watch them in CI
 
-### 2.19 Lint, format and CI: 0%, Not started
-- [ ] ESLint and Prettier (or Biome) config plus `lint` / `format` / `typecheck` scripts. Right now `tyr init` on Tyr itself reports "Linter: none detected"
-- [ ] GitHub Actions workflow: install, build, typecheck, lint, test on Linux, macOS and Windows across Node LTS versions
-- [ ] Release workflow (tag, then npm publish)
+### 2.19 Lint, format and CI: 70%, Partial
+- [x] ESLint and Prettier config plus `lint` / `format` / `typecheck` scripts: `eslint.config.js` (flat config, typescript-eslint recommended, `eslint-config-prettier`), `.prettierrc.json` matching the existing style (4 spaces, double quotes, 160 columns); scripts `typecheck`, `lint`, `format`, `format:check`, `clean`, `build:test`, `check`, all cross-platform. The codebase was formatted once in its own commit
+- [x] GitHub Actions workflow (`.github/workflows/ci.yml`): a checks job (typecheck, lint, format) on Ubuntu, and build + smoke test + `npm test` on Ubuntu, macOS and Windows with Node 22 and 24 (`fail-fast: false`), on pushes to main and pull requests
+- [ ] Release workflow (tag, then npm publish): blocked on packaging (2.20: the package name is not publishable yet)
 
 ### 2.20 Packaging and distribution (`package.json`): 30%, Partial
 - [x] `build` script (`npx tsc`) and `bin` mapping
@@ -255,11 +256,11 @@ Legend: `[x]` means the code actually implements it, `[ ]` means it is not imple
 | 15 | Integrations (Claude Code, notifications, GitHub) | 5 | 55% | Partial | 2.75 |
 | 16 | Console UI / reporter | (in 1, 2) | 100% | Done | — |
 | 17 | Error handling and logging | 2 | 100% | Done | 2.0 |
-| 18 | Tests | 3 | 0% | Not started | 0 |
-| 19 | Lint / format / CI | 1 | 0% | Not started | 0 |
+| 18 | Tests | 3 | 100% | Done | 3.0 |
+| 19 | Lint / format / CI | 1 | 70% | Partial | 0.7 |
 | 20 | Packaging and distribution | 2 | 30% | Partial | 0.6 |
 | 21 | Documentation | 2 | 60% | Partial | 1.2 |
-| | **Total** | **100** | | | **≈ 90.1 → 90%** |
+| | **Total** | **100** | | | **≈ 93.8 → 94%** |
 
 Discovery and the reporter are counted inside the `init` and CLI weights, because their only consumer today is `init`.
 

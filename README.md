@@ -1114,8 +1114,21 @@ These items come from stated intent in the code, command descriptions and the `*
 npm install
 npm run build                 # tsc -> dist/
 node dist/cli/index.js init   # try it
-npx tsc --noEmit              # type-check only (the command Tyr detects for itself)
+npm run check                 # everything CI runs: typecheck, lint, format check, tests
 ```
+
+| Script | What it does |
+|---|---|
+| `npm test` | Compiles `cli/` and `tests/` into `.test-build/` and runs every `tests/*.test.ts` with `node:test` |
+| `npm run typecheck` | `tsc --noEmit` over the code and the tests |
+| `npm run lint` | ESLint (`eslint.config.js`: typescript-eslint recommended, Prettier owns formatting) |
+| `npm run format` / `format:check` | Prettier (`.prettierrc.json`: 4 spaces, double quotes, 160 columns); Markdown and `docs/` are formatted by hand |
+| `npm run clean` | Removes `dist/` and `.test-build/` |
+| `npm run check` | typecheck, lint, format check and tests, in that order |
+
+Every script works the same in `cmd.exe`, PowerShell and POSIX shells. CI (`.github/workflows/ci.yml`) runs the checks once and the tests on Linux, macOS and Windows with Node 22 and 24.
+
+Tests are hermetic: fixtures live under the temp dir, `tests/helpers.ts` pins `core.autocrlf=false`, a git identity and no commit signing for every git process the tests start (through `GIT_CONFIG_COUNT`, never your own config), and stops git's repository search at the temp dir.
 
 - **Language / modules:** TypeScript, strict mode, ESM (`"type": "module"`, `NodeNext`). Relative imports must use the **`.js` extension** (for example `import { scaffold } from "../core/scaffold.js"`).
 - **Adding a command:** create `cli/commands/<name>.ts` exporting `register<Name>Command(program: Command)` and register it in `cli/index.ts`. Keep it to wiring: put detection or state logic in `cli/core/` and all output in the reporter.
@@ -1123,7 +1136,6 @@ npx tsc --noEmit              # type-check only (the command Tyr detects for its
 - **Persisting state:** use the accessors in `scaffold.ts` (`readConfig`, `readState`, `writeState`, `appendLog`) instead of touching `.tyr/` directly. They give you atomic writes and automatic `updatedAt` stamping.
 - **Version bumps:** the version string `1.0.0` appears in `package.json`, `cli/index.ts` and `TYR_VERSION` in `cli/commands/init.ts`. Keep all three in sync.
 - **Testing `init` safely:** this repo dogfoods `.tyr/` and commits `tyr.json`. Running `tyr init --force` here rewrites it with the current HEAD and file count. To experiment without touching it, copy the repo elsewhere (for example `git archive HEAD | tar -x -C /tmp/tyr-test`).
-- There is no test runner, linter or formatter configured yet. Contributions that add them are welcome.
 
 ---
 
