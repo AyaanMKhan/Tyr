@@ -76,6 +76,68 @@ export class TyrError extends Error {
     }
 }
 
+/*
+ * Typed failures. Each fixes its exit code and carries a default hint, so a
+ * command throws `new NotInitializedError(root)` instead of repeating the
+ * code and the advice; `--json` reports the class as `error.type`, which a
+ * script can branch on more precisely than the exit code. They are all
+ * TyrErrors: expected, printed without a stack.
+ */
+
+type SubclassOptions = Omit<TyrErrorOptions, "exitCode">;
+
+/** The command line is wrong (exit 2): retrying the same invocation can never work. */
+export class UsageError extends TyrError {
+    constructor(message: string, options: SubclassOptions = {}) {
+        super(message, { ...options, exitCode: EXIT_CODES.USAGE });
+        this.name = "UsageError";
+    }
+}
+
+/** The project has no `.tyr/` (exit 3). */
+export class NotInitializedError extends TyrError {
+    readonly root: string;
+
+    constructor(root: string, options: SubclassOptions & { message?: string } = {}) {
+        super(options.message ?? `Tyr is not initialized in ${root}.`, {
+            ...options,
+            hint: options.hint ?? 'Run "tyr init" first.',
+            exitCode: EXIT_CODES.NOT_INITIALIZED,
+        });
+        this.name = "NotInitializedError";
+        this.root = root;
+    }
+}
+
+/** A file Tyr reads or edits exists but is invalid (exit 4): repair it, don't re-init. */
+export class ConfigError extends TyrError {
+    /** The offending file, when there is one. */
+    readonly file: string | undefined;
+
+    constructor(message: string, options: SubclassOptions & { file?: string } = {}) {
+        super(message, { ...options, exitCode: EXIT_CODES.CONFIG });
+        this.name = "ConfigError";
+        this.file = options.file;
+    }
+}
+
+/** The command needs git (or a repository) and there is none (exit 1). */
+export class GitUnavailableError extends TyrError {
+    constructor(message = "This needs a git repository, and none was found.", options: SubclassOptions = {}) {
+        super(message, {
+            ...options,
+            hint: options.hint ?? "Run it inside a git work tree (git init), and check that git is on your PATH.",
+            exitCode: EXIT_CODES.FAILURE,
+        });
+        this.name = "GitUnavailableError";
+    }
+}
+
+/** The class name `--json` reports for a typed error; undefined for a plain TyrError. */
+export function errorTypeOf(error: unknown): string | undefined {
+    return error instanceof TyrError && error.name !== "TyrError" ? error.name : undefined;
+}
+
 /**
  * The exit code for an error that reached the top level.
  *
@@ -104,6 +166,8 @@ export interface FatalFormatOptions {
     json: boolean;
     /** `--verbose` or `TYR_DEBUG`: include the stack of unexpected errors. */
     verbose: boolean;
+    /** `--debug`: also the stack (and cause chain) of expected errors. */
+    debug?: boolean;
     /** Where an unexpected error was also logged, mentioned in the text output. */
     logFile?: string;
 }
@@ -118,7 +182,7 @@ export interface FatalOutput {
 /** The `--json` shape of every top-level failure. */
 export interface JsonError {
     ok: false;
-    error: { message: string; code: ExitCodeName; exitCode: number; hint?: string };
+    error: { message: string; code: ExitCodeName; exitCode: number; hint?: string; type?: string };
 }
 
 /**
@@ -153,12 +217,20 @@ export function formatFatal(error: unknown, options: FatalFormatOptions): FatalO
         if (hint !== undefined) {
             body.error.hint = hint;
         }
+        const type = errorTypeOf(error);
+        if (type !== undefined) {
+            body.error.type = type;
+        }
         stdout = JSON.stringify(body, null, 2) + "\n";
     } else if (!(error instanceof CommanderError)) {
         stderr += `error: ${message}\n`;
         if (hint !== undefined) {
             stderr += `hint: ${hint}\n`;
         }
+    }
+
+    if (expected && options.debug && !(error instanceof CommanderError)) {
+        stderr += `${stackOf(error)}\n`;
     }
 
     if (!expected) {

@@ -9,7 +9,7 @@
 
 import { Command, Option } from "commander";
 import { findProjectRoot } from "../core/discovery.js";
-import { EXIT_CODES, TyrError } from "../core/errors.js";
+import { EXIT_CODES, UsageError } from "../core/errors.js";
 import { printJson, readGlobals, verbosityOf } from "../core/globals.js";
 import { resolveSettings } from "../core/settings.js";
 import { deliverNotification, NOTIFY_TARGETS, parseTargets, type DeliveryResult, type NotificationSeverity } from "../integrations/notify.js";
@@ -52,8 +52,7 @@ Examples:
             const root = await findProjectRoot();
             const raw = options.target ?? (await resolveSettings({ root })).settings.notifications.targets;
             if (raw.length === 0) {
-                throw new TyrError("No notification targets: notifications.targets is empty.", {
-                    exitCode: EXIT_CODES.USAGE,
+                throw new UsageError("No notification targets: notifications.targets is empty.", {
                     hint: "Pass --target desktop, or run: tyr config set notifications.targets terminal,desktop",
                 });
             }

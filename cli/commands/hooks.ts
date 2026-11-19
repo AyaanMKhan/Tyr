@@ -40,7 +40,7 @@ import {
     type HooksStatus,
 } from "../core/claude-hooks.js";
 import { respondToHook, type RespondDeps } from "../agents/coordinate.js";
-import { EXIT_CODES, TyrError } from "../core/errors.js";
+import { EXIT_CODES, UsageError } from "../core/errors.js";
 import { withoutBanner } from "../ui/banner.js";
 import { createReporter } from "../ui/reporter.js";
 
@@ -330,7 +330,7 @@ Examples:
             const reporter = reporterFor(globals);
             const scope: Scope = options.shared ? "shared" : "local";
             if (options.command !== undefined && options.command.trim() === "") {
-                throw new TyrError("--command must not be empty", { exitCode: EXIT_CODES.USAGE });
+                throw new UsageError("--command must not be empty");
             }
             const root = await findProjectRoot();
             const file = claudeSettingsFile(root, scope);

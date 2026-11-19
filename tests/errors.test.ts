@@ -122,7 +122,7 @@ test("TyrError: carries hint and cause", () => {
 
 test("formatFatal: an expected TyrError prints message and hint, no stack", () => {
     const error = new TyrError("Tyr is not initialized", { exitCode: 3, hint: 'Run "tyr init"' });
-    const output = formatFatal(error, { json: false, verbose: true });
+    const output = formatFatal(error, { json: false, verbose: true, debug: false });
     assert.equal(output.exitCode, 3);
     assert.equal(output.stdout, "");
     assert.equal(output.stderr, 'error: Tyr is not initialized\nhint: Run "tyr init"\n');
@@ -130,7 +130,7 @@ test("formatFatal: an expected TyrError prints message and hint, no stack", () =
 
 test("formatFatal: --json prints one JSON error object to stdout", () => {
     const error = new TyrError("bad config", { exitCode: EXIT_CODES.CONFIG, hint: "fix it" });
-    const output = formatFatal(error, { json: true, verbose: false });
+    const output = formatFatal(error, { json: true, verbose: false, debug: false });
     assert.equal(output.stderr, "");
     assert.deepEqual(JSON.parse(output.stdout), {
         ok: false,
@@ -140,13 +140,13 @@ test("formatFatal: --json prints one JSON error object to stdout", () => {
 
 test("formatFatal: an unexpected error points at the stack unless verbose", () => {
     const error = new Error("boom");
-    const quiet = formatFatal(error, { json: false, verbose: false });
+    const quiet = formatFatal(error, { json: false, verbose: false, debug: false });
     assert.equal(quiet.exitCode, 1);
     assert.match(quiet.stderr, /^error: boom\n/);
     assert.match(quiet.stderr, /--verbose \(or TYR_DEBUG=1\)/);
     assert.doesNotMatch(quiet.stderr, /\n\s+at /);
 
-    const verbose = formatFatal(error, { json: false, verbose: true });
+    const verbose = formatFatal(error, { json: false, verbose: true, debug: false });
     assert.match(verbose.stderr, /\n\s+at /);
 });
 
@@ -159,7 +159,7 @@ test("formatFatal: mentions the log file an unexpected error was written to", ()
 });
 
 test("formatFatal: --json with an unexpected error keeps stdout pure JSON, stack on stderr", () => {
-    const output = formatFatal(new TypeError("nope"), { json: true, verbose: true });
+    const output = formatFatal(new TypeError("nope"), { json: true, verbose: true, debug: false });
     assert.deepEqual(JSON.parse(output.stdout), {
         ok: false,
         error: { message: "nope", code: "FAILURE", exitCode: 1 },
@@ -168,12 +168,12 @@ test("formatFatal: --json with an unexpected error keeps stdout pure JSON, stack
 });
 
 test("formatFatal: commander usage errors are not printed twice in text mode", () => {
-    const output = formatFatal(usageError(), { json: false, verbose: false });
+    const output = formatFatal(usageError(), { json: false, verbose: false, debug: false });
     assert.deepEqual(output, { exitCode: 2, stdout: "", stderr: "" });
 });
 
 test("formatFatal: commander usage errors still produce JSON under --json", () => {
-    const output = formatFatal(usageError(), { json: true, verbose: false });
+    const output = formatFatal(usageError(), { json: true, verbose: false, debug: false });
     assert.equal(output.exitCode, 2);
     assert.deepEqual(JSON.parse(output.stdout).error, {
         message: "unknown option '--bogus'",
@@ -211,14 +211,14 @@ test("stackOf: follows the cause chain", () => {
  * ---------------------------------------------------------------------- */
 
 test("readFatalContext: reads --json/--verbose from raw argv, stops at --", () => {
-    assert.deepEqual(readFatalContext(["node", "tyr", "init", "--json"], {}), { json: true, verbose: false });
-    assert.deepEqual(readFatalContext(["node", "tyr", "run", "--", "--json"], {}), { json: false, verbose: false });
-    assert.deepEqual(readFatalContext(["node", "tyr", "--verbose"], {}), { json: false, verbose: true });
+    assert.deepEqual(readFatalContext(["node", "tyr", "init", "--json"], {}), { json: true, verbose: false, debug: false });
+    assert.deepEqual(readFatalContext(["node", "tyr", "run", "--", "--json"], {}), { json: false, verbose: false, debug: false });
+    assert.deepEqual(readFatalContext(["node", "tyr", "--verbose"], {}), { json: false, verbose: true, debug: false });
     assert.equal(readFatalContext(["node", "tyr"], { TYR_DEBUG: "1" }).verbose, true);
     assert.equal(readFatalContext(["node", "tyr"], { TYR_DEBUG: "0" }).verbose, false);
     assert.equal(readFatalContext(["node", "tyr"], { TYR_DEBUG: "" }).verbose, false);
     // The env layer for the global flags applies here too (flag > env).
-    assert.deepEqual(readFatalContext(["node", "tyr", "--bogus"], { TYR_JSON: "1" }), { json: true, verbose: false });
+    assert.deepEqual(readFatalContext(["node", "tyr", "--bogus"], { TYR_JSON: "1" }), { json: true, verbose: false, debug: false });
     assert.equal(readFatalContext(["node", "tyr"], { TYR_VERBOSE: "yes" }).verbose, true);
     assert.equal(readFatalContext(["node", "tyr", "-q"], { TYR_VERBOSE: "1" }).verbose, false);
 });

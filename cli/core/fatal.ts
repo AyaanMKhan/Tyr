@@ -15,7 +15,7 @@ import { applyEnvGlobals } from "./env-settings.js";
 import { isLogLevelEnabled, writeLog } from "./log.js";
 import { resolveTyrPaths } from "./scaffold.js";
 
-/** Environment variable that shows stacks of unexpected errors, like --verbose. */
+/** Environment variable that does what --debug does: stacks of every error. */
 export const DEBUG_ENV = "TYR_DEBUG";
 
 /** How long logging an unexpected error may delay the exit. */
@@ -65,7 +65,10 @@ export interface FatalHandler {
 /** What the command line asked for, read from raw argv so it works even when parsing failed. */
 export interface FatalContext {
     json: boolean;
+    /** Stacks of unexpected errors. */
     verbose: boolean;
+    /** `--debug` or TYR_DEBUG: stacks of every error, expected ones included. */
+    debug: boolean;
 }
 
 /**
@@ -85,9 +88,11 @@ export function readFatalContext(argv: readonly string[], env: Record<string, st
         { json: flag("--json"), verbose: flag("--verbose"), quiet: flag("--quiet", "-q") },
         env,
     );
+    const debug = flag("--debug") === true || isTruthy(env[DEBUG_ENV]);
     return {
         json: options.json === true,
-        verbose: options.verbose === true || isTruthy(env[DEBUG_ENV]),
+        verbose: options.verbose === true || debug,
+        debug,
     };
 }
 

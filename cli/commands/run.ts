@@ -28,7 +28,7 @@ import { AGENT_ROLE_IDS, type AgentRoleId, type AgentRunResult } from "../agents
 import { getRole } from "../agents/roles.js";
 import { createTerminalPrompter, resolveRunSafety } from "../agents/safety.js";
 import { findProjectRoot } from "../core/discovery.js";
-import { EXIT_CODES, TyrError } from "../core/errors.js";
+import { ConfigError, EXIT_CODES, NotInitializedError, UsageError } from "../core/errors.js";
 import { printJson, readGlobals, verbosityOf } from "../core/globals.js";
 import type { Finding } from "../core/reports.js";
 import { loadConfig } from "../core/scaffold.js";
@@ -122,17 +122,16 @@ Examples:
             const reporter = createReporter({ verbosity, color, stream: out });
 
             if (prompt.trim() === "") {
-                throw new TyrError("The prompt is empty.", { exitCode: EXIT_CODES.USAGE, hint: 'Say what to do, e.g. tyr run "run the tests"' });
+                throw new UsageError("The prompt is empty.", { hint: 'Say what to do, e.g. tyr run "run the tests"' });
             }
             validateAgentFlags(options);
             const root = await findProjectRoot();
             const config = await loadConfig(root);
             if (config.missing) {
-                throw new TyrError(`Tyr is not initialized in ${root}.`, { exitCode: EXIT_CODES.NOT_INITIALIZED, hint: 'Run "tyr init" first.' });
+                throw new NotInitializedError(root);
             }
             if (config.value === null) {
-                throw new TyrError(`.tyr/tyr.json cannot be used: ${config.errors.join("; ")}`, {
-                    exitCode: EXIT_CODES.CONFIG,
+                throw new ConfigError(`.tyr/tyr.json cannot be used: ${config.errors.join("; ")}`, {
                     hint: 'Fix the file, or run "tyr init --force" to rebuild it.',
                 });
             }
@@ -272,16 +271,14 @@ Examples:
 /** Usage errors for flags that only mean something with --agent. */
 function validateAgentFlags(options: CommandOptions): void {
     if (options.agent && options.mode) {
-        throw new TyrError("--agent and --mode cannot be used together.", {
-            exitCode: EXIT_CODES.USAGE,
+        throw new UsageError("--agent and --mode cannot be used together.", {
             hint: "--agent runs an agent on the prompt; --mode picks one of the built-in routes.",
         });
     }
     if (options.agent) return;
     const stray = (["apply", "isolate", "yes", "correct"] as const).filter((flag) => options[flag] === true);
     if (stray.length > 0) {
-        throw new TyrError(`${stray.map((flag) => `--${flag}`).join(", ")} only ${stray.length === 1 ? "works" : "work"} with --agent.`, {
-            exitCode: EXIT_CODES.USAGE,
+        throw new UsageError(`${stray.map((flag) => `--${flag}`).join(", ")} only ${stray.length === 1 ? "works" : "work"} with --agent.`, {
             hint: 'e.g. tyr run --agent fixer --apply --isolate "fix the failing tests"',
         });
     }

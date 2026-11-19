@@ -56,7 +56,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { EXIT_CODES, TyrError } from "./errors.js";
+import { ConfigError, TyrError } from "./errors.js";
 import type { TyrEventInput } from "./events.js";
 import { writeFileAtomic } from "./scaffold.js";
 
@@ -427,7 +427,7 @@ async function readSettings(file: string): Promise<Json | null> {
         raw = await fs.readFile(file, "utf8");
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-        throw new TyrError(`Cannot read ${file}: ${(error as Error).message}`, { exitCode: EXIT_CODES.CONFIG, cause: error });
+        throw new ConfigError(`Cannot read ${file}: ${(error as Error).message}`, { file, cause: error });
     }
     // Claude Code creates empty files now and then; treat one as `{}`.
     if (raw.trim() === "") return {};
@@ -435,14 +435,14 @@ async function readSettings(file: string): Promise<Json | null> {
     try {
         parsed = JSON.parse(raw);
     } catch (error) {
-        throw new TyrError(`${file} is not valid JSON (${(error as Error).message}); not changing it`, {
-            exitCode: EXIT_CODES.CONFIG,
+        throw new ConfigError(`${file} is not valid JSON (${(error as Error).message}); not changing it`, {
+            file,
             hint: "Fix the file by hand (Claude Code would not read it either), then run the command again.",
             cause: error,
         });
     }
     if (!isObject(parsed)) {
-        throw new TyrError(`${file} must contain a JSON object; not changing it`, { exitCode: EXIT_CODES.CONFIG });
+        throw new ConfigError(`${file} must contain a JSON object; not changing it`, { file });
     }
     return parsed;
 }
@@ -452,13 +452,11 @@ function hooksOf(settings: Json, file: string): Json | undefined {
     const hooks = settings.hooks;
     if (hooks === undefined) return undefined;
     if (!isObject(hooks)) {
-        throw new TyrError(`"hooks" in ${file} is not an object; not changing it`, { exitCode: EXIT_CODES.CONFIG });
+        throw new ConfigError(`"hooks" in ${file} is not an object; not changing it`, { file });
     }
     for (const [event, groups] of Object.entries(hooks)) {
         if (!Array.isArray(groups)) {
-            throw new TyrError(`"hooks.${event}" in ${file} is not an array; not changing it`, {
-                exitCode: EXIT_CODES.CONFIG,
-            });
+            throw new ConfigError(`"hooks.${event}" in ${file} is not an array; not changing it`, { file });
         }
     }
     return hooks;

@@ -1,5 +1,5 @@
 // Options accepted by every command: `--cwd`, `--verbose` / `--quiet`,
-// `--json` and `--log-level`. They are declared once on the root program and read by each
+// `--json`, `--debug` and `--log-level`. They are declared once on the root program and read by each
 // command through `optsWithGlobals()`, so no command re-declares them.
 //
 // TYR_QUIET, TYR_VERBOSE and TYR_JSON stand in for the matching flags (for CI
@@ -18,6 +18,7 @@ export interface GlobalOptions {
     quiet?: boolean;
     json?: boolean;
     logLevel?: LogThreshold;
+    debug?: boolean;
 }
 
 export type Verbosity = "quiet" | "normal" | "verbose";
@@ -28,6 +29,7 @@ export function registerGlobalOptions(program: Command): void {
         .addOption(new Option("--verbose", "Show extra detail").conflicts("quiet"))
         .addOption(new Option("-q, --quiet", "Only print warnings and errors"))
         .option("--json", "Print machine-readable JSON to stdout instead of text")
+        .option("--debug", "Print stack traces for every error and log at debug level (same as TYR_DEBUG=1)")
         .addOption(
             new Option(
                 "--log-level <level>",
@@ -74,7 +76,7 @@ export function logLevelOf(options: GlobalOptions): LogThreshold | undefined {
     if (options.logLevel !== undefined) {
         return options.logLevel;
     }
-    return options.verbose ? "debug" : undefined;
+    return options.verbose || options.debug ? "debug" : undefined;
 }
 
 /** Writes one JSON document to stdout. */

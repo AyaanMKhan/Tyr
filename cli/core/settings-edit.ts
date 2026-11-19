@@ -24,7 +24,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { TyrError, EXIT_CODES } from "./errors.js";
+import { ConfigError, EXIT_CODES, NotInitializedError, TyrError, UsageError } from "./errors.js";
 import { ENV_VARS } from "./env-settings.js";
 import { GLOBAL_CONFIG_VERSION, globalConfigFile, writeGlobalSettings, type GlobalConfigPathOptions } from "./global-config.js";
 import { LockTimeoutError, withTyrLock } from "./lock.js";
@@ -76,10 +76,9 @@ export function requireSettingKey(key: string): SettingKeySpec {
     const spec = findSettingKey(key);
     if (spec) return spec;
     const suggestion = suggestSettingKey(key);
-    throw new TyrError(
+    throw new UsageError(
         `Unknown setting "${key}".` + (suggestion === null ? "" : ` Did you mean "${suggestion}"?`),
         {
-            exitCode: EXIT_CODES.USAGE,
             hint: `Valid keys: ${SETTING_KEYS.map((s) => s.key).join(", ")}. Run "tyr config list" to see them with their values.`,
         },
     );
@@ -94,8 +93,7 @@ export function acceptedValues(spec: SettingKeySpec): string {
 export function parseOrThrow(spec: SettingKeySpec, raw: string): unknown {
     const parsed = parseSettingValue(spec, raw);
     if (parsed.ok) return parsed.value;
-    throw new TyrError(spec.secret ? `Invalid value for ${spec.key}` : parsed.error, {
-        exitCode: EXIT_CODES.USAGE,
+    throw new UsageError(spec.secret ? `Invalid value for ${spec.key}` : parsed.error, {
         hint: `${spec.key} accepts: ${acceptedValues(spec)}`,
     });
 }
@@ -141,10 +139,9 @@ export interface SettingEdit {
 export async function setSetting(key: string, raw: string, options: EditSettingOptions): Promise<SettingEdit> {
     const spec = requireSettingKey(key);
     if (spec.secret && options.scope === "project") {
-        throw new TyrError(
+        throw new UsageError(
             `${spec.key} is a secret and cannot be stored in .tyr/settings.json, which is committed with the repository.`,
             {
-                exitCode: EXIT_CODES.USAGE,
                 hint: `Store it in your global config with "tyr config set --global ${spec.key} -" (reads the value from stdin), or export ${spec.env}.`,
             },
         );
@@ -185,8 +182,8 @@ async function editSetting(
     if (options.scope === "project") {
         const root = options.root;
         if (root === null) {
-            throw new TyrError("Tyr is not initialized in this project, so there is no .tyr/settings.json to change.", {
-                exitCode: EXIT_CODES.NOT_INITIALIZED,
+            throw new NotInitializedError(process.cwd(), {
+                message: "Tyr is not initialized in this project, so there is no .tyr/settings.json to change.",
                 hint: `Run "tyr init" first, or pass --global to change your per-user config instead.`,
             });
         }
@@ -256,8 +253,8 @@ async function rewrite(
         result.notes = await write(next);
     } catch (error) {
         if (error instanceof TyrError) throw error;
-        throw new TyrError(`Could not write ${file}: ${(error as Error).message}`, {
-            exitCode: EXIT_CODES.CONFIG,
+        throw new ConfigError(`Could not write ${file}: ${(error as Error).message}`, {
+            file,
             hint: "Fix or remove the file by hand, then retry.",
             cause: error,
         });
@@ -309,8 +306,8 @@ function checkVersion(version: unknown, supported: number): string | null {
 
 function configError(file: string, scope: SettingsScope, problems: string[]): TyrError {
     const pathCommand = scope === "global" ? "tyr config path --global" : "tyr config path";
-    return new TyrError(`Refusing to rewrite ${file}: ${problems.join("; ")}.`, {
-        exitCode: EXIT_CODES.CONFIG,
+    return new ConfigError(`Refusing to rewrite ${file}: ${problems.join("; ")}.`, {
+        file,
         hint: `Nothing was changed. Fix the file by hand ("${pathCommand}" prints its location), then retry.`,
     });
 }
