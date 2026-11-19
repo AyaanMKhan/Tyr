@@ -18,9 +18,19 @@ process.env.GIT_CEILING_DIRECTORIES = realpathSync.native(os.tmpdir());
 // checkout and breaks byte-for-byte assertions. GIT_CONFIG_COUNT entries
 // override every config file (git >= 2.31) without touching the user's own
 // config, and are inherited by every git (and tyr) process the tests spawn.
-process.env.GIT_CONFIG_COUNT = "1";
-process.env.GIT_CONFIG_KEY_0 = "core.autocrlf";
-process.env.GIT_CONFIG_VALUE_0 = "false";
+// A fixed identity and no signing let fixtures commit on a bare CI runner
+// (no user.name) and on machines that sign every commit.
+const GIT_TEST_CONFIG: [string, string][] = [
+    ["core.autocrlf", "false"],
+    ["user.name", "Tyr Tests"],
+    ["user.email", "tests@tyr.invalid"],
+    ["commit.gpgsign", "false"],
+];
+process.env.GIT_CONFIG_COUNT = String(GIT_TEST_CONFIG.length);
+GIT_TEST_CONFIG.forEach(([key, value], index) => {
+    process.env[`GIT_CONFIG_KEY_${index}`] = key;
+    process.env[`GIT_CONFIG_VALUE_${index}`] = value;
+});
 
 /**
  * Create a throwaway project directory populated with `files`
