@@ -1,9 +1,11 @@
-// Console reporter: the animated UI behind `tyr init`.
+// Console reporter: the animated UI behind `tyr init` and the other commands.
 //
 // Deliberately dependency-free -- the spinner, the colours and the terminal
 // capability detection are all hand-rolled ANSI so the CLI stays at two
-// runtime dependencies. Everything funnels through a single write stream so
-// the "one spinner owns the current line" invariant is easy to hold.
+// runtime dependencies. Progress funnels through a single write stream so
+// the "one spinner owns the current line" invariant is easy to hold;
+// warn() and error() go to a separate error stream (stderr by default) so
+// `tyr init > out.txt` still shows problems and scripts can tell them apart.
 
 import type { Verbosity } from "../core/globals.js";
 import { Reporter, TaskHandle } from "../core/types.js";
@@ -126,7 +128,8 @@ export function detectColor(stream: NodeJS.WriteStream): boolean {
     return stream.isTTY === true;
 }
 
-function detectAnimation(stream: NodeJS.WriteStream): boolean {
+/** Whether in-place redraws (spinners, the watch panel) are welcome on `stream`. */
+export function detectAnimation(stream: NodeJS.WriteStream): boolean {
     // Piped output and CI logs capture every redraw as literal text, so the
     // animated path is strictly opt-in on a real terminal.
     if (isCI() || process.env.TERM === "dumb") {
@@ -159,6 +162,12 @@ export function detectUnicode(): boolean {
 export interface ReporterOptions {
     /** Destination stream; defaults to `process.stdout`. */
     stream?: NodeJS.WriteStream;
+    /**
+     * Where warn() and error() go. Defaults to `process.stderr` when `stream`
+     * is stdout (or unset), otherwise to `stream` itself: a caller that already
+     * moved output off stdout (`--json`) or captures it (tests) keeps one stream.
+     */
+    errorStream?: NodeJS.WriteStream;
     /** Force colour on/off. Defaults to auto-detection. */
     color?: boolean;
     /** Force spinner animation on/off. Defaults to auto-detection. */
@@ -176,7 +185,9 @@ type Outcome = "success" | "failure" | "skip";
 
 class ConsoleReporter implements Reporter {
     private readonly stream: NodeJS.WriteStream;
+    private readonly errorStream: NodeJS.WriteStream;
     private readonly color: boolean;
+    private readonly errorColor: boolean;
     private readonly animate: boolean;
     private readonly glyphs: Glyphs;
     private readonly verbosity: Verbosity;
@@ -189,7 +200,9 @@ class ConsoleReporter implements Reporter {
     constructor(options: ReporterOptions = {}) {
         this.stream = options.stream ?? process.stdout;
         this.verbosity = options.verbosity ?? "normal";
+        this.errorStream = options.errorStream ?? (this.stream === process.stdout ? process.stderr : this.stream);
         this.color = options.color ?? detectColor(this.stream);
+        this.errorColor = options.color ?? (this.errorStream === this.stream ? this.color : detectColor(this.errorStream));
         // A spinner is progress chatter, which quiet mode exists to remove.
         this.animate = this.verbosity !== "quiet" && (options.animate ?? detectAnimation(this.stream));
         this.glyphs = (options.unicode ?? detectUnicode()) ? UNICODE_GLYPHS : ASCII_GLYPHS;
@@ -239,11 +252,11 @@ class ConsoleReporter implements Reporter {
     }
 
     warn(text: string): void {
-        this.emit(this.paint(this.glyphs.warn + " " + text, SGR.yellow));
+        this.emit(paint(this.glyphs.warn + " " + text, SGR.yellow, this.errorColor), this.errorStream);
     }
 
     error(text: string): void {
-        this.emit(this.paint(this.glyphs.failure + " " + text, SGR.red));
+        this.emit(paint(this.glyphs.failure + " " + text, SGR.red, this.errorColor), this.errorStream);
     }
 
     debug(text: string): void {
@@ -323,12 +336,14 @@ class ConsoleReporter implements Reporter {
      * current row first and then resume on the fresh row underneath, otherwise
      * the two writers fight over the same columns.
      */
-    private emit(line: string): void {
+    private emit(line: string, to: NodeJS.WriteStream = this.stream): void {
+        // A line on the error stream still lands on the same terminal row as
+        // the spinner when both are a TTY, so the spinner yields either way.
         const spinning = this.animate && this.current !== null;
         if (spinning) {
             this.eraseLine();
         }
-        this.stream.write(line + "\n");
+        to.write(line + "\n");
         if (spinning) {
             this.render();
         }

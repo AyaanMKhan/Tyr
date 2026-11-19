@@ -392,7 +392,8 @@ test("tyr config set warns when an env var overrides the key in this shell", asy
     await withProject(async (fixture) => {
         const result = tyr(fixture, ["config", "set", "checks.lint", "false"], { env: { TYR_CHECKS_LINT: "true" } });
         assert.equal(result.status, 0, result.stderr);
-        assert.match(result.stdout, /TYR_CHECKS_LINT is set in this environment and overrides checks\.lint/);
+        // A warning: stderr since the reporter split (PLANNING 2.16).
+        assert.match(result.stderr, /TYR_CHECKS_LINT is set in this environment and overrides checks\.lint/);
         assert.deepEqual(await readJson(fixture.projectFile), { version: 1, checks: { lint: false } });
 
         const json = JSON.parse(

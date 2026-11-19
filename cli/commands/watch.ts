@@ -23,20 +23,29 @@
 // modes, so there is no terminal state to restore beyond what fatal.ts
 // already does. runWatch() itself takes an AbortSignal so tests (and any
 // future embedding) can stop it without a signal.
+//
+// Live panel (ui/watch-panel.ts): when following on an interactive terminal
+// with no filters, a few status lines (daemon, Claude, checks, problems,
+// findings, last alert) stay pinned under the events and are redrawn in
+// place. Every write while following goes through the panel so it can step
+// aside. --no-panel, pipes, CI, TERM=dumb, --json and --quiet turn it off.
 
 import * as fs from "node:fs/promises";
 import { Command, InvalidArgumentError, Option } from "commander";
 import { findProjectRoot } from "../core/discovery.js";
 import { readDaemonStatus, type DaemonStatus } from "../core/daemon.js";
 import { pingDaemon } from "../core/daemon-requests.js";
-import { EXIT_CODES, TyrError } from "../core/errors.js";
+import { NotInitializedError, TyrError } from "../core/errors.js";
 import { EVENT_SOURCES, readEvents, type EventSource, type TyrEvent } from "../core/events.js";
 import { followEvents } from "../core/event-stream.js";
 import { readGlobals, verbosityOf } from "../core/globals.js";
 import { resolveTyrPaths } from "../core/scaffold.js";
 import { withoutBanner } from "../ui/banner.js";
 import { createEventFormatter, formatUptime, parseSince, wantsBell } from "../ui/event-view.js";
-import { createReporter, detectColor, detectUnicode, paint, SGR } from "../ui/reporter.js";
+import { createReporter, detectAnimation, detectColor, detectUnicode, paint, SGR } from "../ui/reporter.js";
+import { applyPanelEvent, initialPanelState, LivePanel, renderPanel, type PanelState } from "../ui/watch-panel.js";
+import { readEngineState } from "../engine/repo-state.js";
+import { readFindingsState } from "../engine/review.js";
 
 export const DEFAULT_WATCH_LINES = 20;
 /** How long the header waits for the daemon's pong before giving up. */
@@ -69,6 +78,14 @@ export interface WatchOptions {
     bell?: boolean;
     /** Ping the daemon for the header's latency. Default true. */
     ping?: boolean;
+    /**
+     * Pin a live status panel under the events while following. Default
+     * false; ignored under --json/--quiet and when any filter is set (the
+     * panel would only see the filtered events).
+     */
+    panel?: boolean;
+    /** Redraw period of the panel in ms (tests). Default 1000. */
+    panelIntervalMs?: number;
 }
 
 /** The minimal stream surface runWatch writes to. */
@@ -123,6 +140,7 @@ export function registerWatchCommand(program: Command) {
         .option("--no-follow", "Print the history and exit instead of following")
         .option("--no-ping", "Do not ping the background process for the header")
         .option("--no-color", "Disable colored output")
+        .option("--no-panel", "Do not pin the live status panel under the events")
         .addHelpText("after", `
 Replays the most recent events from .tyr/state/events.jsonl, then prints new
 ones as they happen until you press Ctrl-C (exit code 130). Events come from
@@ -132,6 +150,12 @@ been run; you then only see what hooks and commands record.
 
 Each line is: local time, source, and a one-line summary. --verbose adds the
 event kind, id and details (changed paths, session ids, errors).
+
+On a terminal, a live panel stays pinned under the events while following:
+the background process, Claude Code (working or idle, current tool), the last
+result of each check and the one running, open problems, findings and the
+last notification. It is left out with --no-panel, filters, --json, --quiet,
+pipes, CI and TERM=dumb.
 
   14:22:31 ◆ claude  Bash: npm test
   14:22:33 ◆ claude  Bash: npm test  ✗ Exit code 1
@@ -169,6 +193,7 @@ Examples:
                     width: stdout.isTTY === true && !json ? stdout.columns : undefined,
                     bell: stdout.isTTY === true && !json,
                     ping: options.ping !== false,
+                    panel: options.panel !== false && !json && detectAnimation(stdout),
                 },
                 { root, stdout, stderr: process.stderr },
             );
@@ -187,6 +212,7 @@ interface CommandOptions {
     follow?: boolean;
     ping?: boolean;
     color?: boolean;
+    panel?: boolean;
 }
 
 function parseLines(value: string): number {
@@ -230,8 +256,7 @@ export async function runWatch(options: WatchOptions, context: WatchContext): Pr
 
     const configStat = await fs.stat(resolveTyrPaths(root).configFile).catch(() => null);
     if (!configStat?.isFile()) {
-        throw new TyrError(`Tyr is not initialized in ${root}`, {
-            exitCode: EXIT_CODES.NOT_INITIALIZED,
+        throw new NotInitializedError(root, {
             hint: 'Run "tyr init" first; then "tyr start" to record git and file activity.',
         });
     }
@@ -252,15 +277,25 @@ export async function runWatch(options: WatchOptions, context: WatchContext): Pr
 
     const accept = buildExtraFilter(options);
     const format = createEventFormatter({ color, unicode, verbose: options.verbose === true, width: options.width });
+
+    const filtered =
+        (options.sources?.length ?? 0) > 0 || (options.kinds?.length ?? 0) > 0 || (options.sessions?.length ?? 0) > 0;
+    const wantPanel = options.panel === true && options.follow && !json && !quiet && !filtered;
+    let panelState: PanelState | null = null;
+    let panel: LivePanel | null = null;
+    // Everything written while following goes through here, so the panel can step aside.
+    const out: WatchStream = { write: (chunk: string) => (panel ? panel.print(chunk) : context.stdout.write(chunk)) };
+
     const print = (event: TyrEvent, live: boolean): void => {
         if (json) {
             context.stdout.write(`${JSON.stringify(event)}\n`);
             return;
         }
+        if (live && panelState !== null) panelState = applyPanelEvent(panelState, event);
         // The "terminal" notification target: ring for live notifications, never for history.
         const bell = options.bell === true && live && !quiet && wantsBell(event) ? "\u0007" : "";
-        context.stdout.write(`${format(event)}\n${bell}`);
-        if (live && !quiet) announceLifecycle(event, context.stdout, color);
+        out.write(`${format(event)}\n${bell}`);
+        if (live && !quiet) announceLifecycle(event, out, color);
     };
 
     const baseFilter = { sources: options.sources, kinds: options.kinds };
@@ -306,6 +341,25 @@ export async function runWatch(options: WatchOptions, context: WatchContext): Pr
         const label = history.length === 0 ? "no matching events yet; following live" : "following live";
         context.stdout.write(paint(`${rule} ${label} (Ctrl-C to stop) ${rule}`, SGR.dim, color) + "\n");
     }
+    if (wantPanel) {
+        const [status, engine, findings] = await Promise.all([
+            (context.daemonStatus ?? readDaemonStatus)(root).catch(() => null),
+            readEngineState(root).catch(() => null),
+            readFindingsState(root).catch(() => null),
+        ]);
+        panelState = initialPanelState({
+            daemon: { running: status?.running === true, pid: status?.pid ?? null, startedAt: status?.startedAt ?? null },
+            engine,
+            findings: findings?.findings ?? null,
+        });
+        panel = new LivePanel({
+            out: context.stdout,
+            render: () => (panelState === null ? [] : renderPanel(panelState, { now: now(), color, unicode, width: options.width })),
+            intervalMs: options.panelIntervalMs,
+        });
+        panel.start();
+        context.signal?.addEventListener("abort", () => panel?.close(), { once: true });
+    }
     for (const event of buffered) {
         if (event.id === "" || !seen.has(event.id)) print(event, true);
     }
@@ -317,6 +371,7 @@ export async function runWatch(options: WatchOptions, context: WatchContext): Pr
         await new Promise<never>(() => undefined);
     }
     await follower.done;
+    panel?.close();
 }
 
 /**

@@ -72,7 +72,9 @@ Examples:
             } else {
                 const color = options.color === false ? false : detectColor(process.stdout);
                 if (verbosity === "quiet") {
-                    const reporter = createReporter({ verbosity, color, animate: false });
+                    // `status --quiet` *is* the problem list: it stays on stdout with the
+                    // rest of the report instead of moving to stderr like other warnings.
+                    const reporter = createReporter({ verbosity, color, animate: false, errorStream: process.stdout });
                     if (!report.initialized) {
                         reporter.error(`Tyr is not initialized in ${report.root}; run "${report.suggestion}"`);
                     } else {
