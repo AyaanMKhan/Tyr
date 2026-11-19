@@ -7,6 +7,7 @@
         "build": "tsc",
         "build:test": "node -e \"require('fs').rmSync('.test-build',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
         "test": "npm run build:test && node --test \".test-build/tests/**/*.test.js\"",
+        "test:ci": "npm run build:test && node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./scripts/github-annotations-reporter.mjs --test-reporter-destination=stdout \".test-build/tests/**/*.test.js\"",
         "typecheck": "tsc --noEmit -p tsconfig.test.json",
         "lint": "eslint .",
         "format": "prettier --write .",
