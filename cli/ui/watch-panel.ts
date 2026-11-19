@@ -158,7 +158,7 @@ function ago(ts: string, now: Date): string {
 
 /** Visible length, ignoring SGR codes. */
 function visible(text: string): number {
-    // eslint-disable-next-line no-control-regex
+     
     return Array.from(text.replace(/\x1b\[[0-9;]*m/g, "")).length;
 }
 
@@ -169,7 +169,7 @@ export function fitLine(text: string, max: number, unicode: boolean): string {
     const keep = Math.max(0, max - Array.from(ellipsis).length);
     let out = "";
     let shown = 0;
-    // eslint-disable-next-line no-control-regex
+     
     const parts = text.split(/(\x1b\[[0-9;]*m)/);
     for (const part of parts) {
         if (part.startsWith("\x1b[")) {

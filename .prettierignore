@@ -1,0 +1,10 @@
+dist/
+.test-build/
+node_modules/
+package-lock.json
+.claude/
+.tyr/
+# Prose and the docs site are formatted by hand.
+*.md
+*.mdx
+docs/

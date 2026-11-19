@@ -3,8 +3,15 @@
     "version": "1.0.0",
     "description": "",
     "scripts": {
-        "build": "npx tsc",
-        "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --test \".test-build/tests/**/*.test.js\""
+        "clean": "node -e \"for (const d of ['dist','.test-build']) require('fs').rmSync(d,{recursive:true,force:true})\"",
+        "build": "tsc",
+        "build:test": "node -e \"require('fs').rmSync('.test-build',{recursive:true,force:true})\" && tsc -p tsconfig.test.json",
+        "test": "npm run build:test && node --test \".test-build/tests/**/*.test.js\"",
+        "typecheck": "tsc --noEmit -p tsconfig.test.json",
+        "lint": "eslint .",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "check": "npm run typecheck && npm run lint && npm run format:check && npm test"
     },
     "bin": {
         "tyr": "dist/cli/index.js"
@@ -22,7 +29,13 @@
         "figlet": "^1.6.0"
     },
     "devDependencies": {
+        "@eslint/js": "^10.0.1",
         "@types/node": "^26.4.1",
-        "typescript": "^5.9.3"
+        "eslint": "^10.15.0",
+        "eslint-config-prettier": "^10.1.8",
+        "globals": "^17.14.0",
+        "prettier": "^3.10.1",
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.73.0"
     }
 }

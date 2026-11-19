@@ -35,7 +35,7 @@ import { Command, InvalidArgumentError, Option } from "commander";
 import { findProjectRoot } from "../core/discovery.js";
 import { readDaemonStatus, type DaemonStatus } from "../core/daemon.js";
 import { pingDaemon } from "../core/daemon-requests.js";
-import { NotInitializedError, TyrError } from "../core/errors.js";
+import { NotInitializedError } from "../core/errors.js";
 import { EVENT_SOURCES, readEvents, type EventSource, type TyrEvent } from "../core/events.js";
 import { followEvents } from "../core/event-stream.js";
 import { readGlobals, verbosityOf } from "../core/globals.js";

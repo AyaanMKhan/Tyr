@@ -90,7 +90,7 @@ const PROBE_ARGS: Readonly<Record<string, readonly string[] | null>> = {
 };
 
 /** Characters that mean the command needs a shell to interpret it. */
-const SHELL_SYNTAX = /[|&;<>()$`"'\\*?~{}\[\]]/;
+const SHELL_SYNTAX = /[|&;<>()$`"'\\*?~{}[\]]/;
 
 /* -------------------------------------------------------------------------
  * Command parsing

@@ -112,7 +112,7 @@ export async function deliverNotification(
     for (const entry of unsupported) results.push({ target: entry, ok: false, reason: "not supported yet (terminal and desktop are)" });
 
     const journal = deps.journal ?? appendEvent;
-    let event: TyrEvent | null = null;
+    let event: TyrEvent | null;
     try {
         event = await journal(root, {
             source: "tyr",

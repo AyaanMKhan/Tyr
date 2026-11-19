@@ -285,7 +285,7 @@ export async function stopDaemon(root: string, options: { timeoutMs?: number } =
 
     const pid = status.pid;
     await fs.writeFile(daemonPaths.stopFile, `${new Date().toISOString()}\n`, "utf8");
-    let graceful = await waitForExit(pid, options.timeoutMs ?? 5000);
+    const graceful = await waitForExit(pid, options.timeoutMs ?? 5000);
 
     if (!graceful) {
         try {

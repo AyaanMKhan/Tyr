@@ -246,7 +246,7 @@ test("panel: lines are cut to the terminal width, colour codes kept intact", () 
     for (const color of [false, true]) {
         const lines = renderPanel(state, { now: NOW, color, unicode: true, width: 30 });
         for (const line of lines) {
-            // eslint-disable-next-line no-control-regex
+             
             assert.ok(Array.from(line.replace(/\x1b\[[0-9;]*m/g, "")).length <= 29, `fits: ${JSON.stringify(line)}`);
         }
     }
