@@ -43,14 +43,12 @@ class Recorder {
     }
 }
 
-const mentions = (rel: string) => (batch: FileChangeBatch): boolean =>
-    [...batch.added, ...batch.modified, ...batch.removed].includes(rel);
+const mentions =
+    (rel: string) =>
+    (batch: FileChangeBatch): boolean =>
+        [...batch.added, ...batch.modified, ...batch.removed].includes(rel);
 
-async function start(
-    root: string,
-    recorder: Recorder,
-    extra: Partial<WatchFilesOptions> = {},
-): Promise<FileWatcher> {
+async function start(root: string, recorder: Recorder, extra: Partial<WatchFilesOptions> = {}): Promise<FileWatcher> {
     return watchFiles(root, {
         onBatch: recorder.onBatch,
         debounceMs: 150,
@@ -68,8 +66,11 @@ async function write(root: string, rel: string, contents: string): Promise<void>
 }
 
 /** Runs the same body once with fs.watch and once forced to poll. */
-function bothModes(name: string, body: (root: string, recorder: Recorder, watcher: FileWatcher) => Promise<void>,
-    files: Record<string, string> = { "a.ts": "a\n", "b.ts": "b\n" }): void {
+function bothModes(
+    name: string,
+    body: (root: string, recorder: Recorder, watcher: FileWatcher) => Promise<void>,
+    files: Record<string, string> = { "a.ts": "a\n", "b.ts": "b\n" },
+): void {
     for (const forcePolling of [false, true]) {
         test(`${name} (${forcePolling ? "poll" : "watch"})`, async () => {
             const root = await makeProject(files);
@@ -102,28 +103,30 @@ bothModes("add, modify and remove are classified from the disk", async (root, re
     // A poll may land between two of the writes; with fs.watch the burst is
     // always debounced into one batch.
     if (watcher.mode === "watch") {
-        assert.deepEqual(recorder.batches, [
-            { added: ["src/c.ts"], modified: ["a.ts"], removed: ["b.ts"], total: 3, truncated: false },
-        ]);
+        assert.deepEqual(recorder.batches, [{ added: ["src/c.ts"], modified: ["a.ts"], removed: ["b.ts"], total: 3, truncated: false }]);
     }
 });
 
-bothModes("ignored dirs, extensions, .tyrignore, .tyr and .git are never reported", async (root, recorder) => {
-    await write(root, "node_modules/pkg/index.js", "x\n");
-    await write(root, "dist/out.js", "x\n");
-    await write(root, "src/logo.png", "x\n");
-    await write(root, ".DS_Store", "x\n");
-    await write(root, "secret/key.ts", "x\n");
-    await write(root, "notes.tmp", "x\n");
-    await write(root, ".tyr/logs/tyr.log", "x\n");
-    await write(root, ".git/HEAD", "ref: refs/heads/main\n");
-    await write(root, "pkg/.git", "gitdir: elsewhere\n");
-    await write(root, "marker.ts", "m\n");
+bothModes(
+    "ignored dirs, extensions, .tyrignore, .tyr and .git are never reported",
+    async (root, recorder) => {
+        await write(root, "node_modules/pkg/index.js", "x\n");
+        await write(root, "dist/out.js", "x\n");
+        await write(root, "src/logo.png", "x\n");
+        await write(root, ".DS_Store", "x\n");
+        await write(root, "secret/key.ts", "x\n");
+        await write(root, "notes.tmp", "x\n");
+        await write(root, ".tyr/logs/tyr.log", "x\n");
+        await write(root, ".git/HEAD", "ref: refs/heads/main\n");
+        await write(root, "pkg/.git", "gitdir: elsewhere\n");
+        await write(root, "marker.ts", "m\n");
 
-    await recorder.waitFor(mentions("marker.ts"));
-    await delay(SETTLE_MS);
-    assert.deepEqual(recorder.allPaths(), ["marker.ts"]);
-}, { "a.ts": "a\n", ".tyrignore": "secret/\n*.tmp\n" });
+        await recorder.waitFor(mentions("marker.ts"));
+        await delay(SETTLE_MS);
+        assert.deepEqual(recorder.allPaths(), ["marker.ts"]);
+    },
+    { "a.ts": "a\n", ".tyrignore": "secret/\n*.tmp\n" },
+);
 
 test("a file created and deleted inside one burst is not reported", async () => {
     const root = await makeProject({ "a.ts": "a\n" });
@@ -293,7 +296,10 @@ test("a throwing consumer does not stop later batches", async () => {
         await waitUntil(() => seen.length === 1);
         await write(root, "two.ts", "2\n");
         await waitUntil(() => seen.length === 2);
-        assert.deepEqual(seen.map((b) => b.added), [["one.ts"], ["two.ts"]]);
+        assert.deepEqual(
+            seen.map((b) => b.added),
+            [["one.ts"], ["two.ts"]],
+        );
     } finally {
         watcher.close();
         await removeProject(root);
@@ -348,7 +354,10 @@ test("scanProject skips an untracked nested repository inside a git work tree", 
         execFileSync("git", ["init", "-q"], { cwd: root });
         execFileSync("git", ["init", "-q"], { cwd: path.join(root, "inner") });
         const scan = await scanProject(root);
-        assert.deepEqual(scan.files.map((file) => path.basename(file)), ["a.ts"]);
+        assert.deepEqual(
+            scan.files.map((file) => path.basename(file)),
+            ["a.ts"],
+        );
         assert.deepEqual(scan.nestedRepos, ["inner"]);
     } finally {
         await removeProject(root);
@@ -367,40 +376,48 @@ test("isInsideNestedRepo matches the repo and everything below it, nothing else"
     assert.equal(hasNestedRepoMarker(["src", ".gitignore"]), false);
 });
 
-bothModes("churn inside a nested repository is never reported", async (root, recorder) => {
-    // An existing nested worktree, edited like another agent would.
-    await write(root, ".claude/worktrees/agent-1/a.ts", "edited by someone else\n");
-    await write(root, ".claude/worktrees/agent-1/new.ts", "n\n");
-    await fs.rm(path.join(root, ".claude/worktrees/agent-1/b.ts"));
-    // A clone moved in whole, its `.git` included.
-    const staging = await makeProject({ "repo/.git/HEAD": "ref: refs/heads/main\n", "repo/src/x.ts": "x\n" });
-    try {
-        await fs.rename(path.join(staging, "repo"), path.join(root, "clone"));
-    } finally {
-        await removeProject(staging);
-    }
-    await write(root, "marker.ts", "m\n");
+bothModes(
+    "churn inside a nested repository is never reported",
+    async (root, recorder) => {
+        // An existing nested worktree, edited like another agent would.
+        await write(root, ".claude/worktrees/agent-1/a.ts", "edited by someone else\n");
+        await write(root, ".claude/worktrees/agent-1/new.ts", "n\n");
+        await fs.rm(path.join(root, ".claude/worktrees/agent-1/b.ts"));
+        // A clone moved in whole, its `.git` included.
+        const staging = await makeProject({ "repo/.git/HEAD": "ref: refs/heads/main\n", "repo/src/x.ts": "x\n" });
+        try {
+            await fs.rename(path.join(staging, "repo"), path.join(root, "clone"));
+        } finally {
+            await removeProject(staging);
+        }
+        await write(root, "marker.ts", "m\n");
 
-    await recorder.waitFor(mentions("marker.ts"));
-    await delay(SETTLE_MS);
-    assert.deepEqual(recorder.allPaths(), ["marker.ts"]);
-}, {
-    "a.ts": "a\n",
-    ".claude/worktrees/agent-1/.git": "gitdir: /elsewhere\n",
-    ".claude/worktrees/agent-1/a.ts": "a\n",
-    ".claude/worktrees/agent-1/b.ts": "b\n",
-});
+        await recorder.waitFor(mentions("marker.ts"));
+        await delay(SETTLE_MS);
+        assert.deepEqual(recorder.allPaths(), ["marker.ts"]);
+    },
+    {
+        "a.ts": "a\n",
+        ".claude/worktrees/agent-1/.git": "gitdir: /elsewhere\n",
+        ".claude/worktrees/agent-1/a.ts": "a\n",
+        ".claude/worktrees/agent-1/b.ts": "b\n",
+    },
+);
 
-bothModes("a directory that becomes a repository leaves the watched set quietly", async (root, recorder) => {
-    execFileSync("git", ["init", "-q"], { cwd: path.join(root, "sub") });
-    await delay(SETTLE_MS);
-    await write(root, "sub/x.ts", "changed inside the new repository\n");
-    await write(root, "marker.ts", "m\n");
+bothModes(
+    "a directory that becomes a repository leaves the watched set quietly",
+    async (root, recorder) => {
+        execFileSync("git", ["init", "-q"], { cwd: path.join(root, "sub") });
+        await delay(SETTLE_MS);
+        await write(root, "sub/x.ts", "changed inside the new repository\n");
+        await write(root, "marker.ts", "m\n");
 
-    await recorder.waitFor(mentions("marker.ts"));
-    await delay(SETTLE_MS);
-    assert.deepEqual(recorder.allPaths(), ["marker.ts"], "sub/x.ts is neither removed nor modified");
-}, { "a.ts": "a\n", "sub/x.ts": "x\n" });
+        await recorder.waitFor(mentions("marker.ts"));
+        await delay(SETTLE_MS);
+        assert.deepEqual(recorder.allPaths(), ["marker.ts"], "sub/x.ts is neither removed nor modified");
+    },
+    { "a.ts": "a\n", "sub/x.ts": "x\n" },
+);
 
 for (const forcePolling of [false, true]) {
     test(`since: writes between since and the baseline scan are reported, not absorbed (${forcePolling ? "poll" : "watch"})`, async () => {

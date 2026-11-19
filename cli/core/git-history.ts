@@ -269,11 +269,9 @@ export async function diffCommits(root: string, from: string, to: string): Promi
     }
 
     // `-M` explicitly, so a user's `diff.renames=false` cannot change results.
-    const result = await runGit(
-        root,
-        ["diff", "--name-status", "-z", "-M", "--no-ext-diff", "--no-color", fromHash, toHash],
-        { timeoutMs: HISTORY_TIMEOUT_MS },
-    );
+    const result = await runGit(root, ["diff", "--name-status", "-z", "-M", "--no-ext-diff", "--no-color", fromHash, toHash], {
+        timeoutMs: HISTORY_TIMEOUT_MS,
+    });
     if (!result.ok) {
         return null;
     }
@@ -322,9 +320,7 @@ function readChangedFile(tokens: string[], i: number): { file: ChangedFile; next
     return { file: { status, path: filePath, oldPath: null, similarity: null }, next: i + 2 };
 }
 
-async function getWorkingTreeChanges(
-    root: string,
-): Promise<{ changes: WorkingTreeChange[] | null; untrackedSkipped: boolean }> {
+async function getWorkingTreeChanges(root: string): Promise<{ changes: WorkingTreeChange[] | null; untrackedSkipped: boolean }> {
     const base = ["status", "--porcelain=v1", "-z"];
     const full = await runGit(root, [...base, "--untracked-files=all"], { timeoutMs: STATUS_TIMEOUT_MS });
     if (full.ok) {
@@ -335,9 +331,7 @@ async function getWorkingTreeChanges(
     }
 
     const fallback = await runGit(root, [...base, "--untracked-files=no"], { timeoutMs: STATUS_RETRY_TIMEOUT_MS });
-    return fallback.ok
-        ? { changes: parseStatusZ(fallback.stdout), untrackedSkipped: true }
-        : { changes: null, untrackedSkipped: false };
+    return fallback.ok ? { changes: parseStatusZ(fallback.stdout), untrackedSkipped: true } : { changes: null, untrackedSkipped: false };
 }
 
 function parseStatusZ(stdout: string): WorkingTreeChange[] {
@@ -378,27 +372,16 @@ function parseStatusZ(stdout: string): WorkingTreeChange[] {
  * "all of HEAD's history", still capped by `limit`. An unresolvable ref or an
  * unborn HEAD yields `[]`; use `getCommitLog` to tell those apart.
  */
-export async function getCommitsSince(
-    root: string,
-    ref: string | null,
-    options: CommitLogOptions = {},
-): Promise<CommitWithFiles[]> {
+export async function getCommitsSince(root: string, ref: string | null, options: CommitLogOptions = {}): Promise<CommitWithFiles[]> {
     return (await getCommitLog(root, ref, options)).commits;
 }
 
 /** Like `getCommitsSince`, but also says whether `ref` resolved and whether the list was capped. */
-export async function getCommitLog(
-    root: string,
-    ref: string | null,
-    options: CommitLogOptions = {},
-): Promise<CommitLog> {
+export async function getCommitLog(root: string, ref: string | null, options: CommitLogOptions = {}): Promise<CommitLog> {
     const limit = Math.max(0, Math.floor(options.limit ?? DEFAULT_COMMIT_LIMIT));
     const wanted = ref === null ? "" : ref.trim();
 
-    const [head, from] = await Promise.all([
-        resolveCommit(root, "HEAD"),
-        wanted.length === 0 ? Promise.resolve(null) : resolveCommit(root, wanted),
-    ]);
+    const [head, from] = await Promise.all([resolveCommit(root, "HEAD"), wanted.length === 0 ? Promise.resolve(null) : resolveCommit(root, wanted)]);
     const refResolved = wanted.length === 0 || from !== null;
     if (head === null || !refResolved || limit === 0) {
         return { commits: [], refResolved, hasMore: false };
@@ -417,11 +400,12 @@ export async function getCommitLog(
     ];
     const fileArgs = ["--name-status", "-M", "--no-ext-diff"];
 
-    let result = options.includeFiles === true
-        ? await runGit(root, [...baseArgs, ...fileArgs, "--diff-merges=first-parent", range], {
-            timeoutMs: HISTORY_TIMEOUT_MS,
-        })
-        : await runGit(root, [...baseArgs, range], { timeoutMs: HISTORY_TIMEOUT_MS });
+    let result =
+        options.includeFiles === true
+            ? await runGit(root, [...baseArgs, ...fileArgs, "--diff-merges=first-parent", range], {
+                  timeoutMs: HISTORY_TIMEOUT_MS,
+              })
+            : await runGit(root, [...baseArgs, range], { timeoutMs: HISTORY_TIMEOUT_MS });
     if (!result.ok && options.includeFiles === true && !result.timedOut) {
         // git < 2.31 has no --diff-merges; merges then just list no files.
         result = await runGit(root, [...baseArgs, ...fileArgs, range], { timeoutMs: HISTORY_TIMEOUT_MS });

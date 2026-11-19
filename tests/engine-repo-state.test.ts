@@ -225,10 +225,7 @@ test("updateEngineState stamps updatedAt, and recordCheckRun persists the reduce
         assert.deepEqual(await readEngineState(root), stored);
 
         // Concurrent updates serialize under the lock: nothing is lost.
-        await Promise.all([
-            recordCheckRun(root, run("lint", "failed", T2)),
-            recordCheckRun(root, run("build", "failed", T3)),
-        ]);
+        await Promise.all([recordCheckRun(root, run("lint", "failed", T2)), recordCheckRun(root, run("build", "failed", T3))]);
         const final = await readEngineState(root);
         assert.deepEqual(final.problems.map((problem) => problem.kind).sort(), ["build", "lint", "test"]);
     } finally {

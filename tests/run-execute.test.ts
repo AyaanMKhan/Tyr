@@ -158,7 +158,10 @@ test("review route: reviews uncommitted changes with the diff rules", async () =
         const result = await executeRun(root, "review my changes", { onReviewStart: (info) => (reviewInfo = info) });
         assert.deepEqual(result.intent, { mode: "review", scope: "working-tree" });
         assert.deepEqual(reviewInfo, { llm: false, scope: "uncommitted changes" });
-        assert.ok(result.findings.some((f) => (f.rule ?? "").includes("secret")), JSON.stringify(result.findings));
+        assert.ok(
+            result.findings.some((f) => (f.rule ?? "").includes("secret")),
+            JSON.stringify(result.findings),
+        );
         assert.equal(result.status, "failed");
         assert.match(result.summary, /Reviewed uncommitted changes \(1 file/);
         assert.match(result.summary, /diff rules only/);
@@ -200,8 +203,7 @@ test("ask route: streams the answer and keeps it in the report", async () => {
         const client: AskMessagesClient = {
             stream() {
                 const events = ["It ", "works."].map(
-                    (text) =>
-                        ({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text } }) as unknown as Anthropic.MessageStreamEvent,
+                    (text) => ({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text } }) as unknown as Anthropic.MessageStreamEvent,
                 );
                 return {
                     async *[Symbol.asyncIterator]() {

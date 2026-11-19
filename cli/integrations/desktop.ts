@@ -62,7 +62,10 @@ const WINDOWS_SCRIPT = [
 const APPLESCRIPT = ["on run argv", "display notification (item 2 of argv) with title (item 1 of argv)", "end run"];
 
 function clip(text: string, max: number): string {
-    const flat = text.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
+    const flat = text
+        .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
     const chars = Array.from(flat);
     return chars.length <= max ? flat : chars.slice(0, max - 1).join("") + "…";
 }
@@ -75,7 +78,14 @@ export function desktopCommand(note: DesktopNotification, platform: NodeJS.Platf
         case "win32":
             return {
                 command: "powershell.exe",
-                args: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", Buffer.from(WINDOWS_SCRIPT, "utf16le").toString("base64")],
+                args: [
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-EncodedCommand",
+                    Buffer.from(WINDOWS_SCRIPT, "utf16le").toString("base64"),
+                ],
                 env: {
                     TYR_NOTIFY_TITLE: title,
                     TYR_NOTIFY_MESSAGE: message,

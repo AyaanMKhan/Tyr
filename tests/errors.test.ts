@@ -3,22 +3,8 @@ import * as assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { Command, CommanderError } from "commander";
-import {
-    EXIT_CODES,
-    TyrError,
-    exitCodeFor,
-    exitCodeName,
-    formatFatal,
-    messageOf,
-    stackOf,
-} from "../cli/core/errors.js";
-import {
-    createFatalHandler,
-    installFatalHandlers,
-    readFatalContext,
-    runCli,
-    type FatalProcess,
-} from "../cli/core/fatal.js";
+import { EXIT_CODES, TyrError, exitCodeFor, exitCodeName, formatFatal, messageOf, stackOf } from "../cli/core/errors.js";
+import { createFatalHandler, installFatalHandlers, readFatalContext, runCli, type FatalProcess } from "../cli/core/fatal.js";
 import { makeProject, removeProject } from "./helpers.js";
 
 /* -------------------------------------------------------------------------
@@ -388,8 +374,7 @@ const CLI = fileURLToPath(new URL("../cli/index.js", import.meta.url));
 test("tyr (built): unknown option exits 2; --json gets a JSON error; --version exits 0", async () => {
     const cwd = await makeProject({});
     try {
-        const run = (...args: string[]) =>
-            spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", env: { ...process.env, TYR_DEBUG: "" } });
+        const run = (...args: string[]) => spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", env: { ...process.env, TYR_DEBUG: "" } });
 
         const unknown = run("--bogus");
         assert.equal(unknown.status, 2);

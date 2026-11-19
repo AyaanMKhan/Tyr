@@ -18,8 +18,7 @@ const NODE = JSON.stringify(process.execPath);
 const node = (code: string): string => `${NODE} -e ${JSON.stringify(code)}`;
 
 function snapshot(root: string, commands: Partial<Record<CheckKind, string>>): InitSnapshot {
-    const cmd = (command: string | undefined): ProjectCommand | null =>
-        command === undefined ? null : { tool: "t", command, evidence: "package.json" };
+    const cmd = (command: string | undefined): ProjectCommand | null => (command === undefined ? null : { tool: "t", command, evidence: "package.json" });
     return {
         discovery: { root, alreadyInitialized: false, files: [], fileCount: 0, skippedDirs: [] },
         git: { isRepo: false, branch: null, detached: false, headCommit: null, status: null, statusTimedOut: false, remotes: [], defaultRemote: null },
@@ -105,7 +104,10 @@ describe("engine", () => {
             const state = await readEngineState(root);
             assert.equal(state.checks.build?.lastGood?.id, build!.id);
             assert.equal(state.checks.test?.last?.outcome, "failed");
-            assert.deepEqual(state.problems.map((p) => p.key), ["check:test"]);
+            assert.deepEqual(
+                state.problems.map((p) => p.key),
+                ["check:test"],
+            );
             assert.match(state.problems[0]!.detail, /1 test failed/);
 
             const kinds = (await readEvents(root, { sources: ["check"] })).map((e) => e.kind);
@@ -123,7 +125,10 @@ describe("engine", () => {
             engine.scheduler.requestRun("manual");
             const finished = await runs;
             await engine.scheduler.idle();
-            assert.deepEqual(finished.map((r) => `${r.kind}:${r.outcome}`), ["build:failed", "lint:passed"]);
+            assert.deepEqual(
+                finished.map((r) => `${r.kind}:${r.outcome}`),
+                ["build:failed", "lint:passed"],
+            );
         } finally {
             await engine.close();
             await removeProject(root);

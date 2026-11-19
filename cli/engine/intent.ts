@@ -54,7 +54,8 @@ const REVIEW = /\b(review|reviews|reviewing|audit|look over|look at my (changes|
 const LAST_COMMIT = /\b(last|latest|previous|most recent|head|my)\s+commit\b|\bhead\b|\bcommitted\b/;
 
 /** Questions go to the model even when they mention a check. */
-const QUESTION = /^\s*(why|what|whats|what's|how|where|when|which|who|is|are|does|do|did|can|could|should|would|explain|describe|summari[sz]e|tell me|help me understand)\b/;
+const QUESTION =
+    /^\s*(why|what|whats|what's|how|where|when|which|who|is|are|does|do|did|can|could|should|would|explain|describe|summari[sz]e|tell me|help me understand)\b/;
 
 const RUN_VERB = /^\s*(please\s+)?(run|rerun|re-run|execute|start|kick off|check|verify|try)\b/;
 

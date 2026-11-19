@@ -44,14 +44,7 @@ import type { DelegatedOutcome, RunStatus } from "../engine/run.js";
 import type { FindingSeverity } from "../core/reports.js";
 import { buildAgentContext, buildSystemPrompt, buildTaskMessage, type AgentContextOptions } from "./context.js";
 import { queueCorrection } from "./coordinate.js";
-import type {
-    AgentRole,
-    AgentRunOptions,
-    AgentRunResult,
-    AgentRunStatus,
-    AgentSafetySummary,
-    ProposedChange,
-} from "./model.js";
+import type { AgentRole, AgentRunOptions, AgentRunResult, AgentRunStatus, AgentSafetySummary, ProposedChange } from "./model.js";
 import {
     defaultAgentClient,
     resolveAgentAi,
@@ -62,14 +55,7 @@ import {
     type ToolLoopResult,
 } from "./provider.js";
 import { getRole } from "./roles.js";
-import {
-    createAgentWorktree,
-    createGate,
-    removeAgentWorktree,
-    type AgentWorktree,
-    type GitRunner,
-    type SafetyDecision,
-} from "./safety.js";
+import { createAgentWorktree, createGate, removeAgentWorktree, type AgentWorktree, type GitRunner, type SafetyDecision } from "./safety.js";
 import { createToolset, type ToolsetOptions } from "./tools.js";
 
 /** Refusals kept in the safety summary. */

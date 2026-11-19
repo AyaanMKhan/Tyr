@@ -393,7 +393,8 @@ export async function collectStatus(root: string, options: CollectStatusOptions 
     // Daemon
     const daemon = daemonOf(daemonRaw, now);
     if (daemonRaw === null) warn("daemon", "could not check the background process");
-    else if (daemon.stale) warn("daemon", `stale PID file${daemon.pid === null ? "" : ` (pid ${daemon.pid})`}: the background process is not running; \`tyr start\` replaces it`);
+    else if (daemon.stale)
+        warn("daemon", `stale PID file${daemon.pid === null ? "" : ` (pid ${daemon.pid})`}: the background process is not running; \`tyr start\` replaces it`);
     if (state?.status === "running" && daemonRaw !== null && !daemon.running) {
         warn("daemon", "state.json says running, but no background process is alive");
     }
@@ -458,9 +459,7 @@ function projectOf(config: TyrConfig, migrated: string[]): StatusProject {
     for (const kind of CHECK_KINDS) {
         const entry = config.commands[kind];
         commands[kind] =
-            entry === null || entry === undefined
-                ? null
-                : { command: entry.command, tool: entry.tool, source: entry.source === "user" ? "user" : "detected" };
+            entry === null || entry === undefined ? null : { command: entry.command, tool: entry.tool, source: entry.source === "user" ? "user" : "detected" };
     }
     return {
         name: config.project.name,
@@ -473,9 +472,7 @@ function projectOf(config: TyrConfig, migrated: string[]): StatusProject {
         })),
         frameworks: [...config.project.frameworks],
         packageManager: config.project.packageManager,
-        workspace: config.project.workspace
-            ? { tool: config.project.workspace.tool, packages: [...config.project.workspace.packages] }
-            : null,
+        workspace: config.project.workspace ? { tool: config.project.workspace.tool, packages: [...config.project.workspace.packages] } : null,
         commands,
         git: { isRepo: config.git.isRepo, branch: config.git.branch, remote: config.git.remote },
         docs: { readme: config.docs.readme, claudeMd: config.docs.claudeMd },
@@ -720,13 +717,7 @@ async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T | typeof 
 
 const COMMIT_HASH = /^[0-9a-f]{4,64}$/i;
 
-async function collectDrift(
-    root: string,
-    config: TyrConfig | null,
-    state: TyrState | null,
-    options: CollectStatusOptions,
-    warn: Warn,
-): Promise<StatusDrift> {
+async function collectDrift(root: string, config: TyrConfig | null, state: TyrState | null, options: CollectStatusOptions, warn: Warn): Promise<StatusDrift> {
     const manifest = await guard(() => loadScanManifest(root), null);
 
     const indexedHead = state?.lastIndexedCommit ?? config?.git.headCommit ?? null;
@@ -742,10 +733,7 @@ async function collectDrift(
     let currentBranch: string | null = null;
     let commitsSinceIndex: number | null = null;
     if (isRepo) {
-        const [head, branch] = await Promise.all([
-            guard(() => getHeadCommit(root), null),
-            guard(() => getCurrentBranch(root), null),
-        ]);
+        const [head, branch] = await Promise.all([guard(() => getHeadCommit(root), null), guard(() => getCurrentBranch(root), null)]);
         currentHead = head?.hash ?? null;
         currentBranch = branch?.branch ?? null;
         // indexedHead comes from a hand-editable file: only pass it to git when

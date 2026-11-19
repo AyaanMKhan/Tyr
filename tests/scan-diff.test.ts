@@ -10,7 +10,10 @@ import { buildScanManifest, loadScanManifest, saveScanManifest } from "../cli/co
 import { makeProject, removeProject } from "./helpers.js";
 
 async function exists(file: string): Promise<boolean> {
-    return fs.access(file).then(() => true, () => false);
+    return fs.access(file).then(
+        () => true,
+        () => false,
+    );
 }
 
 test("saveScanManifest: writes scan.json and releases the lock", async () => {
@@ -28,10 +31,7 @@ test("saveScanManifest: writes scan.json and releases the lock", async () => {
 test("saveScanManifest: does not write while another live holder has the lock", async () => {
     const root = await makeProject({ "a.txt": "a", ".tyr/state/.keep": "", ".tyr/logs/tyr.log": "" });
     try {
-        await fs.writeFile(
-            resolveLockFile(root),
-            JSON.stringify({ pid: process.pid, owner: "other", acquiredAt: new Date().toISOString() }),
-        );
+        await fs.writeFile(resolveLockFile(root), JSON.stringify({ pid: process.pid, owner: "other", acquiredAt: new Date().toISOString() }));
         const manifest = await buildScanManifest(root, [path.join(root, "a.txt")]);
         await assert.rejects(saveScanManifest(root, manifest, "test", { timeoutMs: 150 }), LockTimeoutError);
         assert.equal(await exists(resolveTyrPaths(root).scanFile), false);

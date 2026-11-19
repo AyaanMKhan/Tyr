@@ -81,7 +81,10 @@ function segmentSource(segment: string): string {
  * we read would resolve inside this project anyway.
  */
 function compileMember(pattern: string): RegExp | null {
-    const trimmed = pattern.trim().replace(/^(\.\/)+/, "").replace(/\/+$/, "");
+    const trimmed = pattern
+        .trim()
+        .replace(/^(\.\/)+/, "")
+        .replace(/\/+$/, "");
     if (trimmed === "" || trimmed.startsWith("/")) return null;
 
     const segments = trimmed.split("/").filter((segment) => segment !== "");
@@ -139,9 +142,7 @@ function parseJsonObject(text: string | null): Record<string, unknown> | null {
     if (text === null) return null;
     try {
         const parsed: unknown = JSON.parse(text);
-        return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-            ? (parsed as Record<string, unknown>)
-            : null;
+        return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
     } catch {
         return null;
     }
@@ -276,10 +277,7 @@ function packageName(manifest: string, text: string | null): string | null {
  * ---------------------------------------------------------------------- */
 
 /** Read each member's manifest for its name; sorted by path. */
-async function describePackages(
-    root: string,
-    members: ReadonlyArray<readonly [string, string]>,
-): Promise<WorkspacePackage[]> {
+async function describePackages(root: string, members: ReadonlyArray<readonly [string, string]>): Promise<WorkspacePackage[]> {
     const packages = await Promise.all(
         members.map(async ([dir, manifest]) => {
             const relative = manifestPath(dir, manifest);
@@ -290,13 +288,7 @@ async function describePackages(
     return packages.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
-async function declared(
-    root: string,
-    tool: WorkspaceTool,
-    evidence: string,
-    members: readonly string[],
-    manifest: string,
-): Promise<WorkspaceInfo | null> {
+async function declared(root: string, tool: WorkspaceTool, evidence: string, members: readonly string[], manifest: string): Promise<WorkspaceInfo | null> {
     // A declaration that matches nothing is not a monorepo worth reporting.
     if (members.length === 0) return null;
     const packages = await describePackages(
@@ -314,31 +306,18 @@ async function detectPnpm(root: string, index: ManifestIndex): Promise<Workspace
     return declared(root, "pnpm", "pnpm-workspace.yaml", resolveMembers(patterns, index, "package.json"), "package.json");
 }
 
-async function detectNodeWorkspaces(
-    root: string,
-    index: ManifestIndex,
-    hasYarnLock: boolean,
-): Promise<WorkspaceInfo | null> {
+async function detectNodeWorkspaces(root: string, index: ManifestIndex, hasYarnLock: boolean): Promise<WorkspaceInfo | null> {
     const pkg = parseJsonObject(await readTextFile(path.join(root, "package.json")));
     if (pkg === null) return null;
 
     // npm takes a plain array; yarn classic also accepts `{ packages: [...] }`.
     const raw = pkg["workspaces"];
-    const patterns =
-        stringArray(raw) ??
-        (typeof raw === "object" && raw !== null ? stringArray((raw as Record<string, unknown>)["packages"]) : null);
+    const patterns = stringArray(raw) ?? (typeof raw === "object" && raw !== null ? stringArray((raw as Record<string, unknown>)["packages"]) : null);
     if (patterns === null) return null;
 
     const declaredManager = pkg["packageManager"];
-    const yarn =
-        hasYarnLock || (typeof declaredManager === "string" && declaredManager.trim().startsWith("yarn"));
-    return declared(
-        root,
-        yarn ? "yarn" : "npm",
-        "package.json",
-        resolveMembers(patterns, index, "package.json"),
-        "package.json",
-    );
+    const yarn = hasYarnLock || (typeof declaredManager === "string" && declaredManager.trim().startsWith("yarn"));
+    return declared(root, yarn ? "yarn" : "npm", "package.json", resolveMembers(patterns, index, "package.json"), "package.json");
 }
 
 async function detectCargo(root: string, index: ManifestIndex): Promise<WorkspaceInfo | null> {

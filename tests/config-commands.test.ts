@@ -65,10 +65,7 @@ test("buildConfig keeps command, tool and evidence for every kind", () => {
 });
 
 test("buildConfig records undetected commands as null", () => {
-    const config = buildConfig(
-        snapshotWith({ test: { tool: "pytest", command: "pytest", evidence: "pyproject.toml" } }),
-        "1.0.0",
-    );
+    const config = buildConfig(snapshotWith({ test: { tool: "pytest", command: "pytest", evidence: "pyproject.toml" } }), "1.0.0");
     assert.equal(config.commands.build, null);
     assert.equal(config.commands.lint, null);
     assert.equal(config.commands.format, null);

@@ -112,19 +112,13 @@ export function registerWatchCommand(program: Command) {
     const watch = program
         .command("watch")
         .description("Follow what Tyr, git and Claude Code are doing, live")
+        .addOption(new Option("-n, --lines <n>", "Replay the last <n> events before following (0 for none)").default(DEFAULT_WATCH_LINES).argParser(parseLines))
         .addOption(
-            new Option("-n, --lines <n>", "Replay the last <n> events before following (0 for none)")
-                .default(DEFAULT_WATCH_LINES)
-                .argParser(parseLines),
-        )
-        .addOption(
-            new Option("--since <time>", 'Replay events since <time>: an age like "10m", "2h", "1d" or an ISO date').argParser(
-                (value: string) => {
-                    const since = parseSince(value);
-                    if (since === null) throw new InvalidArgumentError('expected an age like "10m", "2h", "1d" or an ISO date/time.');
-                    return since;
-                },
-            ),
+            new Option("--since <time>", 'Replay events since <time>: an age like "10m", "2h", "1d" or an ISO date').argParser((value: string) => {
+                const since = parseSince(value);
+                if (since === null) throw new InvalidArgumentError('expected an age like "10m", "2h", "1d" or an ISO date/time.');
+                return since;
+            }),
         )
         .addOption(
             new Option("--source <list>", `Only these sources, comma-separated (${EVENT_SOURCES.join(", ")})`).argParser(
@@ -141,7 +135,9 @@ export function registerWatchCommand(program: Command) {
         .option("--no-ping", "Do not ping the background process for the header")
         .option("--no-color", "Disable colored output")
         .option("--no-panel", "Do not pin the live status panel under the events")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Replays the most recent events from .tyr/state/events.jsonl, then prints new
 ones as they happen until you press Ctrl-C (exit code 130). Events come from
 the background process (git, file changes), Claude Code hooks ("tyr hooks
@@ -169,7 +165,8 @@ Examples:
   $ tyr watch --source claude       Only Claude Code activity
   $ tyr watch --kind git. --kind daemon   Git events and daemon lifecycle
   $ tyr watch --session 3f2a9c1d    One Claude session
-  $ tyr watch --json | jq -r .kind  NDJSON: one raw event per line`)
+  $ tyr watch --json | jq -r .kind  NDJSON: one raw event per line`,
+        )
         .action(async (options: CommandOptions, command: Command) => {
             const globals = readGlobals(command);
             const json = globals.json === true;
@@ -278,8 +275,7 @@ export async function runWatch(options: WatchOptions, context: WatchContext): Pr
     const accept = buildExtraFilter(options);
     const format = createEventFormatter({ color, unicode, verbose: options.verbose === true, width: options.width });
 
-    const filtered =
-        (options.sources?.length ?? 0) > 0 || (options.kinds?.length ?? 0) > 0 || (options.sessions?.length ?? 0) > 0;
+    const filtered = (options.sources?.length ?? 0) > 0 || (options.kinds?.length ?? 0) > 0 || (options.sessions?.length ?? 0) > 0;
     const wantPanel = options.panel === true && options.follow && !json && !quiet && !filtered;
     let panelState: PanelState | null = null;
     let panel: LivePanel | null = null;
@@ -413,9 +409,7 @@ async function printHeader(
         reporter.success(`Background process running (${parts.join(", ")})`);
     } else {
         reporter.warn(
-            status.stale
-                ? `Background process is not running (it exited without cleaning up, pid ${status.pid ?? "?"})`
-                : "Background process is not running",
+            status.stale ? `Background process is not running (it exited without cleaning up, pid ${status.pid ?? "?"})` : "Background process is not running",
         );
         reporter.info('  Git and file changes are not being recorded; start it with "tyr start".');
         reporter.info("  Claude Code hooks and Tyr commands still write events, so they are shown below.");

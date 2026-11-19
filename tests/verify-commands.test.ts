@@ -51,10 +51,7 @@ function fakeSpawn(result: Partial<SpawnResult> | ((call: SpawnCall) => Partial<
     return { spawn, calls };
 }
 
-async function withProject(
-    files: Record<string, string>,
-    body: (root: string) => Promise<void>,
-): Promise<void> {
+async function withProject(files: Record<string, string>, body: (root: string) => Promise<void>): Promise<void> {
     const root = await makeProject(files);
     try {
         await body(root);
@@ -73,11 +70,7 @@ test("script present and package manager on PATH is ok, without spawning", async
     await withProject({ "package.json": PKG }, async (root) => {
         await makeExecutable(root, "fakebin/npm");
         const { spawn, calls } = fakeSpawn();
-        const result = await verifyCommands(
-            root,
-            profile({ build: cmd("npm run build"), test: cmd("npm test") }),
-            { path: path.join(root, "fakebin"), spawn },
-        );
+        const result = await verifyCommands(root, profile({ build: cmd("npm run build"), test: cmd("npm test") }), { path: path.join(root, "fakebin"), spawn });
         assert.equal(result.build?.status, "ok");
         assert.equal(result.test?.status, "ok");
         assert.match(result.build!.detail, /"build"/);
@@ -179,11 +172,7 @@ test("Windows lookup applies PATHEXT", async () => {
 test("missing executable is reported as missing without spawning", async () => {
     await withProject({}, async (root) => {
         const { spawn, calls } = fakeSpawn();
-        const result = await verifyCommands(
-            root,
-            profile({ lint: cmd("npx eslint ."), typecheck: cmd("mypy .") }),
-            { path: path.join(root, "empty"), spawn },
-        );
+        const result = await verifyCommands(root, profile({ lint: cmd("npx eslint ."), typecheck: cmd("mypy .") }), { path: path.join(root, "empty"), spawn });
         assert.equal(result.lint?.status, "missing");
         assert.match(result.lint!.detail, /eslint not installed/);
         assert.equal(result.typecheck?.status, "missing");
@@ -231,16 +220,15 @@ test("tool-specific probe args, resolve-only tools, and probe: false", async () 
         const { spawn, calls } = fakeSpawn({ stdout: "go version go1.22" });
         const options = { path: path.join(root, "fakebin"), spawn };
 
-        const result = await verifyCommands(
-            root,
-            profile({ build: cmd("go build ./..."), test: cmd("go test ./..."), format: cmd("gofmt -w .") }),
-            options,
-        );
+        const result = await verifyCommands(root, profile({ build: cmd("go build ./..."), test: cmd("go test ./..."), format: cmd("gofmt -w .") }), options);
         assert.equal(result.build?.status, "ok");
         assert.equal(result.test?.status, "ok");
         assert.equal(result.format?.status, "ok");
         // Both go commands share one `go version` probe; gofmt is never spawned.
-        assert.deepEqual(calls.map((call) => call.args), [["version"]]);
+        assert.deepEqual(
+            calls.map((call) => call.args),
+            [["version"]],
+        );
 
         const noProbe = await verifyCommands(root, profile({ typecheck: cmd("tsc --noEmit") }), {
             ...options,
@@ -286,10 +274,14 @@ test("never throws, even when the spawner does", async () => {
         assert.match(result.build!.detail, /boom/);
 
         // A root that does not exist is just as survivable.
-        const gone = await verifyCommands(path.join(root, "does-not-exist"), profile({
-            build: cmd("npm run build"),
-            test: cmd("pytest"),
-        }), { path: "" });
+        const gone = await verifyCommands(
+            path.join(root, "does-not-exist"),
+            profile({
+                build: cmd("npm run build"),
+                test: cmd("pytest"),
+            }),
+            { path: "" },
+        );
         assert.equal(gone.build?.status, "missing");
         assert.equal(gone.test?.status, "missing");
     });
@@ -303,7 +295,7 @@ const posixOnly = { skip: process.platform === "win32" ? "needs /bin/sh" : false
 
 test("real spawner reads the version line", posixOnly, async () => {
     await withProject({}, async (root) => {
-        await makeExecutable(root, "fakebin/fmt-tool", "#!/bin/sh\necho \"fmt-tool 1.2.3\"\n");
+        await makeExecutable(root, "fakebin/fmt-tool", '#!/bin/sh\necho "fmt-tool 1.2.3"\n');
         const result = await verifyCommands(root, profile({ format: cmd("fmt-tool .") }), {
             path: path.join(root, "fakebin"),
         });

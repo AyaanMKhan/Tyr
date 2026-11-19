@@ -164,9 +164,7 @@ interface Outcome {
 export async function executeRun(root: string, prompt: string, options: ExecuteRunOptions = {}): Promise<RunResult> {
     const clock = options.now ?? (() => new Date());
     const started = clock();
-    const intent: RunIntent = options.agent
-        ? { mode: "agent", role: options.agent.role, task: prompt.trim() }
-        : routePrompt(prompt, options.mode);
+    const intent: RunIntent = options.agent ? { mode: "agent", role: options.agent.role, task: prompt.trim() } : routePrompt(prompt, options.mode);
     safely(() => options.onIntent?.(intent));
 
     const startedEvent = await appendEvent(root, {
@@ -424,13 +422,7 @@ async function runAgentRoute(intent: Extract<RunIntent, { mode: "agent" }>, opti
  * Recording
  * ---------------------------------------------------------------------- */
 
-async function writeRunReport(
-    root: string,
-    prompt: string,
-    intent: RunIntent,
-    outcome: Outcome,
-    now: Date,
-): Promise<WrittenReport | null> {
+async function writeRunReport(root: string, prompt: string, intent: RunIntent, outcome: Outcome, now: Date): Promise<WrittenReport | null> {
     try {
         const [config, branch, head] = await Promise.all([
             readConfig(root).catch(() => null),

@@ -65,14 +65,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import {
-    createPathIgnoreFilter,
-    hasNestedRepoMarker,
-    isInsideNestedRepo,
-    NESTED_REPO_MARKER,
-    scanProject,
-    type PathIgnoreFilter,
-} from "./discovery.js";
+import { createPathIgnoreFilter, hasNestedRepoMarker, isInsideNestedRepo, NESTED_REPO_MARKER, scanProject, type PathIgnoreFilter } from "./discovery.js";
 import { runGit } from "./git-exec.js";
 import { describeError } from "./git-watch.js";
 import { loadUserIgnorePatterns, TYR_IGNORE_FILE } from "./ignore.js";
@@ -348,9 +341,7 @@ export async function watchFiles(root: string, options: WatchFilesOptions): Prom
 
         // Files the baseline already knows passed every ignore rule when they
         // were scanned; only newcomers need checking.
-        let newcomers = Object.keys(fresh).filter(
-            (rel) => !baseline.has(rel) && !isAlwaysIgnored(rel) && !filter.ignores(rel, false),
-        );
+        let newcomers = Object.keys(fresh).filter((rel) => !baseline.has(rel) && !isAlwaysIgnored(rel) && !filter.ignores(rel, false));
         // A newcomer may sit in a repository whose `.git` the platform never
         // reported (macOS coalescing, a clone moved in whole). One check per
         // distinct ancestor directory, so a big burst stays cheap.
@@ -715,12 +706,7 @@ async function checkGitIgnored(absRoot: string, paths: readonly string[]): Promi
  * `until` guards against files with mtimes in the future (an archive
  * extracted with bogus dates), which would otherwise show up on every start.
  */
-async function changedSince(
-    absRoot: string,
-    baseline: Map<string, FileFingerprint>,
-    since: number,
-    until: number,
-): Promise<Changes> {
+async function changedSince(absRoot: string, baseline: Map<string, FileFingerprint>, since: number, until: number): Promise<Changes> {
     const changes: Changes = { added: [], modified: [], removed: [] };
     for (const [rel, fingerprint] of baseline) {
         if (fingerprint.mtimeMs < since || fingerprint.mtimeMs > until) {

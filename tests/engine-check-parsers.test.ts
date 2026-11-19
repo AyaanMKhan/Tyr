@@ -91,7 +91,7 @@ test("tsc: pretty format with ANSI colors and ../ paths that resolve under cwd",
     const stdout =
         `\u001b[96m${p}\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m7\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2322: \u001b[0mType 'string' is not assignable to type 'number'.\n` +
         "\n" +
-        "\u001b[7m1\u001b[0m const x: number = \"hi\";\n" +
+        '\u001b[7m1\u001b[0m const x: number = "hi";\n' +
         "\u001b[7m \u001b[0m \u001b[91m      ~\u001b[0m\n" +
         "\n" +
         `\u001b[96m${p}\u001b[0m:\u001b[93m2\u001b[0m:\u001b[93m34\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2339: \u001b[0mProperty 'foo' does not exist on type 'string'.\n` +
@@ -552,15 +552,13 @@ help: Remove unused import: \`os\`
 Found 1 error.
 `;
     const findings = parseCheckRun(run({ kind: "lint", command: "ruff check", stdout }));
-    assert.deepEqual(findings.map(brief), [
-        { severity: "error", title: "`os` imported but unused", file: "src/app.py", line: 1, column: 8, rule: "F401" },
-    ]);
+    assert.deepEqual(findings.map(brief), [{ severity: "error", title: "`os` imported but unused", file: "src/app.py", line: 1, column: 8, rule: "F401" }]);
 });
 
 test("mypy: errors with [code], notes ignored", () => {
     const stdout = [
         'src/app.py:12: error: Incompatible types in assignment (expression has type "str", variable has type "int")  [assignment]',
-        'src/app.py:12: note: See https://mypy.readthedocs.io for more info',
+        "src/app.py:12: note: See https://mypy.readthedocs.io for more info",
         "src/models.py:3:5: error: Missing return statement  [return]",
         "Found 2 errors in 2 files (checked 5 source files)",
     ].join("\n");
@@ -645,9 +643,7 @@ test("fallback: a failed run nothing recognizes yields one summary with the outp
 });
 
 test("fallback: timeouts are always reported, alongside anything parsed", () => {
-    const findings = parseCheckRun(
-        run({ kind: "test", command: "npx jest", outcome: "timeout", durationMs: 600_000, stderr: JEST }),
-    );
+    const findings = parseCheckRun(run({ kind: "test", command: "npx jest", outcome: "timeout", durationMs: 600_000, stderr: JEST }));
     assert.deepEqual(
         findings.map((f) => f.title),
         ["test timed out after 600s", "Test failed: Math › adds numbers"],

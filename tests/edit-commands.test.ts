@@ -1,14 +1,7 @@
 import { test } from "node:test";
 import * as assert from "node:assert/strict";
 
-import {
-    CLEAR_TOKEN,
-    USER_EVIDENCE,
-    editCommands,
-    toolFromCommand,
-    type AskFn,
-    type ConfirmFn,
-} from "../cli/core/edit-commands.js";
+import { CLEAR_TOKEN, USER_EVIDENCE, editCommands, toolFromCommand, type AskFn, type ConfirmFn } from "../cli/core/edit-commands.js";
 import type { ProjectCommand, ProjectProfile } from "../cli/core/types.js";
 
 function cmd(command: string, tool: string): ProjectCommand {

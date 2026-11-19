@@ -6,12 +6,7 @@ import * as assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-    buildAgentContext,
-    buildSystemPrompt,
-    buildTaskMessage,
-    profileJson,
-} from "../cli/agents/context.js";
+import { buildAgentContext, buildSystemPrompt, buildTaskMessage, profileJson } from "../cli/agents/context.js";
 import type { AgentContext } from "../cli/agents/model.js";
 import { ROLES } from "../cli/agents/roles.js";
 import type { TyrConfig } from "../cli/core/types.js";
@@ -250,7 +245,7 @@ test("buildSystemPrompt: instructions first, sections in fixed order, determinis
     const ctx: AgentContext = {
         root: "/abs/somewhere/repo",
         profile: '{"name":"x"}',
-        conventions: "<readme path=\"README.md\">\nhello\n</readme>",
+        conventions: '<readme path="README.md">\nhello\n</readme>',
         diff: "diff --git a/f b/f",
         failures: "check test: failed",
         omittedFiles: [],
@@ -262,7 +257,10 @@ test("buildSystemPrompt: instructions first, sections in fixed order, determinis
             prompt.indexOf(tag),
         );
         assert.ok(order.every((i) => i > 0));
-        assert.deepEqual([...order].sort((a, b) => a - b), order);
+        assert.deepEqual(
+            [...order].sort((a, b) => a - b),
+            order,
+        );
         assert.equal(prompt, buildSystemPrompt(role, { ...ctx }));
         assert.ok(!prompt.includes(ctx.root));
     }

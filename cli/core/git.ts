@@ -19,7 +19,7 @@ const CONFLICT_CODES = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
 // C-style escapes porcelain v1 emits inside a quoted path, mapped to bytes.
 const SIMPLE_ESCAPES: Record<string, number> = {
     "\\": 0x5c,
-    "\"": 0x22,
+    '"': 0x22,
     a: 0x07,
     b: 0x08,
     f: 0x0c,
@@ -40,9 +40,7 @@ export async function isGitRepository(root: string): Promise<boolean> {
     return result.ok && result.stdout.trim() === "true";
 }
 
-export async function getCurrentBranch(
-    root: string,
-): Promise<{ branch: string | null; detached: boolean }> {
+export async function getCurrentBranch(root: string): Promise<{ branch: string | null; detached: boolean }> {
     // `--show-current` is the only form that still names an *unborn* branch on
     // a fresh `git init`, and it prints nothing when HEAD is detached.
     const current = await runGit(root, ["branch", "--show-current"]);
@@ -162,7 +160,6 @@ export async function getStatusOutcome(root: string, options: StatusOptions = {}
 }
 
 function parseStatus(stdout: string, untrackedSkipped: boolean): GitStatus {
-
     const staged: string[] = [];
     const modified: string[] = [];
     const untracked: string[] = [];
@@ -217,11 +214,7 @@ function parseStatus(stdout: string, untrackedSkipped: boolean): GitStatus {
     }
 
     return {
-        clean:
-            staged.length === 0 &&
-            modified.length === 0 &&
-            untracked.length === 0 &&
-            conflicted.length === 0,
+        clean: staged.length === 0 && modified.length === 0 && untracked.length === 0 && conflicted.length === 0,
         staged,
         modified,
         untracked,
@@ -271,7 +264,7 @@ function extractPath(field: string): string {
  */
 function unquotePath(raw: string): string {
     const value = raw.trim();
-    if (value.length < 2 || !value.startsWith("\"") || !value.endsWith("\"")) {
+    if (value.length < 2 || !value.startsWith('"') || !value.endsWith('"')) {
         return value;
     }
 

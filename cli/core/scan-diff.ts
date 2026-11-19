@@ -66,10 +66,7 @@ export async function buildScanManifest(root: string, files: readonly string[]):
                 // lstat to match the scanner, which never follows symlinks.
                 const stats = await fs.lstat(file);
                 if (stats.isFile()) {
-                    results[index] = [
-                        toManifestPath(absRoot, file),
-                        { size: stats.size, mtimeMs: stats.mtimeMs },
-                    ];
+                    results[index] = [toManifestPath(absRoot, file), { size: stats.size, mtimeMs: stats.mtimeMs }];
                 }
             } catch {
                 // ENOENT after a race, EACCES, ...: skip the file.
@@ -80,9 +77,7 @@ export async function buildScanManifest(root: string, files: readonly string[]):
     const poolSize = Math.min(STAT_CONCURRENCY, files.length);
     await Promise.all(Array.from({ length: poolSize }, () => worker()));
 
-    const entries = results
-        .filter((entry): entry is [string, FileFingerprint] => entry !== null)
-        .sort(([a], [b]) => compareStrings(a, b));
+    const entries = results.filter((entry): entry is [string, FileFingerprint] => entry !== null).sort(([a], [b]) => compareStrings(a, b));
 
     return {
         version: SCAN_MANIFEST_VERSION,
@@ -138,12 +133,7 @@ export async function loadScanManifest(root: string): Promise<ScanManifest | nul
  * already holds it (init does) runs straight through. Build the manifest
  * before calling: the stat pass is far too slow to hold the lock for.
  */
-export async function saveScanManifest(
-    root: string,
-    manifest: ScanManifest,
-    owner = "scan manifest",
-    lockOptions?: TyrLockOptions,
-): Promise<void> {
+export async function saveScanManifest(root: string, manifest: ScanManifest, owner = "scan manifest", lockOptions?: TyrLockOptions): Promise<void> {
     const paths = resolveTyrPaths(root);
     await withTyrLock(
         root,

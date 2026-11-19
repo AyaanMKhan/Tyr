@@ -55,15 +55,7 @@ export const MAX_CHECK_OUTPUT_CHARS = 12_000;
 /** Cap on the patch kept in a ProposedChange. */
 export const MAX_PATCH_CHARS = 60_000;
 
-export const TOOL_NAMES = [
-    "read_file",
-    "list_files",
-    "search",
-    "git_diff",
-    "run_check",
-    "edit_file",
-    "write_file",
-] as const;
+export const TOOL_NAMES = ["read_file", "list_files", "search", "git_diff", "run_check", "edit_file", "write_file"] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
 
 /* -------------------------------------------------------------------------
@@ -97,15 +89,7 @@ export function createToolset(opts: ToolsetOptions = {}): Toolset {
     const record = (change: ProposedChange): void => {
         changes.push(change);
     };
-    const tools: AgentTool[] = [
-        readFileTool(),
-        listFilesTool(),
-        searchTool(),
-        gitDiffTool(),
-        runCheckTool(opts),
-        editFileTool(record),
-        writeFileTool(record),
-    ];
+    const tools: AgentTool[] = [readFileTool(), listFilesTool(), searchTool(), gitDiffTool(), runCheckTool(opts), editFileTool(record), writeFileTool(record)];
     return { tools, changes, toolsFor: (names) => pick(tools, names) };
 }
 
@@ -453,12 +437,12 @@ function listFilesTool(): AgentTool {
     return defineTool(
         "list_files",
         "read",
-        "List files in the workspace, recursively, skipping git-ignored and Tyr-ignored files. Optionally limit to a directory and filter with a gitignore-style glob such as \"*.ts\" or \"src/**/*.test.ts\" (relative to the directory).",
+        'List files in the workspace, recursively, skipping git-ignored and Tyr-ignored files. Optionally limit to a directory and filter with a gitignore-style glob such as "*.ts" or "src/**/*.test.ts" (relative to the directory).',
         {
             type: "object",
             properties: {
                 path: { type: "string", description: "Directory relative to the workspace root. Default: the root." },
-                pattern: { type: "string", description: "Glob filter, e.g. \"*.py\" or \"tests/**\"." },
+                pattern: { type: "string", description: 'Glob filter, e.g. "*.py" or "tests/**".' },
                 max_results: { type: "integer", minimum: 1, maximum: MAX_LIST_RESULTS },
             },
             additionalProperties: false,
@@ -498,7 +482,7 @@ function searchTool(): AgentTool {
             properties: {
                 pattern: { type: "string", description: "Regular expression (JavaScript syntax)." },
                 path: { type: "string", description: "Directory or file to search. Default: the workspace root." },
-                glob: { type: "string", description: "Only files matching this glob, e.g. \"*.ts\"." },
+                glob: { type: "string", description: 'Only files matching this glob, e.g. "*.ts".' },
                 case_insensitive: { type: "boolean" },
                 max_results: { type: "integer", minimum: 1, maximum: MAX_SEARCH_RESULTS },
             },
@@ -589,11 +573,15 @@ function gitDiffTool(): AgentTool {
             const denied = gateCheck(env, "git_diff", "read", rel);
             if (denied) return denied;
 
-            const diff = await getDiff(env.workspace, { kind: "since", ref: "HEAD" }, {
-                pathspec,
-                maxPatchBytes: MAX_DIFF_CHARS,
-                includeUntracked: true,
-            });
+            const diff = await getDiff(
+                env.workspace,
+                { kind: "since", ref: "HEAD" },
+                {
+                    pathspec,
+                    maxPatchBytes: MAX_DIFF_CHARS,
+                    includeUntracked: true,
+                },
+            );
             if (diff === null) return fail("no diff available (not a git repository, or no commits yet)");
             const parts: string[] = [];
             if (diff.files.length === 0) parts.push("no changes to tracked files");
@@ -655,7 +643,9 @@ function runCheckTool(opts: ToolsetOptions): AgentTool {
             if (result.stdout.trim() !== "") lines.push(`stdout:\n${tail(result.stdout)}`);
             if (result.stderr.trim() !== "") lines.push(`stderr:\n${tail(result.stderr)}`);
             const text = lines.join("\n");
-            return result.outcome === "passed" ? ok(text) : { content: text, isError: result.outcome === "error" || result.outcome === "timeout" || result.outcome === "cancelled" };
+            return result.outcome === "passed"
+                ? ok(text)
+                : { content: text, isError: result.outcome === "error" || result.outcome === "timeout" || result.outcome === "cancelled" };
         },
     );
 }
@@ -667,13 +657,7 @@ function runCheckTool(opts: ToolsetOptions): AgentTool {
 type Recorder = (change: ProposedChange) => void;
 
 /** Shared tail of edit_file and write_file: dry-run, approval, write, record. */
-async function commitChange(
-    env: ToolEnv,
-    record: Recorder,
-    change: ProposedChange,
-    abs: string,
-    content: string,
-): Promise<ToolResult> {
+async function commitChange(env: ToolEnv, record: Recorder, change: ProposedChange, abs: string, content: string): Promise<ToolResult> {
     const shown = change.patch ? `\n${change.patch}` : "";
     if (env.dryRun) {
         record(change);
@@ -914,8 +898,7 @@ function lcsOps(a: string[], b: string[]): Op[] {
     const table = new Uint32Array((n + 1) * width);
     for (let i = n - 1; i >= 0; i--) {
         for (let j = m - 1; j >= 0; j--) {
-            table[i * width + j] =
-                a[i] === b[j] ? table[(i + 1) * width + j + 1] + 1 : Math.max(table[(i + 1) * width + j], table[i * width + j + 1]);
+            table[i * width + j] = a[i] === b[j] ? table[(i + 1) * width + j + 1] + 1 : Math.max(table[(i + 1) * width + j], table[i * width + j + 1]);
         }
     }
     const ops: Op[] = [];

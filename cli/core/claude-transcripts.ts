@@ -54,10 +54,7 @@ export interface TranscriptFile {
  * The session transcripts Claude Code kept for `root`, most recently
  * modified first. [] when there are none (or no ~/.claude at all).
  */
-export async function findSessionTranscripts(
-    root: string,
-    options: TranscriptLocationOptions = {},
-): Promise<TranscriptFile[]> {
+export async function findSessionTranscripts(root: string, options: TranscriptLocationOptions = {}): Promise<TranscriptFile[]> {
     const dir = transcriptsDir(root, options);
     let names: string[];
     try {

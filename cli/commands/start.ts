@@ -19,15 +19,15 @@ export interface DaemonSummary {
     alreadyRunning: boolean;
 }
 
-type StartResult =
-    | { ok: true; root: string; daemon: DaemonSummary }
-    | { ok: false; root?: string; error: string; exitCode: ExitCode };
+type StartResult = { ok: true; root: string; daemon: DaemonSummary } | { ok: false; root?: string; error: string; exitCode: ExitCode };
 
 export function registerStartCommand(program: Command) {
     program
         .command("start")
         .description("Start Tyr's background process")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Launches Tyr's background process for the current project. Run "tyr init" first.
 The process runs detached (it survives closing the terminal), records its pid
 in .tyr/state/daemon.pid, follows git events into .tyr/logs/tyr.log and marks
@@ -36,7 +36,8 @@ instead of a second one being spawned. Stop it with "tyr stop".
 
 Examples:
   $ tyr start
-  $ tyr start --json    Print { ok, root, daemon: { pid, alreadyRunning } }`)
+  $ tyr start --json    Print { ok, root, daemon: { pid, alreadyRunning } }`,
+        )
         .action(async (_options, command: Command) => {
             const globals = readGlobals(command);
             const reporter = createReporter({

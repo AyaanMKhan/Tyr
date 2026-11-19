@@ -84,10 +84,7 @@ export function readFatalContext(argv: readonly string[], env: Record<string, st
     const end = args.indexOf("--");
     const flags = end === -1 ? args : args.slice(0, end);
     const flag = (...names: string[]): true | undefined => (names.some((n) => flags.includes(n)) ? true : undefined);
-    const { options } = applyEnvGlobals(
-        { json: flag("--json"), verbose: flag("--verbose"), quiet: flag("--quiet", "-q") },
-        env,
-    );
+    const { options } = applyEnvGlobals({ json: flag("--json"), verbose: flag("--verbose"), quiet: flag("--quiet", "-q") }, env);
     const debug = flag("--debug") === true || isTruthy(env[DEBUG_ENV]);
     return {
         json: options.json === true,

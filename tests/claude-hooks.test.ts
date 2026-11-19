@@ -75,8 +75,7 @@ test("PreToolUse: Edit becomes claude.tool_use with a project-relative path and 
 });
 
 test("PreToolUse summaries: Bash command, Read outside the project, Grep, Write, MCP tool", () => {
-    const tool = (tool_name: string, tool_input: unknown) =>
-        normalizeHookPayload({ ...COMMON, hook_event_name: "PreToolUse", tool_name, tool_input })!;
+    const tool = (tool_name: string, tool_input: unknown) => normalizeHookPayload({ ...COMMON, hook_event_name: "PreToolUse", tool_name, tool_input })!;
 
     const bash = tool("Bash", { command: "npm test\n  -- --watch=false", description: "Run tests", timeout: 120000 });
     assert.equal(bash.message, "Bash: npm test -- --watch=false");
@@ -256,10 +255,7 @@ test("install merges into existing settings without touching the user's hooks", 
         assert.deepEqual(settings.permissions, USER_SETTINGS.permissions);
         assert.equal(settings.model, "opus");
         const ours = { type: "command", command: `tyr hook ${TYR_HOOK_MARKER}`, timeout: 10 };
-        assert.deepEqual(settings.hooks.PreToolUse, [
-            USER_SETTINGS.hooks.PreToolUse[0],
-            { matcher: "*", hooks: [ours] },
-        ]);
+        assert.deepEqual(settings.hooks.PreToolUse, [USER_SETTINGS.hooks.PreToolUse[0], { matcher: "*", hooks: [ours] }]);
         assert.deepEqual(settings.hooks.Stop, [USER_SETTINGS.hooks.Stop[0], { hooks: [ours] }]);
         assert.deepEqual(settings.hooks.UserPromptSubmit, [{ hooks: [ours] }]);
         assert.deepEqual(Object.keys(settings.hooks).sort(), [...TYR_HOOK_EVENTS].sort());
@@ -294,7 +290,13 @@ test("uninstall removes only Tyr's entries; an untouched file is not rewritten",
         // Tyr's handler sharing a group with a user handler.
         const shared = structuredClone(USER_SETTINGS) as any;
         shared.hooks.PostToolUse = [
-            { matcher: "*", hooks: [{ type: "command", command: "./log.sh" }, { type: "command", command: `x ${TYR_HOOK_MARKER}` }] },
+            {
+                matcher: "*",
+                hooks: [
+                    { type: "command", command: "./log.sh" },
+                    { type: "command", command: `x ${TYR_HOOK_MARKER}` },
+                ],
+            },
         ];
         await fs.writeFile(file, JSON.stringify(shared));
         await installHooks(file, "tyr hook");
@@ -379,7 +381,10 @@ test("recordHookPayload appends to the initialized project and falls back to CLA
         assert.equal((await recordHookPayload("not json", { env: {} })).reason, "unparseable");
 
         const events = await readEvents(root, { sources: ["claude"] });
-        assert.deepEqual(events.map((e) => e.message), ["Read x.ts", "Read x.ts"]);
+        assert.deepEqual(
+            events.map((e) => e.message),
+            ["Read x.ts", "Read x.ts"],
+        );
         await assert.rejects(fs.stat(path.join(other, ".tyr")), /ENOENT/);
     } finally {
         await removeProject(root);
@@ -455,7 +460,11 @@ test("tyr hook records a payload from stdin, silently, exiting 0", async () => {
         assert.doesNotMatch(JSON.stringify(events), /all good/);
 
         // Garbage, empty input and unknown flags: still 0, still silent.
-        for (const [args, input] of [[["hook"], "garbage{"], [["hook"], ""], [["hook", "--bogus", "extra"], "[]"]] as const) {
+        for (const [args, input] of [
+            [["hook"], "garbage{"],
+            [["hook"], ""],
+            [["hook", "--bogus", "extra"], "[]"],
+        ] as const) {
             const result = tyr(root, [...args], input);
             assert.deepEqual([result.status, result.stdout, result.stderr], [0, "", ""], `${args.join(" ")} <<< ${input}`);
         }
@@ -496,7 +505,10 @@ test("tyr hooks install / status / uninstall round-trip, with --json", async () 
         const status = JSON.parse(tyr(root, ["hooks", "status", "--json"]).stdout);
         assert.equal(status.installed, true);
         assert.equal(status.initialized, true);
-        assert.deepEqual(status.files.map((f: any) => f.missing.length), [0, 0]);
+        assert.deepEqual(
+            status.files.map((f: any) => f.missing.length),
+            [0, 0],
+        );
 
         const removed = tyr(root, ["hooks", "uninstall", "--shared"]);
         assert.equal(removed.status, 0);
@@ -553,7 +565,13 @@ test("findSessionTranscripts and readTranscriptSummary read a fake ~/.claude tol
                 type: "assistant",
                 sessionId: "s-1",
                 timestamp: "2026-11-10T10:00:05.000Z",
-                message: { content: [{ type: "text", text: "ok" }, { type: "tool_use", name: "Bash" }, { type: "tool_use", name: "Edit" }] },
+                message: {
+                    content: [
+                        { type: "text", text: "ok" },
+                        { type: "tool_use", name: "Bash" },
+                        { type: "tool_use", name: "Edit" },
+                    ],
+                },
             },
             { type: "user", sessionId: "s-1", timestamp: "2026-11-10T10:00:06.000Z", message: { content: [{ type: "tool_result", content: "x" }] } },
             { type: "assistant", sessionId: "s-1", timestamp: "2026-11-10T10:03:00.000Z", message: { content: [{ type: "tool_use", name: "Bash" }] } },
@@ -563,7 +581,10 @@ test("findSessionTranscripts and readTranscriptSummary read a fake ~/.claude tol
         await fs.writeFile(path.join(dir, "notes.txt"), "ignored");
 
         const files = await findSessionTranscripts(projectRoot, { home });
-        assert.deepEqual(files.map((f) => f.sessionId), ["s-1"]);
+        assert.deepEqual(
+            files.map((f) => f.sessionId),
+            ["s-1"],
+        );
         assert.deepEqual(await findSessionTranscripts("/elsewhere", { home }), []);
 
         const summary = await readTranscriptSummary(files[0]!.file);

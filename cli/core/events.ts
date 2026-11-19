@@ -183,11 +183,7 @@ async function appendLine(file: string, line: string): Promise<void> {
  * Append one event. Returns the stored event, or null if it could not be
  * written. Never throws.
  */
-export async function appendEvent(
-    root: string,
-    input: TyrEventInput,
-    opts: AppendEventOptions = {},
-): Promise<TyrEvent | null> {
+export async function appendEvent(root: string, input: TyrEventInput, opts: AppendEventOptions = {}): Promise<TyrEvent | null> {
     try {
         const { stateDir } = resolveTyrPaths(root);
         const live = eventsFile(root);
@@ -439,9 +435,7 @@ export function gitEventToTyrEvent(event: GitWatchEvent): TyrEventInput {
                 source: "git",
                 kind: "git.index",
                 message:
-                    event.staged.length === 0
-                        ? "Index cleared: nothing staged"
-                        : `${event.staged.length} path${event.staged.length === 1 ? "" : "s"} staged`,
+                    event.staged.length === 0 ? "Index cleared: nothing staged" : `${event.staged.length} path${event.staged.length === 1 ? "" : "s"} staged`,
                 data: { staged: event.staged },
             };
         case "refs": {

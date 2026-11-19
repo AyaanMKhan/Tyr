@@ -147,7 +147,7 @@ function clean(text: string, max: number = MAX_FIELD_CHARS): string {
 export function displayPath(file: string, root: string | undefined): string {
     if (root === undefined || !path.isAbsolute(file)) return file.split(path.sep).join("/");
     const relative = path.relative(root, file);
-    if (relative === "" ) return ".";
+    if (relative === "") return ".";
     if (relative.startsWith("..") || path.isAbsolute(relative)) return file;
     return relative.split(path.sep).join("/");
 }
@@ -324,10 +324,7 @@ export function normalizeHookPayload(payload: unknown, options: NormalizeOptions
             if (typeof payload.stop_hook_active === "boolean") data.stopHookActive = payload.stop_hook_active;
             const last = str(payload.last_assistant_message);
             if (last !== undefined) data.lastMessage = clean(last);
-            message =
-                kind === "claude.stop"
-                    ? "Claude finished responding"
-                    : `Subagent finished${agentType !== undefined ? ` (${agentType})` : ""}`;
+            message = kind === "claude.stop" ? "Claude finished responding" : `Subagent finished${agentType !== undefined ? ` (${agentType})` : ""}`;
             break;
         }
         case "claude.notification": {

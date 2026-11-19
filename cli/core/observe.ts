@@ -343,9 +343,7 @@ function attributionOf(event: GitWatchEvent): { priority: number; describe: stri
             return { priority: 3, describe: `moving ${branch ?? "HEAD"} to ${commit}` };
         }
         case "refs":
-            return event.changes.some((change) => change.ref === "refs/stash")
-                ? { priority: 2, describe: "git stash" }
-                : null;
+            return event.changes.some((change) => change.ref === "refs/stash") ? { priority: 2, describe: "git stash" } : null;
         case "index":
             return { priority: 1, describe: "a git index update" };
     }

@@ -6,14 +6,7 @@ import * as assert from "node:assert/strict";
 import Anthropic from "@anthropic-ai/sdk";
 
 import type { AgentTool, PermissionGate, ToolEnv } from "../cli/agents/model.js";
-import {
-    NO_KEY_REASON,
-    buildLoopRequest,
-    resolveAgentAi,
-    runToolLoop,
-    type AgentMessagesClient,
-    type ToolLoopEvent,
-} from "../cli/agents/provider.js";
+import { NO_KEY_REASON, buildLoopRequest, resolveAgentAi, runToolLoop, type AgentMessagesClient, type ToolLoopEvent } from "../cli/agents/provider.js";
 
 const KEY = "sk-ant-test-SECRET-1234567890";
 const MODEL = "claude-opus-5-5";
@@ -161,10 +154,7 @@ test("stops at maxTurns with status max-turns", async () => {
 });
 
 test("an unknown tool gets an error tool_result and the loop goes on", async () => {
-    const { client, requests } = scripted([
-        message([toolUse("tu_1", "rm_rf", { path: "/" })], "tool_use"),
-        message([text("ok")], "end_turn"),
-    ]);
+    const { client, requests } = scripted([message([toolUse("tu_1", "rm_rf", { path: "/" })], "tool_use"), message([text("ok")], "end_turn")]);
     const result = await runToolLoop({ client, model: MODEL, system: "S", task: "t", tools: [echoTool()], env, maxTurns: 4 });
     assert.equal(result.status, "completed");
     assert.equal(result.toolCalls[0].isError, true);
@@ -174,7 +164,13 @@ test("an unknown tool gets an error tool_result and the loop goes on", async () 
 });
 
 test("a throwing tool becomes an error result, not a crash", async () => {
-    const bad: AgentTool = { ...echoTool(), name: "bad", run: async () => { throw new Error(`boom ${KEY}`); } };
+    const bad: AgentTool = {
+        ...echoTool(),
+        name: "bad",
+        run: async () => {
+            throw new Error(`boom ${KEY}`);
+        },
+    };
     const { client } = scripted([message([toolUse("tu_1", "bad", {})], "tool_use"), message([text("done")], "end_turn")]);
     const result = await runToolLoop({ client, model: MODEL, system: "S", task: "t", tools: [bad], env, maxTurns: 4 });
     assert.equal(result.status, "completed");
@@ -183,7 +179,12 @@ test("a throwing tool becomes an error result, not a crash", async () => {
 });
 
 test("API errors come back as status error with the key redacted", async () => {
-    const err = new Anthropic.BadRequestError(400, { type: "error", error: { type: "invalid_request_error", message: `bad key ${KEY}` } }, `bad key ${KEY}`, new Headers());
+    const err = new Anthropic.BadRequestError(
+        400,
+        { type: "error", error: { type: "invalid_request_error", message: `bad key ${KEY}` } },
+        `bad key ${KEY}`,
+        new Headers(),
+    );
     const { client } = scripted([err]);
     const result = await runToolLoop({ client, model: MODEL, system: "S", task: "t", tools: [], env, maxTurns: 2, apiKey: KEY });
     assert.equal(result.status, "error");
@@ -205,7 +206,15 @@ test("refusal and max_tokens end the run with an error", async () => {
     const refused = await runToolLoop({ client: scripted([message([], "refusal")]).client, model: MODEL, system: "S", task: "t", tools: [], env, maxTurns: 2 });
     assert.equal(refused.status, "error");
     assert.match(refused.reason ?? "", /declined/);
-    const cut = await runToolLoop({ client: scripted([message([text("half")], "max_tokens")]).client, model: MODEL, system: "S", task: "t", tools: [], env, maxTurns: 2 });
+    const cut = await runToolLoop({
+        client: scripted([message([text("half")], "max_tokens")]).client,
+        model: MODEL,
+        system: "S",
+        task: "t",
+        tools: [],
+        env,
+        maxTurns: 2,
+    });
     assert.equal(cut.status, "error");
     assert.equal(cut.summary, "half");
 });

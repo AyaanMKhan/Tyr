@@ -41,39 +41,27 @@ test("globalConfigDir: TYR_CONFIG_HOME wins over everything", () => {
     const env = { TYR_CONFIG_HOME: "/opt/tyr-conf", XDG_CONFIG_HOME: "/xdg", APPDATA: "C:\\AppData" };
     assert.equal(globalConfigDir(env, "linux", "/home/u"), "/opt/tyr-conf");
     assert.equal(globalConfigDir(env, "darwin", "/Users/u"), "/opt/tyr-conf");
-    assert.equal(
-        globalConfigDir({ ...env, TYR_CONFIG_HOME: "D:\\tyr" }, "win32", "C:\\Users\\u"),
-        "D:\\tyr",
-    );
+    assert.equal(globalConfigDir({ ...env, TYR_CONFIG_HOME: "D:\\tyr" }, "win32", "C:\\Users\\u"), "D:\\tyr");
 });
 
 test("globalConfigDir: absolute XDG_CONFIG_HOME next, relative ignored", () => {
     assert.equal(globalConfigDir({ XDG_CONFIG_HOME: "/xdg" }, "linux", "/home/u"), "/xdg/tyr");
     assert.equal(globalConfigDir({ XDG_CONFIG_HOME: "/xdg" }, "darwin", "/Users/u"), "/xdg/tyr");
     assert.equal(globalConfigDir({ XDG_CONFIG_HOME: "rel/xdg" }, "linux", "/home/u"), "/home/u/.config/tyr");
-    assert.equal(
-        globalConfigDir({ XDG_CONFIG_HOME: "C:\\xdg", APPDATA: "C:\\AppData" }, "win32", "C:\\Users\\u"),
-        "C:\\xdg\\tyr",
-    );
+    assert.equal(globalConfigDir({ XDG_CONFIG_HOME: "C:\\xdg", APPDATA: "C:\\AppData" }, "win32", "C:\\Users\\u"), "C:\\xdg\\tyr");
 });
 
 test("globalConfigDir: platform defaults", () => {
     assert.equal(globalConfigDir({}, "linux", "/home/u"), "/home/u/.config/tyr");
     assert.equal(globalConfigDir({}, "darwin", "/Users/u"), "/Users/u/.config/tyr");
-    assert.equal(
-        globalConfigDir({ APPDATA: "C:\\Users\\u\\AppData\\Roaming" }, "win32", "C:\\Users\\u"),
-        "C:\\Users\\u\\AppData\\Roaming\\tyr",
-    );
+    assert.equal(globalConfigDir({ APPDATA: "C:\\Users\\u\\AppData\\Roaming" }, "win32", "C:\\Users\\u"), "C:\\Users\\u\\AppData\\Roaming\\tyr");
     assert.equal(globalConfigDir({}, "win32", "C:\\Users\\u"), "C:\\Users\\u\\AppData\\Roaming\\tyr");
     // APPDATA only matters on Windows.
     assert.equal(globalConfigDir({ APPDATA: "/appdata" }, "linux", "/home/u"), "/home/u/.config/tyr");
 });
 
 test("globalConfigDir: empty variables count as unset", () => {
-    assert.equal(
-        globalConfigDir({ TYR_CONFIG_HOME: "", XDG_CONFIG_HOME: "  " }, "linux", "/home/u"),
-        "/home/u/.config/tyr",
-    );
+    assert.equal(globalConfigDir({ TYR_CONFIG_HOME: "", XDG_CONFIG_HOME: "  " }, "linux", "/home/u"), "/home/u/.config/tyr");
 });
 
 test("globalConfigFile is config.json in the directory", () => {
@@ -289,10 +277,7 @@ test("writeGlobalSettings carries over keys this Tyr does not know", async () =>
 
 test("writeGlobalSettings rejects an invalid patch", async () => {
     await withConfigHome(async (opts, dir) => {
-        await assert.rejects(
-            writeGlobalSettings({ severity: { threshold: "loud" as never } }, opts),
-            /severity\.threshold must be one of/,
-        );
+        await assert.rejects(writeGlobalSettings({ severity: { threshold: "loud" as never } }, opts), /severity\.threshold must be one of/);
         await assert.rejects(writeGlobalSettings({ bogus: 1 } as never, opts), /unknown setting "bogus"/);
         await assert.rejects(fs.access(path.join(dir, "config.json")));
     });

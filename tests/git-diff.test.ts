@@ -36,9 +36,7 @@ test("unstaged diff reports edits to tracked files with line counts and a patch"
         await write(root, "a.txt", "one\nTWO\nthree\nfour\n");
         const diff = await getDiff(root, { kind: "unstaged" });
         assert.ok(diff !== null);
-        assert.deepEqual(diff.files, [
-            { path: "a.txt", status: "M", additions: 2, deletions: 1, binary: false },
-        ]);
+        assert.deepEqual(diff.files, [{ path: "a.txt", status: "M", additions: 2, deletions: 1, binary: false }]);
         assert.deepEqual(diff.totals, { files: 1, additions: 2, deletions: 1 });
         assert.equal(diff.truncated, false);
         assert.match(diff.patch, /^diff --git a\/a\.txt b\/a\.txt/);
@@ -122,9 +120,7 @@ test("binary files are flagged and contribute no line counts", async () => {
         git(root, "add", "image.bin");
         const diff = await getDiff(root, { kind: "staged" });
         assert.ok(diff !== null);
-        assert.deepEqual(diff.files, [
-            { path: "image.bin", status: "A", additions: 0, deletions: 0, binary: true },
-        ]);
+        assert.deepEqual(diff.files, [{ path: "image.bin", status: "A", additions: 0, deletions: 0, binary: true }]);
         assert.match(diff.patch, /Binary files/);
     } finally {
         await removeProject(root);
@@ -163,11 +159,17 @@ test("since diffs a ref against the working tree, or against HEAD", async () => 
 
         const committed = await getDiffStat(root, { kind: "since", ref: base, until: "head" });
         assert.ok(committed !== null);
-        assert.deepEqual(committed.files.map((file) => file.path), ["b.txt"]);
+        assert.deepEqual(
+            committed.files.map((file) => file.path),
+            ["b.txt"],
+        );
 
         // Symbolic refs resolve too.
         const relative = await getDiffStat(root, { kind: "since", ref: "HEAD~1", until: "head" });
-        assert.deepEqual(relative?.files.map((file) => file.path), ["b.txt"]);
+        assert.deepEqual(
+            relative?.files.map((file) => file.path),
+            ["b.txt"],
+        );
     } finally {
         await removeProject(root);
     }
@@ -226,7 +228,10 @@ test("pathspec and context-line options narrow the diff", async () => {
         await write(root, "src/b.txt", "B\n");
 
         const onlySrc = await getDiff(root, { kind: "unstaged" }, { pathspec: ["src"] });
-        assert.deepEqual(onlySrc?.files.map((file) => file.path), ["src/b.txt"]);
+        assert.deepEqual(
+            onlySrc?.files.map((file) => file.path),
+            ["src/b.txt"],
+        );
 
         const tight = await getDiff(root, { kind: "unstaged" }, { pathspec: ["a.txt"], contextLines: 0 });
         assert.ok(tight !== null);

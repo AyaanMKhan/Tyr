@@ -7,13 +7,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { appendEvent, eventsFile, type TyrEvent } from "../cli/core/events.js";
 import { followEvents, type EventFollower, type FollowEventsOptions } from "../cli/core/event-stream.js";
-import {
-    daemonRequestsDir,
-    pingDaemon,
-    readDaemonRequests,
-    sendDaemonRequest,
-    serviceDaemonRequests,
-} from "../cli/core/daemon-requests.js";
+import { daemonRequestsDir, pingDaemon, readDaemonRequests, sendDaemonRequest, serviceDaemonRequests } from "../cli/core/daemon-requests.js";
 import { isProcessAlive, startDaemon, stopDaemon } from "../cli/core/daemon.js";
 import type { TyrState } from "../cli/core/types.js";
 import { makeProject, removeProject } from "./helpers.js";
@@ -58,7 +52,10 @@ for (const forcePolling of [false, true]) {
             await appendEvent(root, { source: "git", kind: "new.two" });
             await until(2);
             await settle();
-            assert.deepEqual(events.map((e) => e.kind), ["new.one", "new.two"]);
+            assert.deepEqual(
+                events.map((e) => e.kind),
+                ["new.one", "new.two"],
+            );
             follower.close();
             await follower.done;
         } finally {
@@ -149,7 +146,10 @@ test("followEvents: a crash-truncated line is skipped and the next append still 
         await appendEvent(root, { source: "tyr", kind: "after.crash.2" });
         await until(2);
         await settle();
-        assert.deepEqual(events.map((e) => e.kind), ["after.crash", "after.crash.2"]);
+        assert.deepEqual(
+            events.map((e) => e.kind),
+            ["after.crash", "after.crash.2"],
+        );
         follower.close();
         await follower.done;
     } finally {
@@ -167,14 +167,20 @@ test("followEvents: backlog and since replay history, then go live without dupli
         await appendEvent(root, { source: "tyr", kind: "live.0" });
         await last.until(3);
         await settle();
-        assert.deepEqual(last.events.map((e) => e.kind), ["h.3", "h.4", "live.0"]);
+        assert.deepEqual(
+            last.events.map((e) => e.kind),
+            ["h.3", "h.4", "live.0"],
+        );
         last.follower.close();
 
         const since = await collect(root, { since: t(2) });
         await appendEvent(root, { source: "tyr", kind: "live.1" });
         await since.until(5);
         await settle();
-        assert.deepEqual(since.events.map((e) => e.kind), ["h.2", "h.3", "h.4", "live.0", "live.1"]);
+        assert.deepEqual(
+            since.events.map((e) => e.kind),
+            ["h.2", "h.3", "h.4", "live.0", "live.1"],
+        );
         since.follower.close();
         await Promise.all([last.follower.done, since.follower.done]);
     } finally {
@@ -215,7 +221,10 @@ test("followEvents: sources and kinds filter both backlog and live events", asyn
         await appendEvent(root, { source: "git", kind: "git.refs" });
         await until(4);
         await settle();
-        assert.deepEqual(events.map((e) => e.kind), ["git.head", "daemon.started", "daemon.stopped", "git.refs"]);
+        assert.deepEqual(
+            events.map((e) => e.kind),
+            ["git.head", "daemon.started", "daemon.stopped", "git.refs"],
+        );
         follower.close();
         await follower.done;
     } finally {
@@ -231,7 +240,10 @@ test("followEvents: waits for a missing state dir and file, then reads from the 
         await appendEvent(root, { source: "tyr", kind: "first" });
         await appendEvent(root, { source: "tyr", kind: "second" });
         await until(2);
-        assert.deepEqual(events.map((e) => e.kind), ["first", "second"]);
+        assert.deepEqual(
+            events.map((e) => e.kind),
+            ["first", "second"],
+        );
         follower.close();
         await follower.done;
     } finally {
@@ -335,7 +347,10 @@ test("requests: serviceDaemonRequests answers a ping and reports a stop", async 
         await sendDaemonRequest(root, { type: "stop" });
         const result = await serviceDaemonRequests(root);
         assert.equal(result.stop, true);
-        assert.deepEqual(result.handled.map((r) => r.type), ["stop"]);
+        assert.deepEqual(
+            result.handled.map((r) => r.type),
+            ["stop"],
+        );
 
         // Nobody answering: null, and the request is withdrawn.
         assert.equal(await pingDaemon(root, 150), null);

@@ -27,16 +27,12 @@ interface Fixture {
     projectFile: string;
 }
 
-async function withFixture(
-    files: { global?: unknown; project?: unknown; env?: NodeJS.ProcessEnv },
-    fn: (fixture: Fixture) => Promise<void>,
-): Promise<void> {
+async function withFixture(files: { global?: unknown; project?: unknown; env?: NodeJS.ProcessEnv }, fn: (fixture: Fixture) => Promise<void>): Promise<void> {
     const root = await makeProject({ ".tyr/tyr.json": "{}" });
     const home = await makeProject({});
     const globalFile = path.join(home, "config.json");
     const projectFile = path.join(root, ".tyr", "settings.json");
-    const write = (file: string, value: unknown) =>
-        fs.writeFile(file, typeof value === "string" ? value : JSON.stringify(value), "utf8");
+    const write = (file: string, value: unknown) => fs.writeFile(file, typeof value === "string" ? value : JSON.stringify(value), "utf8");
     try {
         if (files.global !== undefined) await write(globalFile, files.global);
         if (files.project !== undefined) await write(projectFile, files.project);
@@ -198,7 +194,7 @@ test("formatSettingValue uses the spelling `config set` accepts, so values round
     assert.equal(describeSettingValue(null), "(not set)");
 });
 
-test("parseSettingValue: none and \"\" are the empty list; blank entries are an error", () => {
+test('parseSettingValue: none and "" are the empty list; blank entries are an error', () => {
     const targets = findSettingKey("notifications.targets")!;
     for (const raw of ["none", "NONE", " None ", "", "  "]) {
         assert.deepEqual(parseSettingValue(targets, raw), { ok: true, value: [] }, JSON.stringify(raw));

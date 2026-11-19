@@ -114,7 +114,10 @@ export async function readDaemonStatus(root: string): Promise<DaemonStatus> {
     const pidFile = await readPidFile(root);
     if (pidFile === null) {
         // An unreadable file left by a crash mid-write is stale too.
-        const exists = await fs.access(resolveDaemonPaths(root).pidFile).then(() => true, () => false);
+        const exists = await fs.access(resolveDaemonPaths(root).pidFile).then(
+            () => true,
+            () => false,
+        );
         return { running: false, pid: null, startedAt: null, stale: exists };
     }
     const running = isProcessAlive(pidFile.pid);
@@ -470,10 +473,12 @@ export async function runDaemon(root: string): Promise<void> {
 
     // Both baseline scans run concurrently. Neither watcher rejects, but a
     // bug there must cost a warning, not the daemon.
-    const startFailed = (which: "git" | "fs") => (error: unknown): null => {
-        onFallback(which, `could not start: ${describeError(error)}`);
-        return null;
-    };
+    const startFailed =
+        (which: "git" | "fs") =>
+        (error: unknown): null => {
+            onFallback(which, `could not start: ${describeError(error)}`);
+            return null;
+        };
     const [git, files] = await Promise.all([
         watchGit(absRoot, {
             pollIntervalMs: GIT_POLL_INTERVAL_MS,

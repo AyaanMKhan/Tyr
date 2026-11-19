@@ -4,13 +4,7 @@ import { test } from "node:test";
 import * as assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
-import {
-    isProcessAlive,
-    readDaemonStatus,
-    resolveDaemonPaths,
-    startDaemon,
-    stopDaemon,
-} from "../cli/core/daemon.js";
+import { isProcessAlive, readDaemonStatus, resolveDaemonPaths, startDaemon, stopDaemon } from "../cli/core/daemon.js";
 import { readState, resolveTyrPaths } from "../cli/core/scaffold.js";
 import type { TyrState } from "../cli/core/types.js";
 import { makeProject, removeProject } from "./helpers.js";

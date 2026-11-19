@@ -271,12 +271,7 @@ interface RawResult {
  * rejects: every failure, including a broken injected dependency, comes back
  * as a CheckRun.
  */
-export async function runCheck(
-    root: string,
-    kind: CheckKind,
-    command: string,
-    opts: RunCheckOptions = {},
-): Promise<CheckRun> {
+export async function runCheck(root: string, kind: CheckKind, command: string, opts: RunCheckOptions = {}): Promise<CheckRun> {
     const now = opts.now ?? (() => new Date());
     const platform = opts.platform ?? process.platform;
     const timeoutMs = opts.timeoutMs ?? DEFAULT_CHECK_TIMEOUT_MS;
@@ -307,24 +302,25 @@ export async function runCheck(
             signal: opts.signal,
             stdout,
             stderr,
-            onSpawn: opts.onStart === undefined
-                ? undefined
-                : async () => {
-                      const headCommit = await headLookup;
-                      try {
-                          opts.onStart?.({
-                              id,
-                              kind,
-                              command,
-                              cwd,
-                              trigger,
-                              startedAt: started.toISOString(),
-                              headCommit,
-                          });
-                      } catch {
-                          // A throwing listener must not break the run.
-                      }
-                  },
+            onSpawn:
+                opts.onStart === undefined
+                    ? undefined
+                    : async () => {
+                          const headCommit = await headLookup;
+                          try {
+                              opts.onStart?.({
+                                  id,
+                                  kind,
+                                  command,
+                                  cwd,
+                                  trigger,
+                                  startedAt: started.toISOString(),
+                                  headCommit,
+                              });
+                          } catch {
+                              // A throwing listener must not break the run.
+                          }
+                      },
         });
     }
 
@@ -444,9 +440,7 @@ function execute(args: ExecuteArgs): Promise<RawResult> {
             }
             if (code !== null) {
                 const reason = notRunnableReason(code, platform, platform === "win32" ? args.stderr.text() : "");
-                resolve(reason === null
-                    ? { outcome: "failed", exitCode: code, signal }
-                    : { outcome: "error", exitCode: code, signal, error: reason });
+                resolve(reason === null ? { outcome: "failed", exitCode: code, signal } : { outcome: "error", exitCode: code, signal, error: reason });
                 return;
             }
             // Killed by a signal nobody here sent (OOM killer, a user's kill).
@@ -491,12 +485,7 @@ const inFlight = new Map<string, Promise<CheckRun>>();
  * previous one to finish first, so two runs of one check never overlap.
  * Different kinds still run concurrently.
  */
-export function runCheckSerialized(
-    root: string,
-    kind: CheckKind,
-    command: string,
-    opts: RunCheckOptions = {},
-): Promise<CheckRun> {
+export function runCheckSerialized(root: string, kind: CheckKind, command: string, opts: RunCheckOptions = {}): Promise<CheckRun> {
     const key = `${path.resolve(root)}\0${kind}`;
     const previous = inFlight.get(key) ?? Promise.resolve(null);
     const next = previous.then(() => runCheck(root, kind, command, opts));
@@ -517,15 +506,9 @@ export function runCheckSerialized(
  * `settings` is passed to resolveSettings (tests use it to isolate env and
  * the global config); `root` is always the one given here.
  */
-export async function loadCheckCommands(
-    root: string,
-    settings: Omit<ResolveSettingsOptions, "root"> = {},
-): Promise<Partial<Record<CheckKind, string>>> {
+export async function loadCheckCommands(root: string, settings: Omit<ResolveSettingsOptions, "root"> = {}): Promise<Partial<Record<CheckKind, string>>> {
     try {
-        const [config, resolved] = await Promise.all([
-            readConfig(root),
-            resolveSettings({ ...settings, root }),
-        ]);
+        const [config, resolved] = await Promise.all([readConfig(root), resolveSettings({ ...settings, root })]);
         if (config === null) return {};
         const commands: Partial<Record<CheckKind, string>> = {};
         for (const kind of CHECK_KINDS) {
@@ -558,9 +541,7 @@ export function describeCheckRun(run: CheckRun): string {
         case "passed":
             return `${run.kind} passed in ${formatDuration(run.durationMs)}`;
         case "failed":
-            return run.exitCode !== null
-                ? `${run.kind} failed (exit ${run.exitCode})`
-                : `${run.kind} failed (${run.signal ?? "killed"})`;
+            return run.exitCode !== null ? `${run.kind} failed (exit ${run.exitCode})` : `${run.kind} failed (${run.signal ?? "killed"})`;
         case "timeout":
             return `${run.kind} timed out after ${formatDuration(run.durationMs)}`;
         case "cancelled":

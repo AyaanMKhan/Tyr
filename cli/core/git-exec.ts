@@ -54,11 +54,7 @@ export interface RunGitOptions {
  * Also sets `GIT_TERMINAL_PROMPT=0` so a credential prompt fails fast instead
  * of burning the whole timeout.
  */
-export async function runGit(
-    root: string,
-    args: string[],
-    options: RunGitOptions = {},
-): Promise<GitResult> {
+export async function runGit(root: string, args: string[], options: RunGitOptions = {}): Promise<GitResult> {
     try {
         const pending = execFileAsync("git", args, {
             cwd: root,

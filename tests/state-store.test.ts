@@ -60,9 +60,7 @@ test("updateState: mutate returning null leaves the file untouched", async () =>
 test("updateState: 20 concurrent increments are all kept", async () => {
     const root = await makeStateProject({ runCount: 5 });
     try {
-        await Promise.all(
-            Array.from({ length: 20 }, () => updateState(root, (s) => ({ ...s, runCount: s.runCount + 1 }))),
-        );
+        await Promise.all(Array.from({ length: 20 }, () => updateState(root, (s) => ({ ...s, runCount: s.runCount + 1 }))));
         assert.equal((await readState(root))?.runCount, 25);
     } finally {
         await removeProject(root);

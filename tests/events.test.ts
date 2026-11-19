@@ -10,9 +10,7 @@ import { appendEvent, eventsFile, gitEventToTyrEvent, readEvents } from "../cli/
 import type { GitHeadState } from "../cli/core/git-watch.js";
 import { makeProject, removeProject } from "./helpers.js";
 
-const EVENTS_MODULE = pathToFileURL(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "cli", "core", "events.js"),
-).href;
+const EVENTS_MODULE = pathToFileURL(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "cli", "core", "events.js")).href;
 
 test("appendEvent writes one JSON line per event and readEvents returns them", async () => {
     const root = await makeProject({});
@@ -29,7 +27,10 @@ test("appendEvent writes one JSON line per event and readEvents returns them", a
         assert.equal(eventsFile(root), path.join(root, ".tyr", "state", "events.jsonl"));
 
         const events = await readEvents(root);
-        assert.deepEqual(events.map((e) => e.kind), ["daemon.started", "git.head"]);
+        assert.deepEqual(
+            events.map((e) => e.kind),
+            ["daemon.started", "git.head"],
+        );
         assert.deepEqual(events[0], stored);
         assert.equal(events[1].message, "multi\nline");
     } finally {
@@ -89,7 +90,10 @@ test("malformed and partial lines are skipped", async () => {
     });
     try {
         const events = await readEvents(root);
-        assert.deepEqual(events.map((e) => e.id), ["a"]);
+        assert.deepEqual(
+            events.map((e) => e.id),
+            ["a"],
+        );
     } finally {
         await removeProject(root);
     }
@@ -105,7 +109,10 @@ test("appendEvent terminates a crash-truncated last line before appending", asyn
         const raw = await fs.readFile(eventsFile(root), "utf8");
         // The fragment got its own line; nothing else was prefixed.
         assert.equal(raw, `${fragment}\n${JSON.stringify(first)}\n${JSON.stringify(second)}\n`);
-        assert.deepEqual((await readEvents(root)).map((e) => e.kind), ["after.crash", "after.crash.2"]);
+        assert.deepEqual(
+            (await readEvents(root)).map((e) => e.kind),
+            ["after.crash", "after.crash.2"],
+        );
     } finally {
         await removeProject(root);
     }
@@ -126,9 +133,7 @@ test("appendEvent adds no newline to an empty or properly terminated file", asyn
 test("concurrent appends after a crash-truncated line lose no event", async () => {
     const root = await makeProject({ ".tyr/state/events.jsonl": '{"v":1,"id":"dead"' });
     try {
-        const results = await Promise.all(
-            Array.from({ length: 20 }, (_, i) => appendEvent(root, { source: "tyr", kind: `c.${i}` })),
-        );
+        const results = await Promise.all(Array.from({ length: 20 }, (_, i) => appendEvent(root, { source: "tyr", kind: `c.${i}` })));
         assert.ok(results.every((r) => r !== null));
         const kinds = (await readEvents(root)).map((e) => e.kind).sort();
         assert.deepEqual(kinds, Array.from({ length: 20 }, (_, i) => `c.${i}`).sort());
@@ -146,7 +151,10 @@ test("readEvents salvages an event glued onto a crash-truncated fragment", async
         ".tyr/state/events.jsonl": `{"v":1,"id":"dead","data":{"v":3,"x":"tr${glued}\n${next}\n`,
     });
     try {
-        assert.deepEqual((await readEvents(root)).map((e) => e.id), ["g", "n"]);
+        assert.deepEqual(
+            (await readEvents(root)).map((e) => e.id),
+            ["g", "n"],
+        );
     } finally {
         await removeProject(root);
     }
@@ -161,8 +169,14 @@ test("size-based rotation shifts files, keeps N, and reads across them", async (
         }
         const stateDir = path.join(root, ".tyr", "state");
         assert.deepEqual((await fs.readdir(stateDir)).sort(), ["events.1.jsonl", "events.2.jsonl", "events.jsonl"]);
-        assert.deepEqual((await readEvents(root)).map((e) => e.kind), ["n.2", "n.3", "n.4"]);
-        assert.deepEqual((await readEvents(root, { newestFirst: true, limit: 1 })).map((e) => e.kind), ["n.4"]);
+        assert.deepEqual(
+            (await readEvents(root)).map((e) => e.kind),
+            ["n.2", "n.3", "n.4"],
+        );
+        assert.deepEqual(
+            (await readEvents(root, { newestFirst: true, limit: 1 })).map((e) => e.kind),
+            ["n.4"],
+        );
 
         // Under the cap nothing rotates.
         const other = await makeProject({});
@@ -181,21 +195,21 @@ test("concurrent appends (in-process and cross-process) produce N valid lines", 
     const root = await makeProject({});
     try {
         const payload = { blob: "x".repeat(2000) };
-        await Promise.all(
-            Array.from({ length: 100 }, (_, i) => appendEvent(root, { source: "tyr", kind: "inproc", data: { i, ...payload } })),
-        );
+        await Promise.all(Array.from({ length: 100 }, (_, i) => appendEvent(root, { source: "tyr", kind: "inproc", data: { i, ...payload } })));
 
         const script =
             `const { appendEvent } = await import(${JSON.stringify(EVENTS_MODULE)});` +
             `const root = process.argv[1];` +
             `await Promise.all(Array.from({ length: 50 }, (_, i) => appendEvent(root, { source: "check", kind: "child", data: { i, blob: "y".repeat(2000) } })));`;
         await Promise.all(
-            Array.from({ length: 4 }, () =>
-                new Promise<void>((resolve, reject) => {
-                    const child = spawn(process.execPath, ["--input-type=module", "-e", script, root], { stdio: "inherit" });
-                    child.on("error", reject);
-                    child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`child exited ${code}`))));
-                }),
+            Array.from(
+                { length: 4 },
+                () =>
+                    new Promise<void>((resolve, reject) => {
+                        const child = spawn(process.execPath, ["--input-type=module", "-e", script, root], { stdio: "inherit" });
+                        child.on("error", reject);
+                        child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`child exited ${code}`))));
+                    }),
             ),
         );
 

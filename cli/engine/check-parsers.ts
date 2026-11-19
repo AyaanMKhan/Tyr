@@ -12,13 +12,7 @@
 import * as path from "node:path";
 import type { FindingSeverity } from "../core/reports.js";
 import type { CheckRun } from "./model.js";
-import {
-    MAX_FINDINGS_PER_DETECTOR,
-    dedupeFindings,
-    makeFinding,
-    type EngineFinding,
-    type FindingInput,
-} from "./findings.js";
+import { MAX_FINDINGS_PER_DETECTOR, dedupeFindings, makeFinding, type EngineFinding, type FindingInput } from "./findings.js";
 
 /** What a parser extracts; source, checkKind and fingerprint are added by parseCheckRun. */
 export interface ParsedIssue {
@@ -102,7 +96,10 @@ const IS_WINDOWS_ABS = /^[A-Za-z]:\//;
  * (with "/" separators).
  */
 export function relativizePath(file: string, cwd: string): string {
-    let p = file.trim().replace(/^file:\/\//, "").replace(/\\/g, "/");
+    let p = file
+        .trim()
+        .replace(/^file:\/\//, "")
+        .replace(/\\/g, "/");
     if (/^\/[A-Za-z]:\//.test(p)) p = p.slice(1); // file:///C:/...
     const root = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
     if (root === "") return p;
@@ -388,10 +385,7 @@ function failureMessage(body: readonly string[]): string | undefined {
 export const jestParser: CheckOutputParser = {
     name: "jest",
     detect: (text, command) =>
-        commandMentions(command, "jest", "vitest") ||
-        /^\s*● .+ › /m.test(text) ||
-        /^\s*FAIL\s+\S+/m.test(text) ||
-        /^\s*[✕×] .+/m.test(text),
+        commandMentions(command, "jest", "vitest") || /^\s*● .+ › /m.test(text) || /^\s*FAIL\s+\S+/m.test(text) || /^\s*[✕×] .+/m.test(text),
     parse(lines) {
         const out: ParsedIssue[] = [];
 
@@ -467,8 +461,7 @@ export const jestParser: CheckOutputParser = {
 
 export const pytestParser: CheckOutputParser = {
     name: "pytest",
-    detect: (text, command) =>
-        /^(FAILED|ERROR) \S+(::\S+)?( - .*)?$/m.test(text) || (commandMentions(command, "pytest") && /^E\s{2,}/m.test(text)),
+    detect: (text, command) => /^(FAILED|ERROR) \S+(::\S+)?( - .*)?$/m.test(text) || (commandMentions(command, "pytest") && /^E\s{2,}/m.test(text)),
     parse(lines) {
         // Failure sections: "____ TestClass.test_name ____" with "E   ..." lines and "path:line: Exc".
         const sections = new Map<string, { errors: string[]; file?: string; line?: number }>();
@@ -579,9 +572,7 @@ export const cargoParser: CheckOutputParser = {
             let column: number | undefined;
             if (start >= 0) {
                 for (let j = start + 1; j < lines.length && !/^(----|failures:|note: run with)/.test(lines[j]); j++) {
-                    const p =
-                        /panicked at (?:'.*?', )?(.+?):(\d+):(\d+):?$/.exec(lines[j]) ??
-                        /panicked at '.*', (.+?):(\d+):(\d+)$/.exec(lines[j]);
+                    const p = /panicked at (?:'.*?', )?(.+?):(\d+):(\d+):?$/.exec(lines[j]) ?? /panicked at '.*', (.+?):(\d+):(\d+)$/.exec(lines[j]);
                     if (p && !file) {
                         file = p[1];
                         line = int(p[2]);
@@ -611,8 +602,7 @@ export const cargoParser: CheckOutputParser = {
 
 export const goParser: CheckOutputParser = {
     name: "go",
-    detect: (text, command) =>
-        /^--- FAIL: /m.test(text) || /^\S+\.go:\d+:\d+: /m.test(text) || (commandMentions(command, "go") && /\.go:\d+/.test(text)),
+    detect: (text, command) => /^--- FAIL: /m.test(text) || /^\S+\.go:\d+:\d+: /m.test(text) || (commandMentions(command, "go") && /\.go:\d+/.test(text)),
     parse(lines, command) {
         const out: ParsedIssue[] = [];
         const lint = commandMentions(command, "golangci-lint");
@@ -677,8 +667,7 @@ function pythonLintSeverity(code: string): FindingSeverity {
 export const pythonParser: CheckOutputParser = {
     name: "python-lint",
     detect: (text, command) =>
-        commandMentions(command, "ruff", "flake8", "mypy", "pylint") ||
-        /^\S+\.pyi?:\d+(:\d+)?: (([A-Z]{1,4}\d{2,4}) |error: |warning: )/m.test(text),
+        commandMentions(command, "ruff", "flake8", "mypy", "pylint") || /^\S+\.pyi?:\d+(:\d+)?: (([A-Z]{1,4}\d{2,4}) |error: |warning: )/m.test(text),
     parse(lines, command) {
         const out: ParsedIssue[] = [];
         for (let i = 0; i < lines.length; i++) {

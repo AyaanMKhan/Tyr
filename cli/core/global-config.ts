@@ -27,14 +27,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readJsonFile, toJsonDocument } from "./scaffold.js";
-import {
-    SETTING_KEYS,
-    findSettingKey,
-    getAtPath,
-    sanitizePatch,
-    setAtPath,
-    type SettingsPatch,
-} from "./settings-types.js";
+import { SETTING_KEYS, findSettingKey, getAtPath, sanitizePatch, setAtPath, type SettingsPatch } from "./settings-types.js";
 
 /** Format version Tyr writes. Bump with a migration when the shape changes. */
 export const GLOBAL_CONFIG_VERSION = 1;
@@ -79,11 +72,7 @@ function nonEmpty(value: string | undefined): string | undefined {
  *
  * Pure: depends only on its arguments.
  */
-export function globalConfigDir(
-    env: Env = process.env,
-    platform: NodeJS.Platform = process.platform,
-    home: string = os.homedir(),
-): string {
+export function globalConfigDir(env: Env = process.env, platform: NodeJS.Platform = process.platform, home: string = os.homedir()): string {
     const p = pathFor(platform);
     const override = nonEmpty(env.TYR_CONFIG_HOME);
     if (override !== undefined) return p.normalize(override);
@@ -93,19 +82,13 @@ export function globalConfigDir(
 
     if (platform === "win32") {
         const appData = nonEmpty(env.APPDATA);
-        return appData !== undefined && p.isAbsolute(appData)
-            ? p.join(appData, "tyr")
-            : p.join(home, "AppData", "Roaming", "tyr");
+        return appData !== undefined && p.isAbsolute(appData) ? p.join(appData, "tyr") : p.join(home, "AppData", "Roaming", "tyr");
     }
     return p.join(home, ".config", "tyr");
 }
 
 /** `<globalConfigDir>/config.json`. Pure. */
-export function globalConfigFile(
-    env: Env = process.env,
-    platform: NodeJS.Platform = process.platform,
-    home: string = os.homedir(),
-): string {
+export function globalConfigFile(env: Env = process.env, platform: NodeJS.Platform = process.platform, home: string = os.homedir()): string {
     return pathFor(platform).join(globalConfigDir(env, platform, home), GLOBAL_CONFIG_FILE_NAME);
 }
 
@@ -188,9 +171,7 @@ export async function loadGlobalSettings(options: GlobalConfigPathOptions = {}):
             const stat = await fs.stat(file);
             if ((stat.mode & 0o077) !== 0) {
                 const mode = (stat.mode & 0o777).toString(8).padStart(3, "0");
-                result.warnings.push(
-                    `${file} holds an API key but is readable by other users (mode ${mode}); run: chmod 600 "${file}"`,
-                );
+                result.warnings.push(`${file} holds an API key but is readable by other users (mode ${mode}); run: chmod 600 "${file}"`);
             }
         } catch {
             // The file was readable a moment ago; a stat race is not worth an error.
@@ -216,9 +197,7 @@ function unknownLeaves(obj: unknown, prefix = ""): Array<[string, unknown]> {
     // A known key whose stored value is (wrongly) an object is not "unknown";
     // it is a bad value, and the caller's patch decides what replaces it.
     if (prefix && findSettingKey(prefix)) return [];
-    return Object.entries(obj as Record<string, unknown>).flatMap(([k, v]) =>
-        unknownLeaves(v, prefix ? `${prefix}.${k}` : k),
-    );
+    return Object.entries(obj as Record<string, unknown>).flatMap(([k, v]) => unknownLeaves(v, prefix ? `${prefix}.${k}` : k));
 }
 
 /**
@@ -273,10 +252,7 @@ async function writeSecretFileAtomic(target: string, contents: string): Promise<
  * - Creates the directory with 0700 and the file with 0600. An existing
  *   directory's mode is left alone; it may be a shared TYR_CONFIG_HOME.
  */
-export async function writeGlobalSettings(
-    patch: SettingsPatch,
-    options: GlobalConfigPathOptions = {},
-): Promise<GlobalSettingsWrite> {
+export async function writeGlobalSettings(patch: SettingsPatch, options: GlobalConfigPathOptions = {}): Promise<GlobalSettingsWrite> {
     const file = resolveFile(options);
 
     const checked = sanitizePatch(patch, "settings");

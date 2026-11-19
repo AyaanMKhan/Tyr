@@ -168,12 +168,7 @@ export interface WriteLogOptions extends RotationOptions {
  * directory when missing, rotates first when the file is over its cap, then
  * appends. Never throws.
  */
-export async function writeLog(
-    file: string,
-    level: LogLevel,
-    message: string,
-    options: WriteLogOptions = {},
-): Promise<void> {
+export async function writeLog(file: string, level: LogLevel, message: string, options: WriteLogOptions = {}): Promise<void> {
     if (!isLogLevelEnabled(level, options.threshold ?? getLogLevel())) {
         return;
     }

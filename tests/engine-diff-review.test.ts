@@ -62,14 +62,15 @@ function makeDiff(specs: FileSpec[], extra: Partial<DiffResult> = {}): DiffResul
     const files: DiffFileStat[] = specs.map((s) => ({
         path: s.path,
         status: s.status ?? "M",
-        additions: s.binary === true ? 0 : s.additions ?? (s.added ?? []).length,
-        deletions: s.binary === true ? 0 : s.deletions ?? (s.removed ?? []).length,
+        additions: s.binary === true ? 0 : (s.additions ?? (s.added ?? []).length),
+        deletions: s.binary === true ? 0 : (s.deletions ?? (s.removed ?? []).length),
         binary: s.binary === true,
     }));
-    const totals = files.reduce(
-        (t, f) => ({ files: t.files + 1, additions: t.additions + f.additions, deletions: t.deletions + f.deletions }),
-        { files: 0, additions: 0, deletions: 0 },
-    );
+    const totals = files.reduce((t, f) => ({ files: t.files + 1, additions: t.additions + f.additions, deletions: t.deletions + f.deletions }), {
+        files: 0,
+        additions: 0,
+        deletions: 0,
+    });
     const patch = specs
         .filter((s) => s.noPatch !== true)
         .map(filePatch)
@@ -267,14 +268,7 @@ test(".env files added or left untracked are critical; examples are not", () => 
  * ---------------------------------------------------------------------- */
 
 test("deleted test files are flagged for every naming convention", () => {
-    const paths = [
-        "src/a.test.ts",
-        "src/b.spec.js",
-        "py/test_models.py",
-        "go/server_test.go",
-        "tests/integration.rb",
-        "src/__tests__/c.tsx",
-    ];
+    const paths = ["src/a.test.ts", "src/b.spec.js", "py/test_models.py", "go/server_test.go", "tests/integration.rb", "src/__tests__/c.tsx"];
     const diff = makeDiff([
         ...paths.map((p) => ({ path: p, status: "D" as const, removed: ["x"] })),
         { path: "src/contest.ts", status: "D", removed: ["x"] },
@@ -318,9 +312,14 @@ test("added .only and skips in test files are flagged", () => {
         { path: "src/stream.ts", added: ["iter.skip(3); list.only(1);"] },
     ]);
     const findings = review(diff);
-    assert.deepEqual(only(findings, "diff/test-focus").map((f) => [f.file, f.line]), [["src/a.test.ts", 1]]);
     assert.deepEqual(
-        only(findings, "diff/test-skip").map((f) => [f.file, f.line]).sort(),
+        only(findings, "diff/test-focus").map((f) => [f.file, f.line]),
+        [["src/a.test.ts", 1]],
+    );
+    assert.deepEqual(
+        only(findings, "diff/test-skip")
+            .map((f) => [f.file, f.line])
+            .sort(),
         [
             ["src/a.test.ts", 2],
             ["src/a.test.ts", 3],
@@ -393,13 +392,21 @@ test("large changes: total lines, file count and single files, with thresholds",
     const findings = review(big);
     assert.equal(only(findings, "diff/large-change").length, 1);
     assert.match(only(findings, "diff/large-change")[0].title, /9912 lines changed/);
-    assert.deepEqual(only(findings, "diff/large-file-change").map((f) => f.file), ["src/huge.ts"]);
+    assert.deepEqual(
+        only(findings, "diff/large-file-change").map((f) => f.file),
+        ["src/huge.ts"],
+    );
     assert.equal(only(findings, "diff/many-files").length, 0);
 
     const tuned = review(big, { thresholds: { maxChangedLines: 100000, maxFiles: 3, maxFileChangedLines: 250 } });
     assert.equal(only(tuned, "diff/large-change").length, 0);
     assert.equal(only(tuned, "diff/many-files").length, 1);
-    assert.deepEqual(only(tuned, "diff/large-file-change").map((f) => f.file).sort(), ["src/b.ts", "src/huge.ts"]);
+    assert.deepEqual(
+        only(tuned, "diff/large-file-change")
+            .map((f) => f.file)
+            .sort(),
+        ["src/b.ts", "src/huge.ts"],
+    );
 
     const many = makeDiff(Array.from({ length: 41 }, (_, i) => ({ path: `f${i}.txt`, added: ["x"] })));
     assert.equal(only(review(many), "diff/many-files").length, 1);
@@ -419,14 +426,20 @@ test("lockfiles without manifests, CI files and manifests are flagged", () => {
     );
     // The root package-lock.json and yarn.lock are covered by the nested
     // workspace package.json; go.sum has no go.mod change.
-    assert.deepEqual(only(findings, "diff/lockfile-without-manifest").map((f) => f.file), ["go.sum"]);
-    assert.deepEqual(only(findings, "diff/ci-config").map((f) => [f.file, f.severity]), [
-        [".github/workflows/ci.yml", "info"],
-    ]);
-    assert.deepEqual(only(findings, "diff/dependency-manifest").map((f) => f.file).sort(), [
-        "packages/web/package.json",
-        "rust/Cargo.toml",
-    ]);
+    assert.deepEqual(
+        only(findings, "diff/lockfile-without-manifest").map((f) => f.file),
+        ["go.sum"],
+    );
+    assert.deepEqual(
+        only(findings, "diff/ci-config").map((f) => [f.file, f.severity]),
+        [[".github/workflows/ci.yml", "info"]],
+    );
+    assert.deepEqual(
+        only(findings, "diff/dependency-manifest")
+            .map((f) => f.file)
+            .sort(),
+        ["packages/web/package.json", "rust/Cargo.toml"],
+    );
 
     const lonely = review(makeDiff([{ path: "package-lock.json", added: ["x"] }]));
     assert.match(only(lonely, "diff/lockfile-without-manifest")[0].title, /without package\.json/);
@@ -441,23 +454,15 @@ test("tyr-ignore suppresses all findings on its line, or only the named rules", 
         makeDiff([
             {
                 path: "src/a.ts",
-                added: [
-                    "eval(x) // TODO tyr-ignore",
-                    "eval(x) // TODO tyr-ignore: diff/todo",
-                    "eval(x) // TODO tyr-ignore: todo, eval",
-                    "eval(x) // TODO",
-                ],
+                added: ["eval(x) // TODO tyr-ignore", "eval(x) // TODO tyr-ignore: diff/todo", "eval(x) // TODO tyr-ignore: todo, eval", "eval(x) // TODO"],
             },
         ]),
     );
-    assert.deepEqual(
-        findings.map((f) => [f.rule, f.line]).sort(),
-        [
-            ["diff/eval", 2],
-            ["diff/eval", 4],
-            ["diff/todo", 4],
-        ],
-    );
+    assert.deepEqual(findings.map((f) => [f.rule, f.line]).sort(), [
+        ["diff/eval", 2],
+        ["diff/eval", 4],
+        ["diff/todo", 4],
+    ]);
 });
 
 test("disabledRules turns rules off by id, short id or prefix", () => {
@@ -477,8 +482,14 @@ test("binary and truncated files are skipped by patch rules but count for size",
         { truncated: true },
     );
     const findings = review(diff);
-    assert.deepEqual(only(findings, "diff/eval").map((f) => f.file), ["src/ok.ts"]);
-    assert.deepEqual(only(findings, "diff/large-file-change").map((f) => f.file), ["src/cut.ts"]);
+    assert.deepEqual(
+        only(findings, "diff/eval").map((f) => f.file),
+        ["src/ok.ts"],
+    );
+    assert.deepEqual(
+        only(findings, "diff/large-file-change").map((f) => f.file),
+        ["src/cut.ts"],
+    );
     assert.equal(only(findings, "diff/large-change").length, 1);
 });
 

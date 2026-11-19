@@ -65,7 +65,10 @@ test("an unborn HEAD with no base is not 'moved' but still needs a full rescan",
         assert.equal(result.headMoved, false);
         assert.equal(result.fullRescan, true);
         assert.equal(result.workingTreeDirty, true);
-        assert.deepEqual(result.workingTreeChanges.map((c) => [c.path, c.untracked]), [["a.txt", true]]);
+        assert.deepEqual(
+            result.workingTreeChanges.map((c) => [c.path, c.untracked]),
+            [["a.txt", true]],
+        );
     } finally {
         await removeProject(root);
     }
@@ -136,25 +139,35 @@ test("forward commits report added, modified, deleted and renamed files", async 
     }
 });
 
-test("odd file names survive intact", {
-    skip: process.platform === "win32" && "Windows forbids quote, tab and newline in file names",
-}, async () => {
-    const root = await makeRepo();
-    try {
-        const base = head(root);
-        const odd = "we\"ird\tna me\nwith-newline-ü.txt";
-        await write(root, odd, "x\n");
-        commitAll(root, "odd");
-        await write(root, "untracked ü.txt", "u");
+test(
+    "odd file names survive intact",
+    {
+        skip: process.platform === "win32" && "Windows forbids quote, tab and newline in file names",
+    },
+    async () => {
+        const root = await makeRepo();
+        try {
+            const base = head(root);
+            const odd = 'we"ird\tna me\nwith-newline-ü.txt';
+            await write(root, odd, "x\n");
+            commitAll(root, "odd");
+            await write(root, "untracked ü.txt", "u");
 
-        const result = await detectChanges(root, base);
-        assert.deepEqual(result.changedFiles.map((f) => f.path), [odd]);
-        assert.equal(result.workingTreeDirty, true);
-        assert.deepEqual(result.workingTreeChanges.map((c) => c.path), ["untracked ü.txt"]);
-    } finally {
-        await removeProject(root);
-    }
-});
+            const result = await detectChanges(root, base);
+            assert.deepEqual(
+                result.changedFiles.map((f) => f.path),
+                [odd],
+            );
+            assert.equal(result.workingTreeDirty, true);
+            assert.deepEqual(
+                result.workingTreeChanges.map((c) => c.path),
+                ["untracked ü.txt"],
+            );
+        } finally {
+            await removeProject(root);
+        }
+    },
+);
 
 test("a reset to an older commit is not reachable and counts dropped commits", async () => {
     const root = await makeRepo();
@@ -171,7 +184,10 @@ test("a reset to an older commit is not reachable and counts dropped commits", a
         assert.equal(result.commitsSince, 0);
         assert.equal(result.commitsDropped, 1);
         // The tree diff still says what to re-index.
-        assert.deepEqual(result.changedFiles.map((f) => [f.status, f.path]), [["D", "b.txt"]]);
+        assert.deepEqual(
+            result.changedFiles.map((f) => [f.status, f.path]),
+            [["D", "b.txt"]],
+        );
         assert.equal(result.fullRescan, false);
     } finally {
         await removeProject(root);
@@ -277,18 +293,24 @@ test("commits since a ref come newest first with their files", async () => {
         commitAll(root, "rename and edit");
 
         const commits = await getCommitsSince(root, base, { includeFiles: true });
-        assert.deepEqual(commits.map((c) => c.subject), ["rename and edit", "add b"]);
+        assert.deepEqual(
+            commits.map((c) => c.subject),
+            ["rename and edit", "add b"],
+        );
         assert.equal(commits[0].hash, head(root));
         assert.equal(commits[0].author, "Tyr");
         assert.ok(commits[0].hash.startsWith(commits[0].shortHash));
         assert.ok(!Number.isNaN(Date.parse(commits[0].date)));
 
         const files = commits[0].files ?? [];
+        assert.deepEqual(files.map((f) => [f.status, f.path, f.oldPath]).sort(), [
+            ["M", "a.txt", null],
+            ["R", "kept file.txt", "keep.txt"],
+        ]);
         assert.deepEqual(
-            files.map((f) => [f.status, f.path, f.oldPath]).sort(),
-            [["M", "a.txt", null], ["R", "kept file.txt", "keep.txt"]],
+            commits[1].files?.map((f) => [f.status, f.path]),
+            [["A", "b.txt"]],
         );
-        assert.deepEqual(commits[1].files?.map((f) => [f.status, f.path]), [["A", "b.txt"]]);
 
         // Files are only listed on request.
         const plain = await getCommitsSince(root, base);
@@ -311,7 +333,10 @@ test("a null or empty ref means all commits, capped by limit", async () => {
         assert.equal((await getCommitsSince(root, "")).length, 4);
 
         const capped = await getCommitLog(root, null, { limit: 2, includeFiles: true });
-        assert.deepEqual(capped.commits.map((c) => c.subject), ["commit 4", "commit 3"]);
+        assert.deepEqual(
+            capped.commits.map((c) => c.subject),
+            ["commit 4", "commit 3"],
+        );
         assert.equal(capped.hasMore, true);
         assert.equal(capped.refResolved, true);
 
@@ -358,7 +383,10 @@ test("merge commits list first-parent files; subjects with odd bytes parse", asy
         const commits = await getCommitsSince(root, base, { includeFiles: true });
         assert.equal(commits.length, 3);
         const merge = commits.find((c) => c.subject === "merge side");
-        assert.deepEqual(merge?.files?.map((f) => f.path), ["side.txt"]);
+        assert.deepEqual(
+            merge?.files?.map((f) => f.path),
+            ["side.txt"],
+        );
         assert.ok(commits.some((c) => c.subject === "subject with \u001f weird | bytes"));
     } finally {
         await removeProject(root);
@@ -372,7 +400,10 @@ test("a branch name works as a reference point", async () => {
         await write(root, "b.txt", "b\n");
         commitAll(root, "claude: add b");
         const commits = await getCommitsSince(root, "session-start");
-        assert.deepEqual(commits.map((c) => c.subject), ["claude: add b"]);
+        assert.deepEqual(
+            commits.map((c) => c.subject),
+            ["claude: add b"],
+        );
     } finally {
         await removeProject(root);
     }

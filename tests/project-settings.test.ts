@@ -5,12 +5,7 @@ import { test } from "node:test";
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-    CURRENT_SETTINGS_VERSION,
-    initialProjectSettings,
-    loadProjectSettings,
-    writeProjectSettings,
-} from "../cli/core/project-settings.js";
+import { CURRENT_SETTINGS_VERSION, initialProjectSettings, loadProjectSettings, writeProjectSettings } from "../cli/core/project-settings.js";
 import { resolveTyrPaths, scaffold } from "../cli/core/scaffold.js";
 import type { SettingsPatch } from "../cli/core/settings-types.js";
 import { InitSnapshot, ProjectProfile } from "../cli/core/types.js";
@@ -140,10 +135,7 @@ test("a secret in settings.json is ignored with a warning, even null", async () 
 test("writing a secret is refused and leaves the file alone", async () => {
     await withSettings(JSON.stringify({ version: 1 }), async (root) => {
         const before = await readSettingsText(root);
-        await assert.rejects(
-            writeProjectSettings(root, { ai: { apiKey: "sk-live-123" } }),
-            /ai\.apiKey is a secret.*global config.*environment/,
-        );
+        await assert.rejects(writeProjectSettings(root, { ai: { apiKey: "sk-live-123" } }), /ai\.apiKey is a secret.*global config.*environment/);
         await assert.rejects(writeProjectSettings(root, { ai: { apiKey: null } }), /ai\.apiKey is a secret/);
         assert.equal(await readSettingsText(root), before);
     });
@@ -175,7 +167,7 @@ test("a settings.json from a newer Tyr is ignored on read and never overwritten"
 });
 
 test("malformed JSON, a non-object or a garbled version is an error, never a throw", async () => {
-    for (const contents of ["{ \"checks\": ", "[1, 2]", JSON.stringify({ version: "one", checks: { test: false } })]) {
+    for (const contents of ['{ "checks": ', "[1, 2]", JSON.stringify({ version: "one", checks: { test: false } })]) {
         await withSettings(contents, async (root) => {
             const loaded = await loadProjectSettings(root);
             assert.deepEqual(loaded.patch, {});

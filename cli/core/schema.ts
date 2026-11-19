@@ -24,9 +24,7 @@
 import type { CommandKind, TyrConfig, TyrState } from "./types.js";
 import { CURRENT_CONFIG_VERSION, CURRENT_STATE_VERSION } from "./migrate.js";
 
-export type ValidationResult<T> =
-    | { ok: true; value: T; warnings: string[] }
-    | { ok: false; errors: string[]; warnings: string[] };
+export type ValidationResult<T> = { ok: true; value: T; warnings: string[] } | { ok: false; errors: string[]; warnings: string[] };
 
 type JsonObject = Record<string, unknown>;
 

@@ -37,12 +37,7 @@
 // Like cli/core this module never prints and never throws for normal
 // conditions.
 
-import {
-    appendEvent,
-    type AppendEventOptions,
-    type TyrEvent,
-    type TyrEventInput,
-} from "../core/events.js";
+import { appendEvent, type AppendEventOptions, type TyrEvent, type TyrEventInput } from "../core/events.js";
 import { followEvents, type FollowEventsOptions } from "../core/event-stream.js";
 import {
     CHECK_FAILED_KIND,
@@ -120,8 +115,7 @@ function normalizeFileChanged(base: Base, data: Json): EngineEvent {
     const lists = { added: added ?? [], modified: modified ?? [], removed: removed ?? [] };
     const listed = lists.added.length + lists.modified.length + lists.removed.length;
     // Lists are capped in the journal (FS_EVENT_MAX_PATHS); total is the real count.
-    const total =
-        typeof data.total === "number" && Number.isFinite(data.total) ? Math.max(data.total, listed) : listed;
+    const total = typeof data.total === "number" && Number.isFinite(data.total) ? Math.max(data.total, listed) : listed;
     return { ...base, type: "file.changed", ...lists, total, cause: data.cause === "git" ? "git" : "edit" };
 }
 
@@ -291,11 +285,7 @@ export class EventBus {
 }
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-    return (
-        (typeof value === "object" || typeof value === "function") &&
-        value !== null &&
-        typeof (value as { then?: unknown }).then === "function"
-    );
+    return (typeof value === "object" || typeof value === "function") && value !== null && typeof (value as { then?: unknown }).then === "function";
 }
 
 /* -------------------------------------------------------------------------
@@ -316,11 +306,7 @@ export type JournalDetach = () => Promise<void>;
  * history before going live, `signal` aborts like the returned detach,
  * `sources` / `kinds` filter at the journal level. Never throws.
  */
-export async function attachJournal(
-    root: string,
-    bus: EventBus,
-    opts: AttachJournalOptions = {},
-): Promise<JournalDetach> {
+export async function attachJournal(root: string, bus: EventBus, opts: AttachJournalOptions = {}): Promise<JournalDetach> {
     let closed = false;
     const follower = await followEvents(root, {
         ...opts,

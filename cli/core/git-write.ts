@@ -112,9 +112,7 @@ export interface CreateBranchOptions extends WriteOptions {
     allowExisting?: boolean;
 }
 
-export type CreateBranchResult = GitWriteResult<
-    WriteSuccessBase & { branch: string; commit: string; created: boolean; checkedOut: boolean }
->;
+export type CreateBranchResult = GitWriteResult<WriteSuccessBase & { branch: string; commit: string; created: boolean; checkedOut: boolean }>;
 
 export interface CreateWorktreeOptions extends WriteOptions {
     /** Branch to check out in the new worktree; created unless it exists. */
@@ -125,9 +123,7 @@ export interface CreateWorktreeOptions extends WriteOptions {
     allowExistingBranch?: boolean;
 }
 
-export type CreateWorktreeResult = GitWriteResult<
-    WriteSuccessBase & { path: string; branch: string; commit: string; createdBranch: boolean }
->;
+export type CreateWorktreeResult = GitWriteResult<WriteSuccessBase & { path: string; branch: string; commit: string; createdBranch: boolean }>;
 
 export type RemoveWorktreeResult = GitWriteResult<WriteSuccessBase & { path: string; branch: string | null }>;
 
@@ -210,11 +206,7 @@ export async function withRepoLock<T>(key: string, task: () => Promise<T>): Prom
  * Branches
  * ---------------------------------------------------------------------- */
 
-export async function createBranch(
-    root: string,
-    name: string,
-    options: CreateBranchOptions = {},
-): Promise<CreateBranchResult> {
+export async function createBranch(root: string, name: string, options: CreateBranchOptions = {}): Promise<CreateBranchResult> {
     return guarded(root, async () => {
         const nameError = await validateBranchName(root, name);
         if (nameError !== null) {
@@ -268,11 +260,7 @@ export async function createBranch(
  * Worktrees
  * ---------------------------------------------------------------------- */
 
-export async function createWorktree(
-    root: string,
-    worktreePath: string,
-    options: CreateWorktreeOptions,
-): Promise<CreateWorktreeResult> {
+export async function createWorktree(root: string, worktreePath: string, options: CreateWorktreeOptions): Promise<CreateWorktreeResult> {
     return guarded(root, async (repo) => {
         if (typeof worktreePath !== "string" || worktreePath.length === 0) {
             return fail("invalid-argument", "A worktree path is required.");
@@ -328,11 +316,7 @@ export async function createWorktree(
  * worktree has uncommitted or untracked changes, which surfaces as
  * `dirty-worktree`. The branch it had checked out is kept.
  */
-export async function removeWorktree(
-    root: string,
-    worktreePath: string,
-    options: WriteOptions = {},
-): Promise<RemoveWorktreeResult> {
+export async function removeWorktree(root: string, worktreePath: string, options: WriteOptions = {}): Promise<RemoveWorktreeResult> {
     return guarded(root, async () => {
         if (typeof worktreePath !== "string" || worktreePath.length === 0) {
             return fail("invalid-argument", "A worktree path is required.");
@@ -389,9 +373,7 @@ export async function stash(root: string, options: StashOptions): Promise<StashR
 
         const outcome = await getStatusOutcome(root);
         if (outcome.status === null) {
-            return outcome.timedOut
-                ? fail("timeout", "git status timed out.")
-                : fail("git-failed", "Could not read the working-tree status.");
+            return outcome.timedOut ? fail("timeout", "git status timed out.") : fail("git-failed", "Could not read the working-tree status.");
         }
         const status = outcome.status;
         const hasTracked = status.staged.length > 0 || status.modified.length > 0;
@@ -444,11 +426,12 @@ export async function stashPop(root: string, ref: string, options: WriteOptions 
         if (!list.ok) {
             return gitFailure(list, "git stash list");
         }
-        const hashes = list.stdout.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+        const hashes = list.stdout
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0);
         const needle = ref.toLowerCase();
-        const matches = hashes
-            .map((hash, index) => ({ hash, index }))
-            .filter((entry) => entry.hash.startsWith(needle));
+        const matches = hashes.map((hash, index) => ({ hash, index })).filter((entry) => entry.hash.startsWith(needle));
         if (matches.length === 0) {
             return fail("stash-not-found", `No stash entry matches ${ref}.`);
         }
@@ -572,9 +555,7 @@ export async function revert(root: string, target: string, options: RevertOption
         // unrelated work; require a clean tracked state.
         const outcome = await getStatusOutcome(root);
         if (outcome.status === null) {
-            return outcome.timedOut
-                ? fail("timeout", "git status timed out.")
-                : fail("git-failed", "Could not read the working-tree status.");
+            return outcome.timedOut ? fail("timeout", "git status timed out.") : fail("git-failed", "Could not read the working-tree status.");
         }
         if (outcome.status.staged.length > 0 || outcome.status.modified.length > 0) {
             return fail("dirty-worktree", "Commit or stash local changes before reverting.");
@@ -602,9 +583,7 @@ export async function revert(root: string, target: string, options: RevertOption
         // Always revert with --no-commit, then either commit ourselves (so
         // the Tyr trailer lands on git's prepared "Revert ..." message) or
         // quit the sequencer so the result is plain staged changes.
-        const finish = options.noCommit === true
-            ? ["revert", "--quit"]
-            : ["commit", "--no-edit", "--trailer", identity.trailer];
+        const finish = options.noCommit === true ? ["revert", "--quit"] : ["commit", "--no-edit", "--trailer", identity.trailer];
         const commands = [revertCommand, finish];
         if (options.dryRun === true) {
             return { ok: true, dryRun: true, reverted: resolved.commit, commit: null, commands };
@@ -661,10 +640,7 @@ interface RepoInfo {
  * Resolve the repository, take its write lock, and run `task`. Anything
  * unexpected inside a task becomes a `git-failed` result rather than a throw.
  */
-async function guarded<T extends { ok: boolean }>(
-    root: string,
-    task: (repo: RepoInfo) => Promise<T | GitWriteFailure>,
-): Promise<T | GitWriteFailure> {
+async function guarded<T extends { ok: boolean }>(root: string, task: (repo: RepoInfo) => Promise<T | GitWriteFailure>): Promise<T | GitWriteFailure> {
     const repo = await inspectRepo(root);
     if (repo === null) {
         return fail("not-a-repo", `${root} is not inside a git work tree.`);
@@ -710,7 +686,10 @@ export async function getOperationInProgress(root: string): Promise<string | nul
     if (!result.ok) {
         return null;
     }
-    const paths = result.stdout.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+    const paths = result.stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
     for (let i = 0; i < IN_PROGRESS_MARKERS.length && i < paths.length; i++) {
         if (await pathExists(path.resolve(root, paths[i]))) {
             return IN_PROGRESS_MARKERS[i][1];
@@ -768,35 +747,23 @@ async function revParseCommit(root: string, ref: string): Promise<string | null>
 }
 
 /** Resolve a start point (default HEAD) to a full commit hash. */
-async function resolveStartPoint(
-    root: string,
-    ref: string | undefined,
-): Promise<{ ok: true; commit: string } | GitWriteFailure> {
+async function resolveStartPoint(root: string, ref: string | undefined): Promise<{ ok: true; commit: string } | GitWriteFailure> {
     if (ref === undefined) {
         const head = await revParseCommit(root, "HEAD");
-        return head === null
-            ? fail("unborn-head", "HEAD has no commits yet; pass an explicit start point.")
-            : { ok: true, commit: head };
+        return head === null ? fail("unborn-head", "HEAD has no commits yet; pass an explicit start point.") : { ok: true, commit: head };
     }
     if (typeof ref !== "string" || ref.length === 0 || ref.startsWith("-")) {
         return fail("invalid-ref", `"${String(ref)}" is not a valid revision.`);
     }
     const resolved = await revParseCommit(root, ref);
-    return resolved === null
-        ? fail("invalid-ref", `"${ref}" does not name a commit.`)
-        : { ok: true, commit: resolved };
+    return resolved === null ? fail("invalid-ref", `"${ref}" does not name a commit.`) : { ok: true, commit: resolved };
 }
 
 /** Refuse commits on protected branches and (by default) on a detached HEAD. */
-async function checkCommitTarget(
-    root: string,
-    options: ProtectedBranchOptions,
-): Promise<{ ok: true; branch: string | null } | GitWriteFailure> {
+async function checkCommitTarget(root: string, options: ProtectedBranchOptions): Promise<{ ok: true; branch: string | null } | GitWriteFailure> {
     const { branch, detached } = await getCurrentBranch(root);
     if (detached) {
-        return options.allowDetached === true
-            ? { ok: true, branch: null }
-            : fail("detached-head", "HEAD is detached; the commit would not be on any branch.");
+        return options.allowDetached === true ? { ok: true, branch: null } : fail("detached-head", "HEAD is detached; the commit would not be on any branch.");
     }
     if (branch === null) {
         return fail("git-failed", "Could not determine the current branch.");
@@ -808,10 +775,7 @@ async function checkCommitTarget(
     return { ok: true, branch };
 }
 
-async function hasPendingChanges(
-    root: string,
-    options: CommitOptions,
-): Promise<{ ok: true; value: boolean } | GitWriteFailure> {
+async function hasPendingChanges(root: string, options: CommitOptions): Promise<{ ok: true; value: boolean } | GitWriteFailure> {
     // Porcelain with a pathspec: any line at all (staged, unstaged or
     // untracked) under the paths means `add` + `commit -- paths` has work.
     const args = ["status", "--porcelain=v1", "--untracked-files=all"];
@@ -832,9 +796,7 @@ async function hasPendingChanges(
     return { ok: true, value: staged || (options.all === true && tracked) };
 }
 
-function commitIdentity(
-    options: CommitIdentityOptions,
-): { ok: true; trailer: string; env: Record<string, string> } | GitWriteFailure {
+function commitIdentity(options: CommitIdentityOptions): { ok: true; trailer: string; env: Record<string, string> } | GitWriteFailure {
     const agent = options.agent ?? DEFAULT_AGENT_NAME;
     if (typeof agent !== "string" || agent.trim().length === 0 || /[\r\n]/.test(agent)) {
         return fail("invalid-argument", "agent must be a non-empty single-line name.");
@@ -843,7 +805,10 @@ function commitIdentity(
     const env: Record<string, string> = {};
     const author = options.author;
     const committer = options.committer ?? options.author;
-    for (const [role, identity] of [["AUTHOR", author], ["COMMITTER", committer]] as const) {
+    for (const [role, identity] of [
+        ["AUTHOR", author],
+        ["COMMITTER", committer],
+    ] as const) {
         if (identity === undefined) {
             continue;
         }
@@ -881,17 +846,10 @@ function fail(reason: GitWriteFailureReason, message: string, stderr?: string): 
 }
 
 function gitFailure(result: GitResult, what: string): GitWriteFailure {
-    return result.timedOut
-        ? fail("timeout", `${what} timed out.`, result.stderr)
-        : fail("git-failed", `${what} failed.`, result.stderr);
+    return result.timedOut ? fail("timeout", `${what} timed out.`, result.stderr) : fail("git-failed", `${what} failed.`, result.stderr);
 }
 
-async function runAll(
-    root: string,
-    commands: string[][],
-    options: WriteOptions,
-    env?: Record<string, string>,
-): Promise<GitWriteFailure | null> {
+async function runAll(root: string, commands: string[][], options: WriteOptions, env?: Record<string, string>): Promise<GitWriteFailure | null> {
     for (const command of commands) {
         const result = await runGit(root, command, { timeoutMs: options.timeoutMs ?? GIT_WRITE_TIMEOUT_MS, env });
         if (!result.ok) {

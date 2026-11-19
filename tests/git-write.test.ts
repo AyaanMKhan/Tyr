@@ -6,17 +6,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-    commit,
-    createBranch,
-    createWorktree,
-    getOperationInProgress,
-    removeWorktree,
-    revert,
-    stash,
-    stashPop,
-    withRepoLock,
-} from "../cli/core/git-write.js";
+import { commit, createBranch, createWorktree, getOperationInProgress, removeWorktree, revert, stash, stashPop, withRepoLock } from "../cli/core/git-write.js";
 import { makeProject, removeProject } from "./helpers.js";
 
 const AGENT = { name: "Tyr Agent", email: "agent@tyr.dev" };
@@ -610,7 +600,10 @@ test("withRepoLock serializes tasks on the same key", async () => {
         order.push("c");
     });
     await Promise.all([slow, fast, other]);
-    assert.deepEqual(order.filter((step) => step !== "c"), ["a-start", "a-end", "b"]);
+    assert.deepEqual(
+        order.filter((step) => step !== "c"),
+        ["a-start", "a-end", "b"],
+    );
     assert.ok(order.indexOf("c") < order.indexOf("a-end"));
 });
 

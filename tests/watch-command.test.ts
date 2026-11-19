@@ -69,7 +69,11 @@ function start(root: string, options: Partial<WatchOptions> = {}, context: Parti
     return {
         stdout: out.text,
         stderr: err.text,
-        lines: () => out.text().split("\n").filter((line) => line !== ""),
+        lines: () =>
+            out
+                .text()
+                .split("\n")
+                .filter((line) => line !== ""),
         done,
         abort: async () => {
             controller.abort();
@@ -208,8 +212,14 @@ test("following: header, history, live separator, then live events with lifecycl
         assert.match(text, /! Background process is not running/);
         assert.match(text, /tyr start/);
         const order = ["event 1", "event 2", "following live", "Bash: npm test", "daemon crashed (pid 7): boom"].map((needle) => text.indexOf(needle));
-        assert.ok(order.every((index) => index >= 0), text);
-        assert.deepEqual([...order].sort((a, b) => a - b), order);
+        assert.ok(
+            order.every((index) => index >= 0),
+            text,
+        );
+        assert.deepEqual(
+            [...order].sort((a, b) => a - b),
+            order,
+        );
     });
 });
 
@@ -249,7 +259,10 @@ test("the CLI: watch --no-follow --json prints NDJSON and exits 0; uninitialized
         assert.equal(result.status, 0, result.stderr);
         const lines = result.stdout.trim().split("\n");
         assert.equal(lines.length, 2);
-        assert.deepEqual(lines.map((line) => (JSON.parse(line) as TyrEvent).message), ["event 2", "event 3"]);
+        assert.deepEqual(
+            lines.map((line) => (JSON.parse(line) as TyrEvent).message),
+            ["event 2", "event 3"],
+        );
 
         const bad = spawnSync(process.execPath, [CLI, "watch", "--since", "soon"], { cwd: root, encoding: "utf8", env, timeout: 20_000 });
         assert.equal(bad.status, EXIT_CODES.USAGE);

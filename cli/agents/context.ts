@@ -202,10 +202,7 @@ async function failuresSection(root: string, opts: AgentContextOptions): Promise
     const budget = opts.maxFailureBytes ?? DEFAULT_AGENT_FAILURE_BYTES;
     if (opts.failures !== undefined) return cutToBytes(redactSecrets(opts.failures), budget);
 
-    const [engine, findings] = await Promise.all([
-        readEngineState(root).catch(() => null),
-        readFindingsState(root).catch(() => null),
-    ]);
+    const [engine, findings] = await Promise.all([readEngineState(root).catch(() => null), readFindingsState(root).catch(() => null)]);
     const lines: string[] = [];
 
     if (engine !== null) {

@@ -213,8 +213,7 @@ function numberOrUndefined(value: unknown): number | undefined {
  * trusting its shape. Missing or wrongly typed values fall back to defaults.
  */
 export function retentionFromConfig(config: unknown): ReportRetention {
-    const block =
-        config !== null && typeof config === "object" ? (config as { reports?: unknown }).reports : undefined;
+    const block = config !== null && typeof config === "object" ? (config as { reports?: unknown }).reports : undefined;
     const source = block !== null && typeof block === "object" ? (block as Record<string, unknown>) : {};
     return {
         maxCount: numberOrUndefined(source.maxCount) ?? DEFAULT_REPORT_RETENTION.maxCount,
@@ -342,11 +341,7 @@ async function claimName(dir: string, base: string): Promise<string> {
  * Write a report as JSON + Markdown under `.tyr/reports/`, then apply
  * retention. Throws only if the report itself could not be written.
  */
-export async function writeReport(
-    root: string,
-    input: ReportInput,
-    opts: WriteReportOptions = {},
-): Promise<WrittenReport> {
+export async function writeReport(root: string, input: ReportInput, opts: WriteReportOptions = {}): Promise<WrittenReport> {
     const { reportsDir } = resolveTyrPaths(root);
     const now = opts.now ?? new Date();
     await fs.mkdir(reportsDir, { recursive: true });
@@ -427,9 +422,7 @@ function asReport(value: unknown, id: string): TyrReport | null {
         title: raw.title,
         createdAt: typeof raw.createdAt === "string" ? raw.createdAt : (stemDate(id)?.toISOString() ?? ""),
         summary: typeof raw.summary === "string" ? raw.summary : "",
-        findings: Array.isArray(raw.findings)
-            ? raw.findings.filter((f): f is Finding => f !== null && typeof f === "object").map(normalizeFinding)
-            : [],
+        findings: Array.isArray(raw.findings) ? raw.findings.filter((f): f is Finding => f !== null && typeof f === "object").map(normalizeFinding) : [],
     };
     if (raw.git !== undefined && raw.git !== null && typeof raw.git === "object") report.git = raw.git;
     if (raw.data !== undefined && raw.data !== null && typeof raw.data === "object") report.data = raw.data;
@@ -520,11 +513,7 @@ function isActive(limit: number | undefined): limit is number {
  * disable a rule. Only report-named .json/.md files are considered, and each
  * report's pair is removed together. Best-effort: never throws.
  */
-export async function pruneReports(
-    root: string,
-    retention: ReportRetention = {},
-    now: Date = new Date(),
-): Promise<PrunedReport[]> {
+export async function pruneReports(root: string, retention: ReportRetention = {}, now: Date = new Date()): Promise<PrunedReport[]> {
     const maxCount = retention.maxCount ?? DEFAULT_REPORT_RETENTION.maxCount;
     const maxAgeDays = retention.maxAgeDays ?? DEFAULT_REPORT_RETENTION.maxAgeDays;
     if (!isActive(maxCount) && !isActive(maxAgeDays)) return [];

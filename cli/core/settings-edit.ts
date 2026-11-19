@@ -76,12 +76,9 @@ export function requireSettingKey(key: string): SettingKeySpec {
     const spec = findSettingKey(key);
     if (spec) return spec;
     const suggestion = suggestSettingKey(key);
-    throw new UsageError(
-        `Unknown setting "${key}".` + (suggestion === null ? "" : ` Did you mean "${suggestion}"?`),
-        {
-            hint: `Valid keys: ${SETTING_KEYS.map((s) => s.key).join(", ")}. Run "tyr config list" to see them with their values.`,
-        },
-    );
+    throw new UsageError(`Unknown setting "${key}".` + (suggestion === null ? "" : ` Did you mean "${suggestion}"?`), {
+        hint: `Valid keys: ${SETTING_KEYS.map((s) => s.key).join(", ")}. Run "tyr config list" to see them with their values.`,
+    });
 }
 
 /** What `key` accepts, in words, from the ENV_VARS table (shared with the env docs). */
@@ -139,12 +136,9 @@ export interface SettingEdit {
 export async function setSetting(key: string, raw: string, options: EditSettingOptions): Promise<SettingEdit> {
     const spec = requireSettingKey(key);
     if (spec.secret && options.scope === "project") {
-        throw new UsageError(
-            `${spec.key} is a secret and cannot be stored in .tyr/settings.json, which is committed with the repository.`,
-            {
-                hint: `Store it in your global config with "tyr config set --global ${spec.key} -" (reads the value from stdin), or export ${spec.env}.`,
-            },
-        );
+        throw new UsageError(`${spec.key} is a secret and cannot be stored in .tyr/settings.json, which is committed with the repository.`, {
+            hint: `Store it in your global config with "tyr config set --global ${spec.key} -" (reads the value from stdin), or export ${spec.env}.`,
+        });
     }
     const value = parseOrThrow(spec, raw);
     return editSetting(spec, "set", (patch) => setAtPath(patch, spec.key, value), options);
@@ -195,9 +189,7 @@ async function editSetting(
         const file = settingsFileFor("global", null, { env, global: options.global })!;
         partial = await rewrite(spec, action, file, "global", mutate, async (patch) => {
             const written = await writeGlobalSettings(patch, { ...globalOptions, file });
-            return written.preservedKeys.length === 0
-                ? []
-                : [`Kept keys this Tyr does not know: ${written.preservedKeys.join(", ")}`];
+            return written.preservedKeys.length === 0 ? [] : [`Kept keys this Tyr does not know: ${written.preservedKeys.join(", ")}`];
         });
     }
 

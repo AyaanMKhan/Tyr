@@ -146,9 +146,7 @@ export interface SafetyGate extends PermissionGate {
     readonly decisions: readonly SafetyDecision[];
 }
 
-export type PathVerdict =
-    | { ok: true; relative: string; absolute: string }
-    | { ok: false; reason: string; relative?: string };
+export type PathVerdict = { ok: true; relative: string; absolute: string } | { ok: false; reason: string; relative?: string };
 
 /** Builds the gate for one agent run. */
 export function createGate(options: GateOptions): SafetyGate {
@@ -297,7 +295,9 @@ export function resolveWorkspacePath(workspace: string, target: string): PathVer
 /** True when `relative` (workspace-relative, forward slashes) matches a protected pattern. */
 export function matchesPattern(relative: string, pattern: string): boolean {
     const subject = toSlashes(relative).replace(/^\.\//, "").toLowerCase();
-    const normalized = toSlashes(pattern).replace(/^\.?\//, "").toLowerCase();
+    const normalized = toSlashes(pattern)
+        .replace(/^\.?\//, "")
+        .toLowerCase();
     const regex = globToRegExp(normalized);
     if (normalized.includes("/")) return regex.test(subject);
     const base = subject.slice(subject.lastIndexOf("/") + 1);
@@ -529,10 +529,7 @@ export interface AgentWorktreeEntry {
  * generated `.tyr/.gitignore` only covers state/, logs/ and reports/ and the
  * root `.gitignore` may not mention `.tyr/` at all (see root-gitignore.ts).
  */
-export async function createAgentWorktree(
-    root: string,
-    options: CreateAgentWorktreeOptions,
-): Promise<AgentWorktree | { error: string }> {
+export async function createAgentWorktree(root: string, options: CreateAgentWorktreeOptions): Promise<AgentWorktree | { error: string }> {
     const git = options.git ?? runGit;
     const now = options.now ?? (() => new Date());
     const projectRoot = realpathLoose(path.resolve(root));
@@ -641,10 +638,7 @@ export async function removeAgentWorktree(
 }
 
 /** Agent worktrees of the repository: under `.tyr/worktrees/` and on a `tyr/` branch. */
-export async function listAgentWorktrees(
-    root: string,
-    options: { git?: GitRunner } = {},
-): Promise<AgentWorktreeEntry[] | { error: string }> {
+export async function listAgentWorktrees(root: string, options: { git?: GitRunner } = {}): Promise<AgentWorktreeEntry[] | { error: string }> {
     const git = options.git ?? runGit;
     const projectRoot = realpathLoose(path.resolve(root));
     const result = await git(projectRoot, ["worktree", "list", "--porcelain"]);
@@ -677,10 +671,7 @@ export async function listAgentWorktrees(
  * Worktree helpers
  * ---------------------------------------------------------------------- */
 
-async function inspect(
-    git: GitRunner,
-    root: string,
-): Promise<{ toplevel: string; commonDir: string } | { error: string }> {
+async function inspect(git: GitRunner, root: string): Promise<{ toplevel: string; commonDir: string } | { error: string }> {
     const result = await git(root, ["rev-parse", "--show-toplevel", "--git-common-dir"]);
     const [toplevel, commonDir] = result.stdout.split(/\r?\n/).map((line) => line.trim());
     if (!result.ok || !toplevel || !commonDir) return { error: `${root} is not inside a git work tree.` };

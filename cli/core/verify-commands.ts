@@ -23,13 +23,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import type {
-    CommandKind,
-    CommandProbe,
-    CommandVerification,
-    ProjectCommand,
-    ProjectProfile,
-} from "./types.js";
+import type { CommandKind, CommandProbe, CommandVerification, ProjectCommand, ProjectProfile } from "./types.js";
 
 /* -------------------------------------------------------------------------
  * Options
@@ -45,11 +39,7 @@ export interface SpawnResult {
     error?: NodeJS.ErrnoException;
 }
 
-export type Spawner = (
-    file: string,
-    args: readonly string[],
-    options: { cwd: string; timeoutMs: number },
-) => Promise<SpawnResult>;
+export type Spawner = (file: string, args: readonly string[], options: { cwd: string; timeoutMs: number }) => Promise<SpawnResult>;
 
 export interface VerifyOptions {
     /** PATH to search. Defaults to `process.env.PATH`. */
@@ -97,10 +87,7 @@ const SHELL_SYNTAX = /[|&;<>()$`"'\\*?~{}[\]]/;
  * ---------------------------------------------------------------------- */
 
 /** What to check for one command, decided purely from its text. */
-type ProbePlan =
-    | { kind: "script"; runner: string; script: string }
-    | { kind: "tool"; bin: string; viaExecutor: boolean }
-    | { kind: "skip"; reason: string };
+type ProbePlan = { kind: "script"; runner: string; script: string } | { kind: "tool"; bin: string; viaExecutor: boolean } | { kind: "skip"; reason: string };
 
 function planFor(command: string): ProbePlan {
     const trimmed = command.trim();
@@ -152,11 +139,7 @@ function makeResolver(options: VerifyOptions): Resolver {
     const rawPath = options.path ?? process.env.PATH ?? "";
     const pathDirs = rawPath.split(isWindows ? ";" : ":").filter((dir) => dir !== "");
     // On Windows a bare name is never executable; it needs one of PATHEXT.
-    const extensions = isWindows
-        ? (options.pathExt ?? process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
-              .split(";")
-              .filter((ext) => ext !== "")
-        : [""];
+    const extensions = isWindows ? (options.pathExt ?? process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter((ext) => ext !== "") : [""];
     return { platform, pathDirs, extensions };
 }
 
@@ -175,9 +158,7 @@ async function isExecutableFile(file: string): Promise<boolean> {
 /** First `dir/name<ext>` that is an executable file, or null. */
 async function findIn(resolver: Resolver, dirs: readonly string[], name: string): Promise<string | null> {
     // A name that already carries an extension (`tool.exe`) is tried as-is too.
-    const candidates = resolver.platform === "win32" && path.extname(name) !== ""
-        ? ["", ...resolver.extensions]
-        : resolver.extensions;
+    const candidates = resolver.platform === "win32" && path.extname(name) !== "" ? ["", ...resolver.extensions] : resolver.extensions;
     for (const dir of dirs) {
         for (const ext of candidates) {
             const file = path.join(dir, name + ext);
@@ -285,10 +266,7 @@ async function readScripts(root: string): Promise<Record<string, unknown> | null
 }
 
 async function probeScript(ctx: ProbeContext, runner: string, script: string): Promise<CommandProbe> {
-    const [manager, scripts] = await Promise.all([
-        findIn(ctx.resolver, ctx.resolver.pathDirs, runner),
-        ctx.scripts,
-    ]);
+    const [manager, scripts] = await Promise.all([findIn(ctx.resolver, ctx.resolver.pathDirs, runner), ctx.scripts]);
     if (scripts === null) return { status: "missing", detail: "package.json not found or unreadable" };
     if (typeof scripts[script] !== "string") {
         return { status: "missing", detail: `script "${script}" not found in package.json` };
@@ -302,9 +280,7 @@ async function probeTool(ctx: ProbeContext, bin: string, viaExecutor: boolean): 
     if (resolved === null) {
         return {
             status: "missing",
-            detail: viaExecutor
-                ? `${bin} not installed (not in node_modules/.bin or on PATH)`
-                : `${bin} not found on PATH`,
+            detail: viaExecutor ? `${bin} not installed (not in node_modules/.bin or on PATH)` : `${bin} not found on PATH`,
         };
     }
 
@@ -326,13 +302,7 @@ async function probeTool(ctx: ProbeContext, bin: string, viaExecutor: boolean): 
     return run;
 }
 
-async function runProbe(
-    ctx: ProbeContext,
-    bin: string,
-    file: string,
-    args: readonly string[],
-    where: string,
-): Promise<CommandProbe> {
+async function runProbe(ctx: ProbeContext, bin: string, file: string, args: readonly string[], where: string): Promise<CommandProbe> {
     const shown = [bin, ...args].join(" ");
     const result = await ctx.spawn(file, args, { cwd: ctx.root, timeoutMs: ctx.timeoutMs });
 
@@ -380,11 +350,7 @@ async function verifyOne(ctx: ProbeContext, command: ProjectCommand): Promise<Co
  * to null. Never throws; every problem becomes a `missing`, `failed` or
  * `skipped` probe.
  */
-export async function verifyCommands(
-    root: string,
-    profile: Pick<ProjectProfile, CommandKind>,
-    options: VerifyOptions = {},
-): Promise<CommandVerification> {
+export async function verifyCommands(root: string, profile: Pick<ProjectProfile, CommandKind>, options: VerifyOptions = {}): Promise<CommandVerification> {
     const ctx: ProbeContext = {
         root,
         resolver: makeResolver(options),

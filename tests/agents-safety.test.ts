@@ -306,7 +306,11 @@ test("the default gate prompter refuses under a non-TTY test runner", async () =
 });
 
 test("the terminal prompter asks y/N when interactive", async () => {
-    for (const [answer, expected] of [["y\n", true], ["n\n", false], ["\n", false]] as const) {
+    for (const [answer, expected] of [
+        ["y\n", true],
+        ["n\n", false],
+        ["\n", false],
+    ] as const) {
         const input = new PassThrough();
         const output = new PassThrough();
         const prompter = createTerminalPrompter({ input, output, isInteractive: () => true });
@@ -431,10 +435,7 @@ test("createAgentWorktree branches from HEAD without touching the user's tree", 
 
         const listed = await listAgentWorktrees(root);
         assert.ok(!("error" in listed));
-        assert.deepEqual(
-            listed.map((entry) => entry.branch).sort(),
-            ["tyr/fixer-20261118-090807", "tyr/fixer-20261118-090807-2"],
-        );
+        assert.deepEqual(listed.map((entry) => entry.branch).sort(), ["tyr/fixer-20261118-090807", "tyr/fixer-20261118-090807-2"]);
     });
 });
 
@@ -462,10 +463,7 @@ test("carryChanges copies modified, added, deleted and untracked files", async (
         assert.equal((await read("new/untracked.txt")).toString(), "untracked\n");
         await assert.rejects(read("ignored.log"));
         assert.deepEqual(result.carried?.deleted, ["b.txt"]);
-        assert.deepEqual(
-            [...(result.carried?.copied ?? [])].sort(),
-            [".gitignore", "a.txt", "bin.dat", "new/staged.txt", "new/untracked.txt"],
-        );
+        assert.deepEqual([...(result.carried?.copied ?? [])].sort(), [".gitignore", "a.txt", "bin.dat", "new/staged.txt", "new/untracked.txt"]);
 
         // The user's side is exactly as it was.
         assert.equal(git(root, "status", "--porcelain"), statusBefore);

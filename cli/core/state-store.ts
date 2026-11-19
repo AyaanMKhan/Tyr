@@ -47,11 +47,7 @@ export async function updateState(
  * updateState() for a guarded transition: resolves to the new state when the
  * transition applied, or null when there was no state or the guard refused.
  */
-async function transition(
-    root: string,
-    owner: string,
-    mutate: (state: TyrState) => TyrState | null,
-): Promise<TyrState | null> {
+async function transition(root: string, owner: string, mutate: (state: TyrState) => TyrState | null): Promise<TyrState | null> {
     let applied = false;
     const result = await updateState(
         root,
@@ -96,12 +92,7 @@ export interface EndRunGuard {
 function endRun(root: string, status: "stopped" | "error", guard: EndRunGuard, owner: string): Promise<TyrState | null> {
     return transition(root, owner, (state) => {
         if (guard.onlyIfRunning && state.status !== "running") return null;
-        if (
-            guard.ownerPid !== undefined &&
-            state.status === "running" &&
-            typeof state.pid === "number" &&
-            state.pid !== guard.ownerPid
-        ) {
+        if (guard.ownerPid !== undefined && state.status === "running" && typeof state.pid === "number" && state.pid !== guard.ownerPid) {
             return null;
         }
         return { ...state, status, pid: null };

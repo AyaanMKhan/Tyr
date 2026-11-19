@@ -68,9 +68,20 @@ test("buildConfig persists the detached flag next to the branch label", async ()
             discovery: { root, alreadyInitialized: false, files: [], fileCount: 0, skippedDirs: [] },
             git: info,
             project: {
-                name: null, nameSource: null, languages: [], primaryLanguage: null, frameworks: [],
-                packageManager: null, build: null, test: null, lint: null, format: null, typecheck: null,
-                readme: null, claudeMd: null, workspace: null,
+                name: null,
+                nameSource: null,
+                languages: [],
+                primaryLanguage: null,
+                frameworks: [],
+                packageManager: null,
+                build: null,
+                test: null,
+                lint: null,
+                format: null,
+                typecheck: null,
+                readme: null,
+                claudeMd: null,
+                workspace: null,
             },
         } as InitSnapshot;
         const config = buildConfig(snapshot, "1.0.0");

@@ -70,7 +70,9 @@ export function registerRunCommand(program: Command) {
         .option("-y, --yes", "With --agent fixer --apply: apply changes in place without asking")
         .option("--correct", "With --agent: queue the agent's summary for the live Claude Code session")
         .option("--no-color", "Disable colored output")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 The prompt is routed by keywords (use --mode to override):
   checks   "run the tests", "lint", "check everything"
            Runs those checks now. Every check also runs the review, like
@@ -112,7 +114,8 @@ Examples:
   $ tyr run --agent reviewer "review my changes"
   $ tyr run --agent test-runner "why does the test check fail?"
   $ tyr run --agent fixer "fix the failing typecheck"           Dry run
-  $ tyr run --agent fixer --apply --isolate "fix the failing tests"`)
+  $ tyr run --agent fixer --apply --isolate "fix the failing tests"`,
+        )
         .action(async (prompt: string, options: CommandOptions, command: Command) => {
             const globals = readGlobals(command);
             const verbosity = verbosityOf(globals);
@@ -342,12 +345,7 @@ function clip(text: string, max: number): string {
     return flat.length <= max ? flat : `${flat.slice(0, max - 3)}...`;
 }
 
-function printFindings(
-    reporter: ReturnType<typeof createReporter>,
-    findings: readonly Finding[],
-    verbose: boolean,
-    color: boolean,
-): void {
+function printFindings(reporter: ReturnType<typeof createReporter>, findings: readonly Finding[], verbose: boolean, color: boolean): void {
     if (findings.length === 0) return;
     const shown = verbose ? findings : findings.slice(0, MAX_LISTED_FINDINGS);
     reporter.blank();

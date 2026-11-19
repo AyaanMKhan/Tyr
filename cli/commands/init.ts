@@ -6,14 +6,7 @@
 // what lets the same detectors be reused by `status`, `watch`, and `run`.
 
 import { Command } from "commander";
-import {
-    findProjectRoot,
-    isAlreadyInitialized,
-    scanProject,
-    IGNORED_DIRS,
-    IGNORED_EXTENSIONS,
-    IGNORED_FILES,
-} from "../core/discovery.js";
+import { findProjectRoot, isAlreadyInitialized, scanProject, IGNORED_DIRS, IGNORED_EXTENSIONS, IGNORED_FILES } from "../core/discovery.js";
 import { collectGitInfo } from "../core/git.js";
 import { profileProject } from "../core/project.js";
 import { scaffold, readConfig, appendLog, type ScaffoldPreserved } from "../core/scaffold.js";
@@ -67,7 +60,9 @@ export function registerInitCommand(program: Command) {
         .option("-i, --interactive", "Review and edit detected commands before writing")
         .option("--gitignore", "Keep .tyr/ out of git: add /.tyr/ to the root .gitignore without asking")
         .option("--no-gitignore", "Never touch the root .gitignore, and do not ask")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Finds the project root (the git toplevel, or the nearest directory with a
 manifest), scans files, detects the toolchain and writes .tyr/ there.
 Detected commands are checked without running them: the tool must resolve
@@ -103,7 +98,8 @@ Examples:
   $ tyr init --gitignore    Keep .tyr/ local: add /.tyr/ to the root .gitignore
   $ tyr init --no-gitignore Leave the root .gitignore alone
   $ tyr init --verbose      Also show scan and write details
-  $ tyr init --json         Print a JSON summary instead of text`)
+  $ tyr init --json         Print a JSON summary instead of text`,
+        )
         .action(async (options: InitOptions, command: Command) => {
             const globals = readGlobals(command);
             const result = await runInit(options, globals);
@@ -326,13 +322,7 @@ async function runInit(options: InitOptions, globals: GlobalOptions): Promise<In
 }
 
 /** Adds, offers or skips the root `.gitignore` entry; the policy lives in root-gitignore.ts. */
-async function offerRootGitignore(
-    reporter: Reporter,
-    root: string,
-    options: InitOptions,
-    isRepo: boolean,
-    json: boolean,
-): Promise<GitignoreOutcome> {
+async function offerRootGitignore(reporter: Reporter, root: string, options: InitOptions, isRepo: boolean, json: boolean): Promise<GitignoreOutcome> {
     const { outcome, suggestFlag } = await applyGitignorePolicy(root, {
         flag: options.gitignore,
         isRepo,
@@ -367,18 +357,12 @@ async function isInitialized(root: string): Promise<boolean> {
  * then `.tyrignore`. The file goes last so its rules win on conflict (the last
  * matching pattern decides). Silent apart from verbose detail lines.
  */
-async function loadExtraIgnore(
-    reporter: Reporter,
-    root: string,
-): Promise<{ patterns: string[]; fromConfig: string[] }> {
+async function loadExtraIgnore(reporter: Reporter, root: string): Promise<{ patterns: string[]; fromConfig: string[] }> {
     const { fromConfig, fromFile, patterns } = await loadUserIgnorePatterns(root);
 
     const configCount = countPatterns(fromConfig);
     const fileCount = countPatterns(fromFile);
-    reporter.debug(
-        `Extra ignore patterns: ${configCount} from tyr.json (scan.extraIgnore), ` +
-            `${fileCount} from ${TYR_IGNORE_FILE}`,
-    );
+    reporter.debug(`Extra ignore patterns: ${configCount} from tyr.json (scan.extraIgnore), ` + `${fileCount} from ${TYR_IGNORE_FILE}`);
 
     return { patterns, fromConfig };
 }
@@ -387,9 +371,7 @@ async function loadExtraIgnore(
 function reportPreserved(reporter: Reporter, preserved: ScaffoldPreserved): void {
     const { commands, configKeys, stateFields } = preserved;
     if (commands.length) {
-        reporter.info(
-            `Kept ${commands.length} user-edited command${commands.length === 1 ? "" : "s"}: ${commands.join(", ")}`,
-        );
+        reporter.info(`Kept ${commands.length} user-edited command${commands.length === 1 ? "" : "s"}: ${commands.join(", ")}`);
     }
     if (configKeys.length) reporter.debug(`Kept tyr.json keys: ${configKeys.join(", ")}`);
     if (stateFields.length) reporter.debug(`Kept state fields: ${stateFields.join(", ")}`);
@@ -455,11 +437,7 @@ function describeStatus(status: NonNullable<GitInfo["status"]>): string {
 }
 
 /** Prints the toolchain Tyr will drive: frameworks, package manager, commands, docs. */
-function reportProject(
-    reporter: Reporter,
-    project: ProjectProfile,
-    checks: CommandVerification | null,
-): void {
+function reportProject(reporter: Reporter, project: ProjectProfile, checks: CommandVerification | null): void {
     if (project.frameworks.length) {
         reporter.success(`Frameworks: ${project.frameworks.join(", ")}`);
     }
@@ -503,12 +481,7 @@ function reportProject(
  * tyr.json) — the user may simply not have run `npm install` yet — but as a
  * warning carrying the reason instead of a `✓`.
  */
-function reportCommand(
-    reporter: Reporter,
-    label: string,
-    command: ProjectCommand | null,
-    probe: CommandProbe | null,
-): void {
+function reportCommand(reporter: Reporter, label: string, command: ProjectCommand | null, probe: CommandProbe | null): void {
     if (!command) {
         reporter.muted(`${label}: none detected`);
         return;
@@ -557,7 +530,11 @@ async function reviewCommands(
         if (edit.changed.length) {
             // Probe only what the user typed; kept commands keep their result.
             const only: Pick<ProjectProfile, CommandKind> = {
-                build: null, test: null, lint: null, format: null, typecheck: null,
+                build: null,
+                test: null,
+                lint: null,
+                format: null,
+                typecheck: null,
             };
             for (const kind of edit.changed) only[kind] = edit.project[kind];
             const verifyTask = reporter.task("Verifying edited commands...");

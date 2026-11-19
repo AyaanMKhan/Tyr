@@ -102,9 +102,20 @@ export const SETTING_KEYS: readonly SettingKeySpec[] = [
     { key: "checks.typecheck", type: "boolean", env: "TYR_CHECKS_TYPECHECK", description: "Run the detected type checker" },
     { key: "severity.threshold", type: "enum", values: SEVERITIES, env: "TYR_SEVERITY", description: "Lowest severity that gets reported" },
     { key: "agent.permission", type: "enum", values: AGENT_PERMISSIONS, env: "TYR_AGENT_PERMISSION", description: "What the reviewing agent may do" },
-    { key: "agents.correct", type: "enum", values: CORRECT_MODES, env: "TYR_AGENTS_CORRECT", description: "Feed problems back into Claude Code: off, context (add to its context) or block (also hold its Stop)" },
+    {
+        key: "agents.correct",
+        type: "enum",
+        values: CORRECT_MODES,
+        env: "TYR_AGENTS_CORRECT",
+        description: "Feed problems back into Claude Code: off, context (add to its context) or block (also hold its Stop)",
+    },
     { key: "review.diff", type: "boolean", env: "TYR_REVIEW_DIFF", description: "Review the working-tree diff for secrets, deleted tests and risky patterns" },
-    { key: "review.llm", type: "boolean", env: "TYR_REVIEW_LLM", description: "Ask the model to review the diff on Claude Code Stop and on commit (needs ai.apiKey)" },
+    {
+        key: "review.llm",
+        type: "boolean",
+        env: "TYR_REVIEW_LLM",
+        description: "Ask the model to review the diff on Claude Code Stop and on commit (needs ai.apiKey)",
+    },
     { key: "notifications.targets", type: "string-list", env: "TYR_NOTIFY", description: "Comma-separated notification targets" },
     { key: "ai.model", type: "string", env: "TYR_MODEL", description: "Model used for reviews" },
     { key: "ai.apiKey", type: "nullable-string", env: "TYR_API_KEY", secret: true, description: "API key (global config or env only)" },
@@ -151,7 +162,10 @@ export function parseSettingValue(spec: SettingKeySpec, raw: string): ParseResul
             return { ok: true, value: text === "" ? null : text };
         case "string-list": {
             if (text === "" || text.toLowerCase() === EMPTY_LIST_TOKEN) return { ok: true, value: [] };
-            const items = text.split(",").map((s) => s.trim()).filter((s) => s !== "");
+            const items = text
+                .split(",")
+                .map((s) => s.trim())
+                .filter((s) => s !== "");
             if (items.length === 0) {
                 return { ok: false, error: `${spec.key} has no entries in "${raw}" (use "${EMPTY_LIST_TOKEN}" for an empty list)` };
             }
@@ -166,17 +180,13 @@ export function checkSettingValue(spec: SettingKeySpec, value: unknown): string 
         case "boolean":
             return typeof value === "boolean" ? null : `${spec.key} must be a boolean`;
         case "enum":
-            return typeof value === "string" && spec.values?.includes(value)
-                ? null
-                : `${spec.key} must be one of ${spec.values?.join(", ")}`;
+            return typeof value === "string" && spec.values?.includes(value) ? null : `${spec.key} must be one of ${spec.values?.join(", ")}`;
         case "string":
             return typeof value === "string" && value.trim() !== "" ? null : `${spec.key} must be a non-empty string`;
         case "nullable-string":
             return value === null || typeof value === "string" ? null : `${spec.key} must be a string or null`;
         case "string-list":
-            return Array.isArray(value) && value.every((v) => typeof v === "string")
-                ? null
-                : `${spec.key} must be an array of strings`;
+            return Array.isArray(value) && value.every((v) => typeof v === "string") ? null : `${spec.key} must be an array of strings`;
     }
 }
 
@@ -247,7 +257,5 @@ export function sanitizePatch(raw: unknown, source: string): { patch: SettingsPa
 /** Dotted paths of every non-object value in `obj` (arrays count as values). */
 export function leafKeys(obj: unknown, prefix = ""): string[] {
     if (obj === null || typeof obj !== "object" || Array.isArray(obj)) return prefix ? [prefix] : [];
-    return Object.entries(obj as Record<string, unknown>).flatMap(([k, v]) =>
-        leafKeys(v, prefix ? `${prefix}.${k}` : k),
-    );
+    return Object.entries(obj as Record<string, unknown>).flatMap(([k, v]) => leafKeys(v, prefix ? `${prefix}.${k}` : k));
 }

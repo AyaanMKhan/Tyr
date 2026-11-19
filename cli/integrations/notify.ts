@@ -87,22 +87,14 @@ export interface DeliverDeps {
  * Send one notification to `targets` now, without dedupe. Desktop delivery
  * happens first so the journal event can record whether it worked.
  */
-export async function deliverNotification(
-    root: string,
-    note: TyrNotification,
-    rawTargets: readonly string[],
-    deps: DeliverDeps = {},
-): Promise<DeliveryResult> {
+export async function deliverNotification(root: string, note: TyrNotification, rawTargets: readonly string[], deps: DeliverDeps = {}): Promise<DeliveryResult> {
     const { targets, unsupported } = parseTargets(rawTargets);
     const results: TargetResult[] = [];
     if (targets.includes("desktop")) {
         const show = deps.desktop ?? showDesktopNotification;
         let outcome: DesktopResult;
         try {
-            outcome = await show(
-                { title: note.title, message: note.message, urgency: note.severity === "error" ? "critical" : "normal" },
-                deps.desktopOptions,
-            );
+            outcome = await show({ title: note.title, message: note.message, urgency: note.severity === "error" ? "critical" : "normal" }, deps.desktopOptions);
         } catch (error) {
             outcome = { ok: false, reason: error instanceof Error ? error.message : String(error) };
         }

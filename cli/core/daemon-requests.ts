@@ -70,10 +70,7 @@ function requestFile(root: string, request: DaemonRequest): string {
  * Drop a request for the daemon. Returns the request as written, or null if
  * it could not be written. Never throws.
  */
-export async function sendDaemonRequest(
-    root: string,
-    request: { type: DaemonRequestType },
-): Promise<DaemonRequest | null> {
+export async function sendDaemonRequest(root: string, request: { type: DaemonRequestType }): Promise<DaemonRequest | null> {
     if (!DAEMON_REQUEST_TYPES.includes(request.type)) return null;
     const full: DaemonRequest = {
         v: DAEMON_REQUEST_VERSION,
@@ -138,10 +135,7 @@ export interface ReadDaemonRequestsOptions {
  * request has been deleted, so it is handed out exactly once. Malformed and
  * stale files are deleted and skipped. Never throws; no directory is [].
  */
-export async function readDaemonRequests(
-    root: string,
-    options: ReadDaemonRequestsOptions = {},
-): Promise<DaemonRequest[]> {
+export async function readDaemonRequests(root: string, options: ReadDaemonRequestsOptions = {}): Promise<DaemonRequest[]> {
     const dir = daemonRequestsDir(root);
     let names: string[];
     try {
@@ -183,10 +177,7 @@ export interface ServiceDaemonRequestsResult {
  * answer (pings get a daemon.pong event). Stopping is left to the caller,
  * which owns shutdown. Never throws.
  */
-export async function serviceDaemonRequests(
-    root: string,
-    options: ReadDaemonRequestsOptions & { pid?: number } = {},
-): Promise<ServiceDaemonRequestsResult> {
+export async function serviceDaemonRequests(root: string, options: ReadDaemonRequestsOptions & { pid?: number } = {}): Promise<ServiceDaemonRequestsResult> {
     const handled = await readDaemonRequests(root, options);
     let stop = false;
     for (const request of handled) {

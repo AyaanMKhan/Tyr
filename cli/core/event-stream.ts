@@ -52,15 +52,7 @@
 import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-    compileEventFilter,
-    eventsFile,
-    parseEventLine,
-    readEvents,
-    ROTATED_EVENTS_FILE,
-    type EventSource,
-    type TyrEvent,
-} from "./events.js";
+import { compileEventFilter, eventsFile, parseEventLine, readEvents, ROTATED_EVENTS_FILE, type EventSource, type TyrEvent } from "./events.js";
 import { resolveTyrPaths } from "./scaffold.js";
 
 export interface FollowEventsOptions {

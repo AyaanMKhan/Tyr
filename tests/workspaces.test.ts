@@ -151,7 +151,7 @@ test("cargo workspace with multi-line members, comments and exclude", async () =
     const info = await detect({
         "Cargo.toml": [
             "[workspace]",
-            "resolver = \"2\"",
+            'resolver = "2"',
             "members = [",
             '    "crates/*", # every crate',
             "    # the binary",
@@ -250,9 +250,7 @@ test("malformed member manifest keeps the package with a null name", async () =>
         "package.json": JSON.stringify({ workspaces: ["packages/*"] }),
         "packages/broken/package.json": "{",
     });
-    assert.deepEqual(info?.packages, [
-        { name: null, path: "packages/broken", manifest: "packages/broken/package.json" },
-    ]);
+    assert.deepEqual(info?.packages, [{ name: null, path: "packages/broken", manifest: "packages/broken/package.json" }]);
 });
 
 test("declaration that matches nothing is not a workspace", async () => {

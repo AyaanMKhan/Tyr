@@ -59,11 +59,7 @@ export const SEVERITY_RANK: Record<FindingSeverity, number> = { info: 0, warning
 
 /** Most severe first, then file, then line. */
 export function compareFindings(a: Finding, b: Finding): number {
-    return (
-        SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||
-        (a.file ?? "").localeCompare(b.file ?? "") ||
-        (a.line ?? 0) - (b.line ?? 0)
-    );
+    return SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || (a.file ?? "").localeCompare(b.file ?? "") || (a.line ?? 0) - (b.line ?? 0);
 }
 
 /** Drop duplicates by fingerprint + line, keeping the first. */

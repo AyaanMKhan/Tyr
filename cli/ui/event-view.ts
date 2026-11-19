@@ -158,8 +158,7 @@ export function formatClock(ts: string, now: Date): string {
     const date = new Date(ts);
     if (Number.isNaN(date.getTime())) return "--:--:--";
     const time = `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`;
-    const sameDay =
-        date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+    const sameDay = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
     return sameDay ? time : `${two(date.getMonth() + 1)}-${two(date.getDate())} ${time}`;
 }
 
@@ -272,7 +271,9 @@ function renderGit(event: TyrEvent, data: Record<string, unknown>, arrow: string
             const staged = list(data.staged);
             if (!Array.isArray(data.staged)) return { summary: firstLine(event.message ?? "index changed"), tone: "dim" };
             const summary =
-                staged.length === 0 ? "index cleared: nothing staged" : `${plural(staged.length, "path")} staged: ${staged.slice(0, 3).join(", ")}${staged.length > 3 ? ", …" : ""}`;
+                staged.length === 0
+                    ? "index cleared: nothing staged"
+                    : `${plural(staged.length, "path")} staged: ${staged.slice(0, 3).join(", ")}${staged.length > 3 ? ", …" : ""}`;
             return { summary, tone: "dim", details: staged.length > 3 ? [`staged: ${staged.join(", ")}`] : undefined };
         }
         case "git.refs": {
@@ -330,7 +331,11 @@ function renderFs(event: TyrEvent, data: Record<string, unknown>): Rendered {
         removed.length > 0 ? `${removed.length} removed` : undefined,
     ].filter((part) => part !== undefined);
     if (counts.length > 0) details.push(counts.join(", ") + (data.truncated === true ? " (list truncated)" : ""));
-    for (const [mark, paths] of [["+", added], ["~", modified], ["-", removed]] as const) {
+    for (const [mark, paths] of [
+        ["+", added],
+        ["~", modified],
+        ["-", removed],
+    ] as const) {
         for (const file of paths.slice(0, 10)) details.push(`${mark} ${file}`);
         if (paths.length > 10) details.push(`${mark} … ${paths.length - 10} more`);
     }

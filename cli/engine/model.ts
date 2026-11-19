@@ -86,13 +86,7 @@ export interface OtherEvent extends EngineEventBase {
     type: "other";
 }
 
-export type EngineEvent =
-    | FileChangedEvent
-    | CommitMadeEvent
-    | ClaudeToolEvent
-    | ClaudeStopEvent
-    | CheckResultEvent
-    | OtherEvent;
+export type EngineEvent = FileChangedEvent | CommitMadeEvent | ClaudeToolEvent | ClaudeStopEvent | CheckResultEvent | OtherEvent;
 
 export type EngineEventType = EngineEvent["type"];
 

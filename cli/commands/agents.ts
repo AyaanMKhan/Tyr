@@ -27,7 +27,9 @@ export function registerAgentsCommand(program: Command): void {
     const agents = program
         .command("agents")
         .description("List Tyr's agent roles and manage the worktrees of isolated agent runs")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Agents run through "tyr run --agent <role>". An isolated run
 (--apply --isolate) works on a new tyr/<role>-<time> branch checked out under
 .tyr/worktrees/ and keeps it when the agent changed something, so you can
@@ -36,7 +38,8 @@ review it. These commands list and remove those worktrees.
 Examples:
   $ tyr agents list
   $ tyr agents clean                     Remove every agent worktree and its branch
-  $ tyr agents clean .tyr/worktrees/fixer-20261118-090807 --keep-branch`);
+  $ tyr agents clean .tyr/worktrees/fixer-20261118-090807 --keep-branch`,
+        );
 
     agents
         .command("list", { isDefault: true })

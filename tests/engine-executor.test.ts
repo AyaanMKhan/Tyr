@@ -66,27 +66,24 @@ async function waitFor(predicate: () => boolean | Promise<boolean>, ms: number):
  * ---------------------------------------------------------------------- */
 
 test("exit 0 is passed, with output, metadata and the env defaults", async () => {
-    await withScripts(
-        { "ok.js": "console.log('hello', process.env.CI, process.env.FORCE_COLOR); console.error('warn');" },
-        async (root, run) => {
-            let started: CheckStart | null = null;
-            const result = await run("ok.js", { trigger: { reason: "idle", eventId: "e1" }, onStart: (s) => (started = s) });
-            assert.equal(result.outcome, "passed");
-            assert.equal(result.exitCode, 0);
-            assert.equal(result.signal, null);
-            assert.equal(result.stdout.trim(), "hello 1 0");
-            assert.equal(result.stderr.trim(), "warn");
-            assert.equal(result.outputTruncated, false);
-            assert.equal(result.cwd, root);
-            assert.equal(result.kind, "test");
-            assert.equal(result.headCommit, "abc123");
-            assert.deepEqual(result.trigger, { reason: "idle", eventId: "e1" });
-            assert.ok(result.durationMs >= 0);
-            assert.equal(result.error, undefined);
-            assert.ok(started !== null);
-            assert.equal((started as CheckStart).id, result.id);
-        },
-    );
+    await withScripts({ "ok.js": "console.log('hello', process.env.CI, process.env.FORCE_COLOR); console.error('warn');" }, async (root, run) => {
+        let started: CheckStart | null = null;
+        const result = await run("ok.js", { trigger: { reason: "idle", eventId: "e1" }, onStart: (s) => (started = s) });
+        assert.equal(result.outcome, "passed");
+        assert.equal(result.exitCode, 0);
+        assert.equal(result.signal, null);
+        assert.equal(result.stdout.trim(), "hello 1 0");
+        assert.equal(result.stderr.trim(), "warn");
+        assert.equal(result.outputTruncated, false);
+        assert.equal(result.cwd, root);
+        assert.equal(result.kind, "test");
+        assert.equal(result.headCommit, "abc123");
+        assert.deepEqual(result.trigger, { reason: "idle", eventId: "e1" });
+        assert.ok(result.durationMs >= 0);
+        assert.equal(result.error, undefined);
+        assert.ok(started !== null);
+        assert.equal((started as CheckStart).id, result.id);
+    });
 });
 
 test("non-zero exit is failed and keeps the code; opts.env overrides the defaults", async () => {
@@ -262,7 +259,10 @@ test("runCheckSerialized never overlaps two runs of the same kind", async () => 
             runCheckSerialized(root, "test", command, base),
             runCheckSerialized(root, "test", command, base),
         ]);
-        assert.deepEqual(runs.map((r) => r.outcome), ["passed", "passed", "passed"]);
+        assert.deepEqual(
+            runs.map((r) => r.outcome),
+            ["passed", "passed", "passed"],
+        );
     });
 });
 
@@ -307,8 +307,7 @@ test("event builders produce check.* journal inputs", () => {
  * ---------------------------------------------------------------------- */
 
 function snapshot(root: string, commands: Partial<Record<"build" | "test" | "lint" | "format" | "typecheck", string>>): InitSnapshot {
-    const cmd = (command: string | undefined): ProjectCommand | null =>
-        command === undefined ? null : { tool: "t", command, evidence: "package.json" };
+    const cmd = (command: string | undefined): ProjectCommand | null => (command === undefined ? null : { tool: "t", command, evidence: "package.json" });
     return {
         discovery: { root, alreadyInitialized: false, files: [], fileCount: 0, skippedDirs: [] },
         git: {
@@ -344,10 +343,7 @@ test("loadCheckCommands returns enabled, detected commands only", async () => {
     const root = await makeProject({});
     const home = await makeProject({});
     try {
-        const config = buildConfig(
-            snapshot(root, { build: "npm run build", test: "npm test", lint: "eslint .", format: "prettier --check ." }),
-            "1.0.0",
-        );
+        const config = buildConfig(snapshot(root, { build: "npm run build", test: "npm test", lint: "eslint .", format: "prettier --check ." }), "1.0.0");
         await fs.mkdir(path.join(root, ".tyr"), { recursive: true });
         await fs.writeFile(path.join(root, ".tyr", "tyr.json"), JSON.stringify(config), "utf8");
         // Project layer turns lint off; format is off by default; typecheck was never detected.

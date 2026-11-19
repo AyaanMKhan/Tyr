@@ -102,9 +102,7 @@ function isUserEdited(kind: CommandKind, previous: JsonObject, fresh: TyrConfig)
     }
     const oldCommand = old === null ? null : old.command;
 
-    const detected = isObject(previous.detected) && isObject(previous.detected.commands)
-        ? previous.detected.commands
-        : null;
+    const detected = isObject(previous.detected) && isObject(previous.detected.commands) ? previous.detected.commands : null;
     if (detected !== null && kind in detected) {
         const baseline = detected[kind];
         // Null in place of a detected command is a deliberate "don't run this".

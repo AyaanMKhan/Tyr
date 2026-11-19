@@ -76,10 +76,7 @@ export class LockTimeoutError extends Error {
 
     constructor(lockFile: string, holder: LockInfo | null) {
         const who = holder === null ? "unknown process" : `pid ${holder.pid}, \`${holder.owner}\``;
-        super(
-            `Another Tyr command is updating .tyr/ (${who}). ` +
-                `Try again in a moment; if no Tyr command is running, delete ${lockFile}.`,
-        );
+        super(`Another Tyr command is updating .tyr/ (${who}). ` + `Try again in a moment; if no Tyr command is running, delete ${lockFile}.`);
         this.name = "LockTimeoutError";
         this.lockFile = lockFile;
         this.holder = holder;
@@ -113,12 +110,7 @@ function keyOf(lockFile: string): string {
  * another live holder keeps it past `timeoutMs`. Creates `.tyr/state/` if
  * needed. The lock is released when `fn` settles, whether or not it threw.
  */
-export async function withTyrLock<T>(
-    root: string,
-    owner: string,
-    fn: () => Promise<T>,
-    options: TyrLockOptions = {},
-): Promise<T> {
+export async function withTyrLock<T>(root: string, owner: string, fn: () => Promise<T>, options: TyrLockOptions = {}): Promise<T> {
     const lockFile = resolveLockFile(root);
     const key = keyOf(lockFile);
     const held = heldInContext.getStore();
@@ -168,12 +160,15 @@ export async function readLock(root: string): Promise<LockInfo | null> {
 async function raceDeadline(promise: Promise<void>, deadline: number, lockFile: string): Promise<void> {
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-            readLockFile(lockFile).then(
-                (holder) => reject(new LockTimeoutError(lockFile, holder)),
-                () => reject(new LockTimeoutError(lockFile, null)),
-            );
-        }, Math.max(0, deadline - Date.now()));
+        timer = setTimeout(
+            () => {
+                readLockFile(lockFile).then(
+                    (holder) => reject(new LockTimeoutError(lockFile, holder)),
+                    () => reject(new LockTimeoutError(lockFile, null)),
+                );
+            },
+            Math.max(0, deadline - Date.now()),
+        );
     });
     try {
         await Promise.race([promise, timeout]);
@@ -182,13 +177,7 @@ async function raceDeadline(promise: Promise<void>, deadline: number, lockFile: 
     }
 }
 
-async function acquire(
-    root: string,
-    lockFile: string,
-    owner: string,
-    deadline: number,
-    staleMs: number,
-): Promise<LockInfo> {
+async function acquire(root: string, lockFile: string, owner: string, deadline: number, staleMs: number): Promise<LockInfo> {
     let backoff = MIN_BACKOFF_MS;
     let madeDir = false;
     for (;;) {

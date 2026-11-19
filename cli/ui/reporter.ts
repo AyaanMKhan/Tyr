@@ -142,12 +142,7 @@ export function detectUnicode(): boolean {
     if (process.platform === "win32") {
         // Windows Terminal, VS Code and ConEmu are UTF-8; the legacy conhost
         // that ships without any of these markers is not.
-        return Boolean(
-            process.env.WT_SESSION ||
-            process.env.ConEmuANSI === "ON" ||
-            process.env.TERM_PROGRAM === "vscode" ||
-            process.env.TERM,
-        );
+        return Boolean(process.env.WT_SESSION || process.env.ConEmuANSI === "ON" || process.env.TERM_PROGRAM === "vscode" || process.env.TERM);
     }
     const locale = process.env.LC_ALL ?? process.env.LC_CTYPE ?? process.env.LANG ?? "";
     // An unset locale on POSIX is far more often a stripped-down env on a

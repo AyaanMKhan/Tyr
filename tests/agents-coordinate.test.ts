@@ -134,14 +134,20 @@ test("queueCorrection persists, dedupes by fingerprint and respects delivery", a
 
         const scoped = await queueCorrection(root, { message: "Only for s2", source: "agent", severity: "warning", sessionId: "s2" });
         assert.equal((await pendingCorrections(root, "s1")).length, 1);
-        assert.deepEqual((await pendingCorrections(root, "s2")).map((c) => c.id), [first.id, scoped!.id]);
+        assert.deepEqual(
+            (await pendingCorrections(root, "s2")).map((c) => c.id),
+            [first.id, scoped!.id],
+        );
         assert.equal((await pendingCorrections(root)).length, 2);
 
         assert.equal(await markDelivered(root, [first.id, "nope"], { now: at(5) }), 1);
         const delivered = (await readCorrections(root)).corrections.find((c) => c.id === first.id)!;
         assert.equal(delivered.deliveredAt, at(5).toISOString());
         assert.equal(delivered.deliveries, 1);
-        assert.deepEqual((await pendingCorrections(root, "s1")).map((c) => c.id), []);
+        assert.deepEqual(
+            (await pendingCorrections(root, "s1")).map((c) => c.id),
+            [],
+        );
 
         // Delivered duplicates are not re-queued unless asked.
         await queueCorrection(root, { message: "Stop editing generated files in dist/" });
@@ -239,7 +245,10 @@ test("correctionsFromState queues once, never re-queues delivered, resolves and 
         await writeEngineState(root, engine);
         const reopened = await correctionsFromState(root, { now: at(4) });
         assert.equal(reopened.added.length, 1);
-        assert.deepEqual((await pendingCorrections(root)).map((c) => c.source), ["check"]);
+        assert.deepEqual(
+            (await pendingCorrections(root)).map((c) => c.source),
+            ["check"],
+        );
     } finally {
         await removeProject(root);
     }
@@ -386,7 +395,12 @@ test("respondToHook Stop guard is persisted per session and reset by a prompt", 
 test("respondToHook fails open", async () => {
     const root = await initProject();
     try {
-        const broken = { mode: "context" as const, derive: async (): Promise<DerivedCorrections> => { throw new Error("boom"); } };
+        const broken = {
+            mode: "context" as const,
+            derive: async (): Promise<DerivedCorrections> => {
+                throw new Error("boom");
+            },
+        };
         assert.equal(await respondToHook(root, { ...SESSION, hook_event_name: "UserPromptSubmit" }, broken), null);
         assert.equal(await respondToHook(root, null, { mode: "context" }), null);
         assert.equal(await respondToHook(root, "garbage", { mode: "context" }), null);
@@ -403,7 +417,10 @@ test("the mode comes from the agents.correct setting", async () => {
         await queueCorrection(root, { message: "fix it" });
         const payload = { ...SESSION, hook_event_name: "Stop" };
         assert.equal(await respondToHook(root, payload, { env: { TYR_CONFIG_HOME: root } }), null, "default is context: no block");
-        assert.equal(await respondToHook(root, { ...payload, hook_event_name: "UserPromptSubmit" }, { env: { TYR_CONFIG_HOME: root, TYR_AGENTS_CORRECT: "off" } }), null);
+        assert.equal(
+            await respondToHook(root, { ...payload, hook_event_name: "UserPromptSubmit" }, { env: { TYR_CONFIG_HOME: root, TYR_AGENTS_CORRECT: "off" } }),
+            null,
+        );
         const blocked = await respondToHook(root, payload, { env: { TYR_CONFIG_HOME: root, TYR_AGENTS_CORRECT: "block" } });
         assert.ok(blocked && "decision" in blocked);
     } finally {

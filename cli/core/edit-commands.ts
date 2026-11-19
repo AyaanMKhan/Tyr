@@ -63,7 +63,10 @@ const EXECUTORS: ReadonlySet<string> = new Set(["npx", "pnpx", "bunx"]);
  * `npx eslint .` -> "eslint", `./gradlew build` -> "gradlew".
  */
 export function toolFromCommand(command: string): string {
-    const tokens = command.trim().split(/\s+/).filter((token) => token !== "");
+    const tokens = command
+        .trim()
+        .split(/\s+/)
+        .filter((token) => token !== "");
     let index = 0;
     while (index < tokens.length - 1 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index])) index++;
     if (EXECUTORS.has(tokens[index]) && index + 1 < tokens.length) {
@@ -88,10 +91,7 @@ function describeProbe(probe: CommandProbe | null | undefined): string {
  * Walk every command slot and apply the user's answers. Never mutates
  * `profile`. Answers are trimmed; Enter keeps the slot as it is.
  */
-export async function editCommands(
-    profile: ProjectProfile,
-    options: EditCommandsOptions,
-): Promise<EditCommandsResult> {
+export async function editCommands(profile: ProjectProfile, options: EditCommandsOptions): Promise<EditCommandsResult> {
     const say = options.say ?? (() => {});
     const project: ProjectProfile = { ...profile };
     const changed: CommandKind[] = [];

@@ -7,12 +7,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 
 import type { DiffResult } from "../cli/core/git-diff.js";
 import type { ReviewContext } from "../cli/engine/findings.js";
-import {
-    reviewDiffWithLlm,
-    trimPatch,
-    type LlmMessagesClient,
-    type LlmReviewOptions,
-} from "../cli/engine/llm-review.js";
+import { reviewDiffWithLlm, trimPatch, type LlmMessagesClient, type LlmReviewOptions } from "../cli/engine/llm-review.js";
 import { makeProject, removeProject } from "./helpers.js";
 
 const KEY = "sk-ant-test-SECRET-1234567890";
@@ -75,10 +70,7 @@ function replying(payload: unknown): FakeClient {
     return new FakeClient(async () => message(JSON.stringify(payload)));
 }
 
-async function withRepo(
-    files: Record<string, string>,
-    fn: (root: string) => Promise<void>,
-): Promise<void> {
+async function withRepo(files: Record<string, string>, fn: (root: string) => Promise<void>): Promise<void> {
     const root = await makeProject(files);
     try {
         await fn(root);
@@ -353,17 +345,11 @@ test("invalid JSON, refusals and truncated responses are errors, not findings", 
         assert.equal(bad.status, "error");
         assert.match(bad.reason ?? "", /JSON/);
 
-        const refused = await reviewDiffWithLlm(
-            ctx(root, diff),
-            opts(new FakeClient(async () => message("", { stop_reason: "refusal" }))),
-        );
+        const refused = await reviewDiffWithLlm(ctx(root, diff), opts(new FakeClient(async () => message("", { stop_reason: "refusal" }))));
         assert.equal(refused.status, "error");
         assert.match(refused.reason ?? "", /declined/);
 
-        const cut = await reviewDiffWithLlm(
-            ctx(root, diff),
-            opts(new FakeClient(async () => message('{"findings": [', { stop_reason: "max_tokens" }))),
-        );
+        const cut = await reviewDiffWithLlm(ctx(root, diff), opts(new FakeClient(async () => message('{"findings": [', { stop_reason: "max_tokens" }))));
         assert.equal(cut.status, "error");
         assert.match(cut.reason ?? "", /max_tokens/);
     });

@@ -24,14 +24,7 @@
 // `tyr config set notifications.targets none` means the same thing.
 
 import { LOG_LEVEL_ENV, LOG_THRESHOLDS, parseLogLevel, type LogThreshold } from "./log.js";
-import {
-    EMPTY_LIST_TOKEN,
-    parseSettingValue,
-    setAtPath,
-    SETTING_KEYS,
-    type SettingKeySpec,
-    type SettingsPatch,
-} from "./settings-types.js";
+import { EMPTY_LIST_TOKEN, parseSettingValue, setAtPath, SETTING_KEYS, type SettingKeySpec, type SettingsPatch } from "./settings-types.js";
 
 /** Conventional Anthropic SDK variable, read for ai.apiKey when TYR_API_KEY is unset. */
 export const ANTHROPIC_API_KEY_ENV = "ANTHROPIC_API_KEY";
@@ -182,11 +175,7 @@ export function readEnvSettings(env: NodeJS.ProcessEnv = process.env): EnvSettin
         if (!parsed.ok) {
             // Contract errors quote the raw value, which helps spot a typo,
             // but a secret's value must never reach a terminal or a log.
-            warnings.push(
-                spec.secret
-                    ? `${name}: invalid value for ${spec.key}; ignored`
-                    : `${name}: ${parsed.error}; ignored`,
-            );
+            warnings.push(spec.secret ? `${name}: invalid value for ${spec.key}; ignored` : `${name}: ${parsed.error}; ignored`);
             continue;
         }
         patch = setAtPath(patch, spec.key, parsed.value);
@@ -225,10 +214,7 @@ export interface EnvGlobalFlags {
  * TYR_LOG_LEVEL itself is still resolved by log.ts; it is only consulted
  * here for that last rule. Returns a new object; `flags` is not modified.
  */
-export function applyEnvGlobals<T extends EnvGlobalFlags>(
-    flags: T,
-    env: NodeJS.ProcessEnv = process.env,
-): { options: T & EnvGlobalFlags; warnings: string[] } {
+export function applyEnvGlobals<T extends EnvGlobalFlags>(flags: T, env: NodeJS.ProcessEnv = process.env): { options: T & EnvGlobalFlags; warnings: string[] } {
     const warnings: string[] = [];
     const options: T & EnvGlobalFlags = { ...flags };
 

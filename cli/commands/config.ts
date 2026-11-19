@@ -27,23 +27,8 @@ import { printJson, readGlobals, verbosityOf, type GlobalOptions } from "../core
 import { createReporter } from "../ui/reporter.js";
 import { withoutBanner } from "../ui/banner.js";
 import { SETTING_KEYS, getAtPath, type SettingKeySpec } from "../core/settings-types.js";
-import {
-    describeSettingValue,
-    displaySettingValue,
-    formatSettingValue,
-    resolveSettings,
-    type ResolvedSettings,
-    type SettingOrigin,
-} from "../core/settings.js";
-import {
-    locateProject,
-    requireSettingKey,
-    setSetting,
-    settingsFileFor,
-    unsetSetting,
-    type SettingEdit,
-    type SettingsScope,
-} from "../core/settings-edit.js";
+import { describeSettingValue, displaySettingValue, formatSettingValue, resolveSettings, type ResolvedSettings, type SettingOrigin } from "../core/settings.js";
+import { locateProject, requireSettingKey, setSetting, settingsFileFor, unsetSetting, type SettingEdit, type SettingsScope } from "../core/settings-edit.js";
 import { NOTIFY_NONE } from "../core/env-settings.js";
 import type { Reporter } from "../core/types.js";
 
@@ -65,7 +50,9 @@ export function registerConfigCommand(program: Command) {
         program
             .command("config")
             .description("View and change Tyr's settings")
-            .addHelpText("after", `
+            .addHelpText(
+                "after",
+                `
 Settings resolve in layers, later winning:
 
   default  <  global config  <  project .tyr/settings.json  <  TYR_* env vars
@@ -90,7 +77,8 @@ Examples:
   $ tyr config unset checks.lint                 Fall back to the global/default value
   $ $EDITOR "$(tyr config path --global)"        Hand-edit your global config
 
-Run "tyr config <subcommand> --help" for details.`),
+Run "tyr config <subcommand> --help" for details.`,
+            ),
     );
 
     config
@@ -100,7 +88,9 @@ Run "tyr config <subcommand> --help" for details.`),
         // here as an argument; reject it instead of silently listing.
         .allowExcessArguments(false)
         .option("--reveal", "Show secrets in full instead of masked")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Prints one row per setting: the key, the value Tyr will use, and the layer it
 came from (default, global, project or env) with the file or variable that
 set it. Problems found while reading the files or variables are printed to
@@ -109,7 +99,8 @@ apply, exactly as they would for every other command.
 
 Examples:
   $ tyr config list
-  $ tyr config list --json   { ok, root, files, settings: [{ key, value, layer, source, ... }], warnings, errors }`)
+  $ tyr config list --json   { ok, root, files, settings: [{ key, value, layer, source, ... }], warnings, errors }`,
+        )
         .action(async (options: RevealOptions, command: Command) => {
             const globals = readGlobals(command);
             const reporter = diagnostics(globals);
@@ -139,17 +130,13 @@ Examples:
                     errors: resolved.errors,
                 });
             } else {
-                const table = rows.map((row) => [
-                    row.key,
-                    describeSettingValue(row.value),
-                    originLabel({ layer: row.layer, source: row.source }),
-                ]);
+                const table = rows.map((row) => [row.key, describeSettingValue(row.value), originLabel({ layer: row.layer, source: row.source })]);
                 writeTable(["KEY", "VALUE", "ORIGIN"], table);
                 if (verbosityOf(globals) !== "quiet") {
                     process.stdout.write("\n");
                     process.stdout.write(`Global config:    ${displayPath(resolved.files.global)}\n`);
                     process.stdout.write(
-                        `Project settings: ${resolved.files.project === null ? "(not initialized; run \"tyr init\")" : displayPath(resolved.files.project)}\n`,
+                        `Project settings: ${resolved.files.project === null ? '(not initialized; run "tyr init")' : displayPath(resolved.files.project)}\n`,
                     );
                 }
             }
@@ -160,10 +147,12 @@ Examples:
     config
         .command("get")
         .description("Print the effective value of one setting")
-        .argument("<key>", "Setting key, e.g. checks.lint (see \"tyr config list\")")
+        .argument("<key>", 'Setting key, e.g. checks.lint (see "tyr config list")')
         .option("--show-origin", "Prefix the value with its origin (layer:source) and a tab")
         .option("--reveal", "Print a secret in full instead of masked")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Prints the value Tyr would use, after all layers, as bare text on stdout in
 the same spelling "tyr config set" accepts: true/false, plain strings, lists
 comma-joined (terminal,desktop). An empty list and an unset value print an
@@ -176,7 +165,8 @@ Examples:
                                                 env:TYR_SEVERITY<TAB>error
   $ tyr config get ai.apiKey                    sk-…abcd
   $ tyr config get notifications.targets --json { ok, key, value, origin: { layer, source }, ... }
-  $ if [ "$(tyr config get checks.test)" = true ]; then npm test; fi`)
+  $ if [ "$(tyr config get checks.test)" = true ]; then npm test; fi`,
+        )
         .action(async (key: string, options: GetOptions, command: Command) => {
             const globals = readGlobals(command);
             const spec = requireSettingKey(key);
@@ -210,7 +200,9 @@ Examples:
         .argument("<key>", "Setting key, e.g. checks.lint")
         .argument("<value>", `New value; "${STDIN_VALUE}" reads it from stdin`)
         .option("-g, --global", "Write your per-user config (~/.config/tyr/config.json) instead of the project")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Values are parsed for the key's type: booleans accept true/false, 1/0,
 yes/no, on/off; lists are comma-separated, and "${NOTIFY_NONE}" (or "") means an empty
 list. The project file must exist (run "tyr init"); the global file is
@@ -233,7 +225,8 @@ Examples:
   $ tyr config set notifications.targets terminal,webhook:https://example.test/hook
   $ tyr config set notifications.targets ${NOTIFY_NONE}
   $ tyr config set --global ai.model claude-opus-5-5
-  $ pbpaste | tyr config set --global ai.apiKey -`)
+  $ pbpaste | tyr config set --global ai.apiKey -`,
+        )
         .action(async (key: string, rawValue: string, options: ScopeOptions, command: Command) => {
             const globals = readGlobals(command);
             const scope: SettingsScope = options.global ? "global" : "project";
@@ -250,7 +243,9 @@ Examples:
         .description("Remove a setting from .tyr/settings.json (or the global config with --global)")
         .argument("<key>", "Setting key, e.g. checks.lint")
         .option("-g, --global", "Change your per-user config instead of the project")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Deletes the key from that one file, so the next layer down applies again
 (project -> global -> default). Unsetting a key the file does not contain is
 not an error. Also the way to remove an ai.apiKey committed to
@@ -258,7 +253,8 @@ not an error. Also the way to remove an ai.apiKey committed to
 
 Examples:
   $ tyr config unset checks.lint
-  $ tyr config unset --global ai.apiKey`)
+  $ tyr config unset --global ai.apiKey`,
+        )
         .action(async (key: string, options: ScopeOptions, command: Command) => {
             const globals = readGlobals(command);
             const scope: SettingsScope = options.global ? "global" : "project";
@@ -272,7 +268,9 @@ Examples:
         .command("path")
         .description("Print the location of the settings file, for hand-editing")
         .option("-g, --global", "The per-user config instead of the project's .tyr/settings.json")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Prints the absolute path of .tyr/settings.json for the current project, or
 with --global of your per-user config (honouring TYR_CONFIG_HOME and
 XDG_CONFIG_HOME). The file may not exist yet; a note on stderr says so.
@@ -282,7 +280,8 @@ are reported (see "tyr config list") and ignored.
 Examples:
   $ tyr config path
   $ $EDITOR "$(tyr config path --global)"
-  $ tyr config path --json    { ok, scope, file, exists }`)
+  $ tyr config path --json    { ok, scope, file, exists }`,
+        )
         .action(async (options: ScopeOptions, command: Command) => {
             const globals = readGlobals(command);
             const reporter = diagnostics(globals);

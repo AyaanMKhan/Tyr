@@ -8,12 +8,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-    LanguageStat,
-    PackageManagerInfo,
-    ProjectCommand,
-    ProjectProfile,
-} from "./types.js";
+import { LanguageStat, PackageManagerInfo, ProjectCommand, ProjectProfile } from "./types.js";
 import { detectWorkspaces } from "./workspaces.js";
 
 /* -------------------------------------------------------------------------
@@ -67,11 +62,7 @@ const LANGUAGE_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
  * but a repo of three `.ts` files and forty `.md` files is a TypeScript
  * project, so they can never win the primary-language decision.
  */
-const SUPPORTING_LANGUAGES: ReadonlySet<string> = new Set([
-    "Markdown",
-    "JSON",
-    "YAML",
-]);
+const SUPPORTING_LANGUAGES: ReadonlySet<string> = new Set(["Markdown", "JSON", "YAML"]);
 
 /** Extensions that imply JSX, which is a strong React signal. */
 const JSX_EXTENSIONS: readonly string[] = [".tsx", ".jsx"];
@@ -250,13 +241,7 @@ function hasDep(pkg: PackageJson | null, name: string): boolean {
 }
 
 /** Python manifests are line-based enough that a word match is good enough. */
-const PYTHON_MANIFESTS: readonly string[] = [
-    "requirements.txt",
-    "pyproject.toml",
-    "Pipfile",
-    "setup.py",
-    "setup.cfg",
-];
+const PYTHON_MANIFESTS: readonly string[] = ["requirements.txt", "pyproject.toml", "Pipfile", "setup.py", "setup.cfg"];
 
 /** Evidence file naming a Python package, or null. Avoids a TOML parser. */
 function pythonDep(ctx: RootContext, name: string): string | null {
@@ -366,10 +351,7 @@ const OTHER_MANIFESTS: ReadonlyArray<readonly [string, string]> = [
     ["composer.json", "composer"],
 ];
 
-export async function detectPackageManager(
-    root: string,
-    ctx?: RootContext,
-): Promise<PackageManagerInfo | null> {
+export async function detectPackageManager(root: string, ctx?: RootContext): Promise<PackageManagerInfo | null> {
     const context = ctx ?? (await buildContext(root));
 
     // Corepack's `packageManager` field is an explicit declaration by the
@@ -447,24 +429,9 @@ const MARKER_FRAMEWORKS: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 
 /** Frameworks that already explain the presence of JSX files. */
-const JSX_FRAMEWORKS: ReadonlySet<string> = new Set([
-    "React",
-    "React Native",
-    "Next.js",
-    "Solid",
-    "Vue",
-    "Nuxt",
-    "Svelte",
-    "SvelteKit",
-    "Astro",
-    "Angular",
-]);
+const JSX_FRAMEWORKS: ReadonlySet<string> = new Set(["React", "React Native", "Next.js", "Solid", "Vue", "Nuxt", "Svelte", "SvelteKit", "Astro", "Angular"]);
 
-export async function detectFrameworks(
-    root: string,
-    ctx?: RootContext,
-    hasJsx = false,
-): Promise<string[]> {
+export async function detectFrameworks(root: string, ctx?: RootContext, hasJsx = false): Promise<string[]> {
     const context = ctx ?? (await buildContext(root));
     const found: string[] = [];
     const add = (name: string): void => {
@@ -525,10 +492,7 @@ function tomlString(text: string, section: string, key: string): string | null {
  * then PEP 621 `[project]`, then Poetry, then Cargo. A manifest whose name is
  * missing or unusable is skipped rather than ending the search.
  */
-export async function detectProjectName(
-    root: string,
-    ctx?: RootContext,
-): Promise<{ name: string | null; nameSource: string | null }> {
+export async function detectProjectName(root: string, ctx?: RootContext): Promise<{ name: string | null; nameSource: string | null }> {
     const context = ctx ?? (await buildContext(root));
 
     if (context.pkg !== null && context.pkg.name !== null) {
@@ -554,18 +518,9 @@ export async function detectProjectName(
  * ---------------------------------------------------------------------- */
 
 /** Root README spellings, best first. Matched case-insensitively. */
-const README_CANDIDATES: readonly string[] = [
-    "README.md",
-    "README.markdown",
-    "README.rst",
-    "README.txt",
-    "README",
-];
+const README_CANDIDATES: readonly string[] = ["README.md", "README.markdown", "README.rst", "README.txt", "README"];
 
-export async function detectDocs(
-    root: string,
-    ctx?: RootContext,
-): Promise<{ readme: string | null; claudeMd: string | null }> {
+export async function detectDocs(root: string, ctx?: RootContext): Promise<{ readme: string | null; claudeMd: string | null }> {
     const context = ctx ?? (await buildContext(root));
 
     let readme: string | null = null;
@@ -635,21 +590,7 @@ const SCRIPT_TOOLS: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 
 /** Wrapper words that say nothing about which tool actually runs. */
-const RUNNER_TOKENS: ReadonlySet<string> = new Set([
-    "npx",
-    "npm",
-    "pnpm",
-    "pnpx",
-    "yarn",
-    "bun",
-    "bunx",
-    "run",
-    "exec",
-    "cross-env",
-    "dotenv",
-    "node",
-    "&&",
-]);
+const RUNNER_TOKENS: ReadonlySet<string> = new Set(["npx", "npm", "pnpm", "pnpx", "yarn", "bun", "bunx", "run", "exec", "cross-env", "dotenv", "node", "&&"]);
 
 /** Best-effort tool name for a script body like `"npx tsc"` -> `"tsc"`. */
 function toolFromScript(body: string): string | null {
@@ -701,10 +642,7 @@ function testTool(ctx: RootContext): ToolMatch | null {
         if (evidence !== null) return { tool, fallback, evidence };
     }
 
-    const pytest =
-        entryOf(ctx, "pytest.ini") ??
-        tomlSection(ctx, "pyproject.toml", "tool\\.pytest") ??
-        pythonDep(ctx, "pytest");
+    const pytest = entryOf(ctx, "pytest.ini") ?? tomlSection(ctx, "pyproject.toml", "tool\\.pytest") ?? pythonDep(ctx, "pytest");
     if (pytest !== null) return { tool: "pytest", fallback: "pytest", evidence: pytest };
 
     const cargo = entryOf(ctx, "Cargo.toml");
@@ -725,10 +663,7 @@ function lintTool(ctx: RootContext): ToolMatch | null {
     const biome = depOrConfig(ctx, "@biomejs/biome", /^biome\.jsonc?$/);
     if (biome !== null) return { tool: "Biome", fallback: "npx biome lint .", evidence: biome };
 
-    const ruff =
-        entryMatching(ctx, /^\.?ruff\.toml$/) ??
-        tomlSection(ctx, "pyproject.toml", "tool\\.ruff") ??
-        pythonDep(ctx, "ruff");
+    const ruff = entryMatching(ctx, /^\.?ruff\.toml$/) ?? tomlSection(ctx, "pyproject.toml", "tool\\.ruff") ?? pythonDep(ctx, "ruff");
     if (ruff !== null) return { tool: "Ruff", fallback: "ruff check .", evidence: ruff };
 
     const flake8 = entryOf(ctx, ".flake8") ?? pythonDep(ctx, "flake8");
@@ -773,10 +708,7 @@ function typecheckTool(ctx: RootContext): ToolMatch | null {
     const tsconfig = entryOf(ctx, "tsconfig.json");
     if (tsconfig !== null) return { tool: "tsc", fallback: "npx tsc --noEmit", evidence: tsconfig };
 
-    const mypy =
-        entryMatching(ctx, /^\.?mypy\.ini$/) ??
-        tomlSection(ctx, "pyproject.toml", "tool\\.mypy") ??
-        pythonDep(ctx, "mypy");
+    const mypy = entryMatching(ctx, /^\.?mypy\.ini$/) ?? tomlSection(ctx, "pyproject.toml", "tool\\.mypy") ?? pythonDep(ctx, "mypy");
     if (mypy !== null) return { tool: "mypy", fallback: "mypy .", evidence: mypy };
 
     const pyright = entryOf(ctx, "pyrightconfig.json") ?? pythonDep(ctx, "pyright");
@@ -789,21 +721,13 @@ function typecheckTool(ctx: RootContext): ToolMatch | null {
  * Otherwise fall back to the config-file evidence, and when there is neither,
  * report null rather than inventing a command Tyr cannot run.
  */
-function resolveCommand(
-    ctx: RootContext,
-    runner: string,
-    category: CommandCategory,
-    match: ToolMatch | null,
-): ProjectCommand | null {
+function resolveCommand(ctx: RootContext, runner: string, category: CommandCategory, match: ToolMatch | null): ProjectCommand | null {
     const script = findScript(ctx.pkg, SCRIPT_ALIASES[category]);
     if (script !== null) {
         const body = ctx.pkg?.scripts[script] ?? "";
         // For build the script body names the real tool; for the other
         // categories the dependency/config evidence is the better witness.
-        const tool =
-            category === "build"
-                ? toolFromScript(body) ?? match?.tool ?? runner
-                : match?.tool ?? toolFromScript(body) ?? runner;
+        const tool = category === "build" ? (toolFromScript(body) ?? match?.tool ?? runner) : (match?.tool ?? toolFromScript(body) ?? runner);
         return {
             tool,
             command: scriptCommand(runner, script),
@@ -821,10 +745,7 @@ type CommandSet = Pick<ProjectProfile, CommandCategory>;
 function detectCommands(ctx: RootContext, packageManager: PackageManagerInfo | null): CommandSet {
     // Scripts are always run by a JS package manager; a poetry/cargo project
     // that still ships a package.json falls back to npm.
-    const runner =
-        packageManager !== null && NODE_PACKAGE_MANAGERS.has(packageManager.name)
-            ? packageManager.name
-            : "npm";
+    const runner = packageManager !== null && NODE_PACKAGE_MANAGERS.has(packageManager.name) ? packageManager.name : "npm";
     return {
         build: resolveCommand(ctx, runner, "build", buildTool(ctx)),
         test: resolveCommand(ctx, runner, "test", testTool(ctx)),

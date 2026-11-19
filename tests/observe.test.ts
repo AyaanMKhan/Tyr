@@ -101,7 +101,11 @@ test("a checkout: hint, files, git event -> one git event and one attributed fs.
     observer.gitEvent({ kind: "index", staged: [] });
     clock.advance(1500);
     observer.fsBatch(batch({ modified: ["b.ts"], removed: ["old.ts"] }));
-    assert.deepEqual(events.map((e) => e.kind), ["git.head", "git.index"], "fs held while git is busy");
+    assert.deepEqual(
+        events.map((e) => e.kind),
+        ["git.head", "git.index"],
+        "fs held while git is busy",
+    );
 
     clock.advance(2499);
     assert.equal(events.length, 2);
@@ -153,7 +157,10 @@ test("hints alone delay a batch but never attribute it", () => {
     clock.advance(2500);
     assert.deepEqual(
         events.map((e) => [e.message, e.data?.cause]),
-        [["1 file changed: a.ts", undefined], ["1 file changed: b.ts", undefined]],
+        [
+            ["1 file changed: a.ts", undefined],
+            ["1 file changed: b.ts", undefined],
+        ],
     );
 });
 

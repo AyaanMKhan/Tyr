@@ -13,7 +13,10 @@ async function makeTyrProject(): Promise<string> {
 }
 
 async function exists(file: string): Promise<boolean> {
-    return fs.access(file).then(() => true, () => false);
+    return fs.access(file).then(
+        () => true,
+        () => false,
+    );
 }
 
 async function deadPid(): Promise<number> {
@@ -136,9 +139,14 @@ test("withTyrLock: times out with LockTimeoutError naming a live holder", async 
         await writeForeignLock(root, { pid: process.pid, owner: "tyr init", acquiredAt: new Date().toISOString() });
         let ran = false;
         await assert.rejects(
-            withTyrLock(root, "test", async () => {
-                ran = true;
-            }, { timeoutMs: 150 }),
+            withTyrLock(
+                root,
+                "test",
+                async () => {
+                    ran = true;
+                },
+                { timeoutMs: 150 },
+            ),
             (error: unknown) => {
                 assert.ok(error instanceof LockTimeoutError);
                 assert.equal(error.holder?.pid, process.pid);
@@ -198,10 +206,15 @@ test("withTyrLock: nested calls for the same root do not deadlock", async () => 
     const root = await makeTyrProject();
     try {
         const result = await withTyrLock(root, "outer", async () => {
-            const inner = await withTyrLock(root, "inner", async () => {
-                // Still the outer holder: nesting does not re-acquire.
-                return (await readLock(root))?.owner;
-            }, { timeoutMs: 200 });
+            const inner = await withTyrLock(
+                root,
+                "inner",
+                async () => {
+                    // Still the outer holder: nesting does not re-acquire.
+                    return (await readLock(root))?.owner;
+                },
+                { timeoutMs: 200 },
+            );
             assert.equal(await exists(resolveLockFile(root)), true, "inner release must not drop the outer lock");
             return inner;
         });

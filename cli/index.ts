@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import {Command} from "commander";
+import { Command } from "commander";
 
 //import * as fs from "fs";
 //import * as path from "path";
@@ -27,7 +27,9 @@ program
     .name("tyr")
     .description("A background engineering manager and reviewer for your repository.")
     .version(TYR_VERSION, "-v, --version", "Output version of Tyr")
-    .addHelpText("after", `
+    .addHelpText(
+        "after",
+        `
 Typical workflow:
   $ tyr init          Inspect the repo and create .tyr/
   $ tyr start         Launch the background process
@@ -43,12 +45,11 @@ Global options work with every command:
   $ tyr init --json | jq .root    Machine-readable output
   $ tyr start --log-level debug   Write debug detail to .tyr/logs/tyr.log
 
-Run "tyr <command> --help" for details and examples for a command.`)
+Run "tyr <command> --help" for details and examples for a command.`,
+    )
     // Help is written to stderr when it accompanies an error, so check
     // whichever stream it is actually going to.
-    .addHelpText("beforeAll", ({ error }) =>
-        isInteractive(error ? process.stderr : process.stdout) ? bannerText() : "",
-    )
+    .addHelpText("beforeAll", ({ error }) => (isInteractive(error ? process.stderr : process.stdout) ? bannerText() : ""))
     // Runs only once parsing succeeded and a command action is about to run,
     // so `--version` and usage errors never print the banner. `--quiet` and
     // `--json` keep stdout free of decoration, and so do commands whose
@@ -59,7 +60,6 @@ Run "tyr <command> --help" for details and examples for a command.`)
             printBanner();
         }
     });
-
 
 registerInitCommand(program);
 registerStartCommand(program);

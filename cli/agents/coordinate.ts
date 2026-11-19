@@ -177,9 +177,7 @@ export async function readCorrections(root: string): Promise<CorrectionsState> {
     return {
         version: CORRECTIONS_STATE_VERSION,
         updatedAt: typeof updatedAt === "string" ? updatedAt : new Date(0).toISOString(),
-        corrections: Array.isArray(corrections)
-            ? corrections.map(parseCorrection).filter((c): c is Correction => c !== null)
-            : [],
+        corrections: Array.isArray(corrections) ? corrections.map(parseCorrection).filter((c): c is Correction => c !== null) : [],
         sessions: cleanSessions,
     };
 }
@@ -230,9 +228,7 @@ function prune(state: CorrectionsState): CorrectionsState {
     let sessions = state.sessions;
     const ids = Object.keys(sessions);
     if (ids.length > MAX_TRACKED_SESSIONS) {
-        const keep = ids
-            .sort((a, b) => sessions[b]!.updatedAt.localeCompare(sessions[a]!.updatedAt))
-            .slice(0, MAX_TRACKED_SESSIONS);
+        const keep = ids.sort((a, b) => sessions[b]!.updatedAt.localeCompare(sessions[a]!.updatedAt)).slice(0, MAX_TRACKED_SESSIONS);
         sessions = Object.fromEntries(keep.map((id) => [id, state.sessions[id]!]));
     }
     return { ...state, corrections, sessions };
@@ -357,11 +353,7 @@ export function applyDelivered(state: CorrectionsState, ids: readonly string[], 
 }
 
 /** Mark corrections delivered. Resolves to how many matched. */
-export async function markDelivered(
-    root: string,
-    ids: readonly string[],
-    options: { now?: Date; lockOptions?: TyrLockOptions } = {},
-): Promise<number> {
+export async function markDelivered(root: string, ids: readonly string[], options: { now?: Date; lockOptions?: TyrLockOptions } = {}): Promise<number> {
     const now = options.now ?? new Date();
     let count = 0;
     await updateCorrections(
@@ -385,11 +377,7 @@ export interface ClearFilter {
 }
 
 /** Remove corrections (all of them without a filter). Resolves to how many were removed. */
-export async function clearCorrections(
-    root: string,
-    filter: ClearFilter = {},
-    options: { now?: Date; lockOptions?: TyrLockOptions } = {},
-): Promise<number> {
+export async function clearCorrections(root: string, filter: ClearFilter = {}, options: { now?: Date; lockOptions?: TyrLockOptions } = {}): Promise<number> {
     const ids = filter.ids === undefined ? null : new Set(filter.ids);
     const matches = (c: Correction): boolean =>
         (ids === null || ids.has(c.id)) &&
@@ -445,15 +433,16 @@ function problemMessage(problem: Problem, state: EngineState, findings: readonly
     const parts: string[] = [problem.title || `${problem.kind} failed`];
     if (problem.regression) parts[0] += " (a regression: it passed before)";
 
-    const related = findings
-        .filter((f) => f.source === "check" && f.checkKind === problem.kind)
-        .sort(compareFindings);
+    const related = findings.filter((f) => f.source === "check" && f.checkKind === problem.kind).sort(compareFindings);
     let body: string;
     if (related.length > 0) {
         body = related.slice(0, MAX_LOCATIONS_PER_PROBLEM).map(describeFinding).join("; ");
         if (related.length > MAX_LOCATIONS_PER_PROBLEM) body += `; +${related.length - MAX_LOCATIONS_PER_PROBLEM} more`;
     } else {
-        const lines = (problem.detail ?? "").split(/\r?\n/).map(oneLine).filter((l) => l !== "");
+        const lines = (problem.detail ?? "")
+            .split(/\r?\n/)
+            .map(oneLine)
+            .filter((l) => l !== "");
         body = lines.slice(-3).join(" | ");
     }
     const command = state.checks[problem.kind]?.last?.command;
@@ -539,9 +528,7 @@ export function syncDerived(
         }
     }
 
-    const added = derived.corrections
-        .filter((c) => !existing.has(c.fingerprint))
-        .map((c) => newCorrection(c, now));
+    const added = derived.corrections.filter((c) => !existing.has(c.fingerprint)).map((c) => newCorrection(c, now));
     if (added.length > 0) changed = true;
 
     return { state: changed ? { ...state, corrections: [...kept, ...added] } : state, changed, added, resolved };
@@ -557,10 +544,7 @@ export interface FromStateOptions {
  * fold them into the queue (see syncDerived). Writes only when something
  * changed. Resolves to what was added and resolved.
  */
-export async function correctionsFromState(
-    root: string,
-    options: FromStateOptions = {},
-): Promise<{ added: Correction[]; resolved: Correction[] }> {
+export async function correctionsFromState(root: string, options: FromStateOptions = {}): Promise<{ added: Correction[]; resolved: Correction[] }> {
     const now = options.now ?? new Date();
     const derived = await readDerived(root);
     let result: { added: Correction[]; resolved: Correction[] } = { added: [], resolved: [] };
@@ -591,9 +575,7 @@ export const CONTEXT_EVENTS: ReadonlySet<string> = new Set(["UserPromptSubmit", 
 export const RESPONDING_EVENTS: ReadonlySet<string> = new Set([...CONTEXT_EVENTS, "Stop"]);
 
 /** JSON Tyr prints on stdout for Claude Code. */
-export type HookOutput =
-    | { decision: "block"; reason: string }
-    | { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
+export type HookOutput = { decision: "block"; reason: string } | { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
 
 export interface HookResponseOptions {
     mode: CorrectMode;
@@ -656,12 +638,7 @@ function isSubagentPayload(payload: Record<string, unknown>): boolean {
  * Pure: what to answer `event` with, given the corrections to mention.
  * Null means print nothing. See the header for the rules.
  */
-export function planHookResponse(
-    event: string,
-    payload: unknown,
-    corrections: readonly Correction[],
-    options: HookResponseOptions,
-): HookPlan | null {
+export function planHookResponse(event: string, payload: unknown, corrections: readonly Correction[], options: HookResponseOptions): HookPlan | null {
     const data = payloadObject(payload);
     if (options.mode === "off" || corrections.length === 0 || isSubagentPayload(data)) return null;
     const maxChars = Math.max(200, options.maxChars ?? MAX_REPLY_CHARS);
@@ -678,8 +655,7 @@ export function planHookResponse(
         const { text, ids } = formatCorrections(
             [...corrections].sort(compareCorrections),
             "Tyr (this repository's background checker) found problems that should be fixed before you finish:",
-            "Fix them, or tell the user why they cannot be fixed now, then finish. " +
-                `Tyr holds a stop at most ${max} time${max === 1 ? "" : "s"} in a row.`,
+            "Fix them, or tell the user why they cannot be fixed now, then finish. " + `Tyr holds a stop at most ${max} time${max === 1 ? "" : "s"} in a row.`,
             maxChars,
         );
         return { output: { decision: "block", reason: text }, delivered: ids, blocked: true };
@@ -702,12 +678,7 @@ export function planHookResponse(
 }
 
 /** Pure: the JSON object to print for `event`, or null. */
-export function hookResponse(
-    event: string,
-    payload: unknown,
-    pending: readonly Correction[],
-    options: HookResponseOptions,
-): HookOutput | null {
+export function hookResponse(event: string, payload: unknown, pending: readonly Correction[], options: HookResponseOptions): HookOutput | null {
     return planHookResponse(event, payload, pending, options)?.output ?? null;
 }
 
@@ -749,11 +720,8 @@ export function stepHook(
     let changed = synced.changed;
 
     // A new session hears about everything still open; otherwise only what it has not heard.
-    const mention =
-        event === "SessionStart"
-            ? next.corrections.filter((c) => forSession(c, sessionId)).sort(compareCorrections)
-            : pendingIn(next, sessionId);
-    const streak = sessionId === undefined ? 0 : next.sessions[sessionId]?.stopBlocks ?? 0;
+    const mention = event === "SessionStart" ? next.corrections.filter((c) => forSession(c, sessionId)).sort(compareCorrections) : pendingIn(next, sessionId);
+    const streak = sessionId === undefined ? 0 : (next.sessions[sessionId]?.stopBlocks ?? 0);
     const plan = planHookResponse(event, payload, mention, { ...options, consecutiveStopBlocks: streak });
 
     if (plan !== null && plan.delivered.length > 0) {

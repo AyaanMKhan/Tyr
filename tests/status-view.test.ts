@@ -256,7 +256,9 @@ test("renderStatus: open findings with counts, regressions and +N more", () => {
     assert.match(verbose, /src\/f20\.ts:20 warning number 20/);
     assert.match(verbose, /\+10 more$/m);
 
-    const clean = render(fixture({ findings: { ...fixture().findings, total: 0, counts: { critical: 0, error: 0, warning: 0, info: 0 }, regressions: 0, items: [] } }));
+    const clean = render(
+        fixture({ findings: { ...fixture().findings, total: 0, counts: { critical: 0, error: 0, warning: 0, info: 0 }, regressions: 0, items: [] } }),
+    );
     assert.match(clean, /^Findings\s+✓ none open \(as of 2m ago\)$/m);
     const none = render(fixture({ findings: { ...fixture().findings, source: "none", total: 0, items: [] } }));
     assert.match(none, /^Findings\s+none recorded yet$/m);
@@ -282,7 +284,19 @@ test("renderStatus: no drift reads up to date, without the reindex hint", () => 
 
 test("renderStatus: skipped scan and a non-repo", () => {
     const report = fixture({
-        drift: { ...UP_TO_DATE, isRepo: false, indexedHead: null, currentHead: null, currentBranch: null, headChanged: null, commitsSinceIndex: null, currentFileCount: null, fileCountDelta: null, filesAdded: null, filesRemoved: null },
+        drift: {
+            ...UP_TO_DATE,
+            isRepo: false,
+            indexedHead: null,
+            currentHead: null,
+            currentBranch: null,
+            headChanged: null,
+            commitsSinceIndex: null,
+            currentFileCount: null,
+            fileCountDelta: null,
+            filesAdded: null,
+            filesRemoved: null,
+        },
     });
     const text = render(report, true);
     assert.match(text, /^Drift\s+unknown/m);

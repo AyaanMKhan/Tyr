@@ -90,7 +90,10 @@ describe("engine scheduler", () => {
         await timers.advance(600);
         assert.equal(rec.triggers.length, 0, "the second edit restarts the idle timer");
         await timers.advance(500);
-        assert.deepEqual(rec.triggers.map((t) => t.reason), ["idle"]);
+        assert.deepEqual(
+            rec.triggers.map((t) => t.reason),
+            ["idle"],
+        );
         await timers.advance(5000);
         assert.equal(rec.triggers.length, 1);
         s.close();
@@ -155,7 +158,10 @@ describe("engine scheduler", () => {
         s.handle(tool());
         s.handle(fileChanged());
         await timers.advance(12_000);
-        assert.deepEqual(rec.triggers.map((t) => t.reason), ["idle"]);
+        assert.deepEqual(
+            rec.triggers.map((t) => t.reason),
+            ["idle"],
+        );
         s.close();
     });
 
@@ -172,7 +178,10 @@ describe("engine scheduler", () => {
         assert.equal(rec.triggers.length, 1);
         rec.release();
         await flush();
-        assert.deepEqual(rec.triggers.map((t) => t.reason), ["startup", "commit"]);
+        assert.deepEqual(
+            rec.triggers.map((t) => t.reason),
+            ["startup", "commit"],
+        );
         rec.release();
         await s.idle();
         assert.equal(rec.triggers.length, 2);
@@ -199,7 +208,10 @@ describe("engine scheduler", () => {
         await flush();
         s.handle(stop());
         await flush();
-        assert.deepEqual(rec.triggers.map((t) => t.reason), ["manual", "manual", "claude-stop"]);
+        assert.deepEqual(
+            rec.triggers.map((t) => t.reason),
+            ["manual", "manual", "claude-stop"],
+        );
         rec.release();
         await s.idle();
         s.close();

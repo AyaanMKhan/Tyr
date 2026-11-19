@@ -8,14 +8,7 @@ import { listReports, readReport } from "../cli/core/reports.js";
 import { makeFinding, type EngineFinding, type ReviewContext } from "../cli/engine/findings.js";
 import type { CheckRun, EngineState } from "../cli/engine/model.js";
 import { emptyEngineState } from "../cli/engine/repo-state.js";
-import {
-    applyThreshold,
-    markRegressions,
-    withUntrackedFiles,
-    readFindingsState,
-    reviewPass,
-    type ReviewDetectors,
-} from "../cli/engine/review.js";
+import { applyThreshold, markRegressions, withUntrackedFiles, readFindingsState, reviewPass, type ReviewDetectors } from "../cli/engine/review.js";
 import { makeProject, removeProject } from "./helpers.js";
 
 function run(kind: CheckRun["kind"], outcome: CheckRun["outcome"], stderr = ""): CheckRun {
@@ -39,7 +32,15 @@ function run(kind: CheckRun["kind"], outcome: CheckRun["outcome"], stderr = ""):
 }
 
 const typeError = (line: number): EngineFinding =>
-    makeFinding({ source: "check", checkKind: "typecheck", severity: "error", title: "Type 'string' is not assignable to type 'number'", file: "src/a.ts", line, rule: "TS2322" });
+    makeFinding({
+        source: "check",
+        checkKind: "typecheck",
+        severity: "error",
+        title: "Type 'string' is not assignable to type 'number'",
+        file: "src/a.ts",
+        line,
+        rule: "TS2322",
+    });
 const todo = makeFinding({ source: "diff", severity: "info", title: "TODO added", file: "src/a.ts", line: 3, rule: "diff/todo" });
 const secret = makeFinding({ source: "diff", severity: "critical", title: "AWS key added", file: ".env", line: 1, rule: "diff/secret-aws-key" });
 
@@ -49,7 +50,11 @@ function passedBefore(...kinds: CheckRun["kind"][]): EngineState {
     return state;
 }
 
-const noDiff: ReviewContext = { root: "/x", diff: { files: [], totals: { files: 0, additions: 0, deletions: 0 }, untracked: null, patch: "", truncated: false }, base: "HEAD" };
+const noDiff: ReviewContext = {
+    root: "/x",
+    diff: { files: [], totals: { files: 0, additions: 0, deletions: 0 }, untracked: null, patch: "", truncated: false },
+    base: "HEAD",
+};
 
 describe("review: pure steps", () => {
     it("a new failure in a check that passed before is a regression; line drift is not new", () => {
@@ -70,11 +75,17 @@ describe("review: pure steps", () => {
     it("diff findings are never regressions; resolved findings are reported", () => {
         const result = markRegressions([todo], [secret], new Set(["typecheck"]));
         assert.equal(result.findings[0]!.regression, undefined);
-        assert.deepEqual(result.resolved.map((f) => f.rule), ["diff/secret-aws-key"]);
+        assert.deepEqual(
+            result.resolved.map((f) => f.rule),
+            ["diff/secret-aws-key"],
+        );
     });
 
     it("threshold keeps findings at or above it; critical always", () => {
-        assert.deepEqual(applyThreshold([todo, typeError(1), secret], "error").map((f) => f.severity), ["error", "critical"]);
+        assert.deepEqual(
+            applyThreshold([todo, typeError(1), secret], "error").map((f) => f.severity),
+            ["error", "critical"],
+        );
         assert.equal(applyThreshold([todo], "info").length, 1);
     });
 });
@@ -96,7 +107,11 @@ describe("review pass", () => {
                 detectors,
                 diff: noDiff,
             });
-            assert.deepEqual(result.findings.map((f) => f.severity), ["critical", "error"], "info dropped, most severe first");
+            assert.deepEqual(
+                result.findings.map((f) => f.severity),
+                ["critical", "error"],
+                "info dropped, most severe first",
+            );
             assert.equal(result.regressions.length, 1);
             assert.equal(result.all.length, 3);
             assert.ok(result.report);
@@ -161,7 +176,10 @@ describe("review pass", () => {
                 },
                 diff: noDiff,
             });
-            assert.deepEqual(result.findings.map((f) => f.rule), ["diff/todo"]);
+            assert.deepEqual(
+                result.findings.map((f) => f.rule),
+                ["diff/todo"],
+            );
             assert.ok(result.notes.some((n) => n.includes("parser bug")));
             assert.ok(result.notes.some((n) => n.includes("lint could not run")));
             assert.ok(result.notes.some((n) => n.includes("HTTP 529")));
@@ -194,7 +212,10 @@ describe("review pass", () => {
         const root = await makeProject({ "new.js": "const a = 1;\nconst b = 2;\n", "bin.dat": "x\u0000y" });
         try {
             const diff = await withUntrackedFiles(root, { ...noDiff.diff, untracked: ["new.js", "bin.dat", "gone.js"] });
-            assert.deepEqual(diff.files.map((f) => `${f.status} ${f.path} +${f.additions}`), ["A new.js +2"]);
+            assert.deepEqual(
+                diff.files.map((f) => `${f.status} ${f.path} +${f.additions}`),
+                ["A new.js +2"],
+            );
             assert.match(diff.patch, /\+\+\+ b\/new\.js\n@@ -0,0 \+1,2 @@\n\+const a = 1;\n\+const b = 2;\n/);
             assert.equal(diff.totals.additions, 2);
         } finally {

@@ -5,16 +5,7 @@ import { test } from "node:test";
 import * as assert from "node:assert/strict";
 import { Command } from "commander";
 import type { TyrEvent } from "../cli/core/events.js";
-import {
-    ConfigError,
-    errorTypeOf,
-    EXIT_CODES,
-    formatFatal,
-    GitUnavailableError,
-    NotInitializedError,
-    TyrError,
-    UsageError,
-} from "../cli/core/errors.js";
+import { ConfigError, errorTypeOf, EXIT_CODES, formatFatal, GitUnavailableError, NotInitializedError, TyrError, UsageError } from "../cli/core/errors.js";
 import { readFatalContext } from "../cli/core/fatal.js";
 import { logLevelOf, readGlobals, registerGlobalOptions } from "../cli/core/globals.js";
 import { emptyEngineState } from "../cli/engine/repo-state.js";
@@ -162,7 +153,19 @@ test("panel: initial state comes from engine.json and findings.json", () => {
         daemon: { running: false, pid: null, startedAt: null },
         engine: engineWith({
             checks: { test: last("failed"), build: last("passed") },
-            problems: [{ key: "check:test", kind: "test", title: "t", detail: "", firstSeenRunId: "r", lastSeenRunId: "r", firstSeenAt: T0, lastSeenAt: T0, regression: true }],
+            problems: [
+                {
+                    key: "check:test",
+                    kind: "test",
+                    title: "t",
+                    detail: "",
+                    firstSeenRunId: "r",
+                    lastSeenRunId: "r",
+                    firstSeenAt: T0,
+                    lastSeenAt: T0,
+                    regression: true,
+                },
+            ],
         }),
         findings: [{ severity: "error" }, { severity: "warning" }, { severity: "critical" }],
     });
@@ -242,11 +245,16 @@ test("panel: stopped daemon, problems, findings and alert; ASCII glyphs", () => 
 });
 
 test("panel: lines are cut to the terminal width, colour codes kept intact", () => {
-    const state: PanelState = { ...base(), problems: [{ kind: "test", regression: true }, { kind: "lint", regression: false }] };
+    const state: PanelState = {
+        ...base(),
+        problems: [
+            { kind: "test", regression: true },
+            { kind: "lint", regression: false },
+        ],
+    };
     for (const color of [false, true]) {
         const lines = renderPanel(state, { now: NOW, color, unicode: true, width: 30 });
         for (const line of lines) {
-             
             assert.ok(Array.from(line.replace(/\x1b\[[0-9;]*m/g, "")).length <= 29, `fits: ${JSON.stringify(line)}`);
         }
     }

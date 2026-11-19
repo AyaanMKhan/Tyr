@@ -367,17 +367,13 @@ export async function isAlreadyInitialized(root: string): Promise<boolean> {
 async function loadGitFileFilter(absRoot: string): Promise<GitFileFilter | null> {
     let stdout: string;
     try {
-        const result = await execFileAsync(
-            "git",
-            ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-            {
-                cwd: absRoot,
-                timeout: GIT_LS_FILES_TIMEOUT_MS,
-                maxBuffer: GIT_LS_FILES_MAX_BUFFER,
-                encoding: "utf8",
-                windowsHide: true,
-            },
-        );
+        const result = await execFileAsync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
+            cwd: absRoot,
+            timeout: GIT_LS_FILES_TIMEOUT_MS,
+            maxBuffer: GIT_LS_FILES_MAX_BUFFER,
+            encoding: "utf8",
+            windowsHide: true,
+        });
         stdout = result.stdout;
     } catch {
         // Not a repo (or a bare one), git missing, or the call timed out.
@@ -449,10 +445,7 @@ export interface ScanResult {
  * both to be listed. Files are still only ever taken from the walk, so a
  * tracked file that has been deleted from disk never appears.
  */
-export async function scanProject(
-    root: string,
-    options: ScanOptions = {},
-): Promise<ScanResult> {
+export async function scanProject(root: string, options: ScanOptions = {}): Promise<ScanResult> {
     const absRoot = path.resolve(root);
     const files: string[] = [];
     const skippedDirs: string[] = [];
@@ -465,8 +458,7 @@ export async function scanProject(
     const userIgnore = compileIgnore(options.extraIgnore ?? []);
 
     /** Root-relative path with `/` separators, the form ignore patterns expect. */
-    const toPosixRelative = (target: string): string =>
-        path.relative(absRoot, target).split(path.sep).join("/");
+    const toPosixRelative = (target: string): string => path.relative(absRoot, target).split(path.sep).join("/");
 
     const recordSkip = (dir: string): void => {
         skippedDirs.push(path.relative(absRoot, dir));

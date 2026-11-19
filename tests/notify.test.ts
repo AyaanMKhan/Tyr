@@ -19,7 +19,15 @@ function fakeJournal() {
     const events: TyrEventInput[] = [];
     const journal = async (_root: string, input: TyrEventInput): Promise<TyrEvent> => {
         events.push(input);
-        return { v: 1, id: `e${events.length}`, ts: new Date(0).toISOString(), source: input.source, kind: input.kind, message: input.message, data: input.data };
+        return {
+            v: 1,
+            id: `e${events.length}`,
+            ts: new Date(0).toISOString(),
+            source: input.source,
+            kind: input.kind,
+            message: input.message,
+            data: input.data,
+        };
     };
     return { events, journal };
 }
@@ -252,10 +260,7 @@ test("alerts: a re-opened problem (new first run) counts as new", () => {
 });
 
 test("alerts: serious new diff findings alert; check findings and warnings do not", () => {
-    assert.equal(
-        passNotification({ before: state([]), after: state([]), review: review([{ source: "check" }, { severity: "warning" }]) }),
-        null,
-    );
+    assert.equal(passNotification({ before: state([]), after: state([]), review: review([{ source: "check" }, { severity: "warning" }]) }), null);
     const note = passNotification({ before: state([]), after: state([]), review: review([{ severity: "critical", title: "secret", file: "a.ts", line: 3 }]) })!;
     assert.equal(note.severity, "error");
     assert.equal(note.title, "Tyr: 1 new problem in your changes");
@@ -283,7 +288,14 @@ test("event-view renders a notification by severity and bells only for the termi
         source: "tyr",
         kind: "notification",
         message: "Tyr: test regressed: test regressed: x",
-        data: { title: "Tyr: test regressed", body: "test regressed: x", severity: "error", targets: ["terminal"], delivered: ["terminal"], failed: [{ target: "desktop", reason: "no display" }] },
+        data: {
+            title: "Tyr: test regressed",
+            body: "test regressed: x",
+            severity: "error",
+            targets: ["terminal"],
+            delivered: ["terminal"],
+            failed: [{ target: "desktop", reason: "no display" }],
+        },
     };
     const line = formatEvent(event, { color: false, unicode: true, verbose: true });
     assert.match(line, /Tyr: test regressed - test regressed: x/);

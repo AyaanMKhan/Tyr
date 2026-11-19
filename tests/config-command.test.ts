@@ -158,7 +158,7 @@ test("invalid values are a usage error naming what the key accepts", async () =>
     });
 });
 
-test("notifications.targets: none and \"\" both store an empty list", async () => {
+test('notifications.targets: none and "" both store an empty list', async () => {
     await withProject(async ({ root, env, projectFile }) => {
         for (const raw of ["none", ""]) {
             await setSetting("notifications.targets", "terminal", { scope: "project", root, env });
@@ -174,11 +174,7 @@ test("project writes need an initialized project (NOT_INITIALIZED)", async () =>
         async ({ root, env }) => {
             const location = await locateProject(root);
             assert.deepEqual(location, { root, initialized: false });
-            await rejectsWith(
-                setSetting("checks.lint", "false", { scope: "project", root: null, env }),
-                EXIT_CODES.NOT_INITIALIZED,
-                /not initialized/,
-            );
+            await rejectsWith(setSetting("checks.lint", "false", { scope: "project", root: null, env }), EXIT_CODES.NOT_INITIALIZED, /not initialized/);
         },
         { initialized: false },
     );
@@ -396,9 +392,7 @@ test("tyr config set warns when an env var overrides the key in this shell", asy
         assert.match(result.stderr, /TYR_CHECKS_LINT is set in this environment and overrides checks\.lint/);
         assert.deepEqual(await readJson(fixture.projectFile), { version: 1, checks: { lint: false } });
 
-        const json = JSON.parse(
-            tyr(fixture, ["config", "set", "checks.test", "false", "--json"], { env: { TYR_CHECKS_TEST: "1" } }).stdout,
-        );
+        const json = JSON.parse(tyr(fixture, ["config", "set", "checks.test", "false", "--json"], { env: { TYR_CHECKS_TEST: "1" } }).stdout);
         assert.deepEqual(json.shadowedBy, { layer: "env", source: "TYR_CHECKS_TEST" });
         assert.equal(json.warnings.length, 1);
     });

@@ -1,15 +1,7 @@
 import { test, afterEach } from "node:test";
 import * as assert from "node:assert/strict";
 import { Command } from "commander";
-import {
-    ANTHROPIC_API_KEY_ENV,
-    applyEnvGlobals,
-    ENV_VARS,
-    JSON_ENV,
-    QUIET_ENV,
-    readEnvSettings,
-    VERBOSE_ENV,
-} from "../cli/core/env-settings.js";
+import { ANTHROPIC_API_KEY_ENV, applyEnvGlobals, ENV_VARS, JSON_ENV, QUIET_ENV, readEnvSettings, VERBOSE_ENV } from "../cli/core/env-settings.js";
 import { readGlobals, registerGlobalOptions, verbosityOf } from "../cli/core/globals.js";
 import { getLogLevel, LOG_LEVEL_ENV, setLogLevel } from "../cli/core/log.js";
 import { SETTING_KEYS } from "../cli/core/settings-types.js";
@@ -22,8 +14,17 @@ test("an empty environment yields an empty patch", () => {
 
 test("boolean variables accept every spelling, case-insensitively", () => {
     for (const [raw, value] of [
-        ["true", true], ["1", true], ["yes", true], ["on", true], ["TRUE", true], [" Yes ", true],
-        ["false", false], ["0", false], ["no", false], ["off", false], ["Off", false],
+        ["true", true],
+        ["1", true],
+        ["yes", true],
+        ["on", true],
+        ["TRUE", true],
+        [" Yes ", true],
+        ["false", false],
+        ["0", false],
+        ["no", false],
+        ["off", false],
+        ["Off", false],
     ] as const) {
         const { patch, sources, warnings } = readEnvSettings({ TYR_CHECKS_TEST: raw });
         assert.deepEqual(patch, { checks: { test: value } }, raw);
@@ -173,10 +174,7 @@ test("TYR_VERBOSE implies debug logging unless a level is set more specifically"
     assert.equal(applyEnvGlobals({}, { TYR_VERBOSE: "1" }).options.logLevel, undefined);
     assert.equal(applyEnvGlobals({}, { TYR_VERBOSE: "1", TYR_LOG_LEVEL: "warn" }).options.logLevel, "warn");
     assert.equal(applyEnvGlobals({}, { TYR_VERBOSE: "1", TYR_LOG_LEVEL: "bad" }).options.logLevel, undefined);
-    assert.equal(
-        applyEnvGlobals({ logLevel: "error" }, { TYR_VERBOSE: "1", TYR_LOG_LEVEL: "warn" }).options.logLevel,
-        "error",
-    );
+    assert.equal(applyEnvGlobals({ logLevel: "error" }, { TYR_VERBOSE: "1", TYR_LOG_LEVEL: "warn" }).options.logLevel, "error");
 });
 
 const ENV_NAMES = [QUIET_ENV, VERBOSE_ENV, JSON_ENV, LOG_LEVEL_ENV];

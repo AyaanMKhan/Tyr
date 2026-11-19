@@ -60,16 +60,7 @@ export const GITIGNORE_MESSAGES = {
  * `.tyr/` are unanchored and also match deeper down, which is a superset of
  * what we want, so they count.
  */
-const COVERING_LINES = new Set([
-    ".tyr",
-    ".tyr/",
-    "/.tyr",
-    "/.tyr/",
-    ".tyr/*",
-    "/.tyr/*",
-    ".tyr/**",
-    "/.tyr/**",
-]);
+const COVERING_LINES = new Set([".tyr", ".tyr/", "/.tyr", "/.tyr/", ".tyr/*", "/.tyr/*", ".tyr/**", "/.tyr/**"]);
 
 /** What `tyr init` ended up doing about the root `.gitignore`. */
 export type GitignoreOutcome = "added" | "present" | "skipped" | "declined";

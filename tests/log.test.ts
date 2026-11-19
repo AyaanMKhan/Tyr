@@ -3,16 +3,7 @@ import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Command } from "commander";
-import {
-    formatLogLine,
-    getLogLevel,
-    isLogLevelEnabled,
-    LOG_LEVEL_ENV,
-    parseLogLevel,
-    rotateFileIfLarge,
-    setLogLevel,
-    writeLog,
-} from "../cli/core/log.js";
+import { formatLogLine, getLogLevel, isLogLevelEnabled, LOG_LEVEL_ENV, parseLogLevel, rotateFileIfLarge, setLogLevel, writeLog } from "../cli/core/log.js";
 import { appendLog, resolveTyrPaths } from "../cli/core/scaffold.js";
 import { registerGlobalOptions } from "../cli/core/globals.js";
 import { makeProject, removeProject } from "./helpers.js";
@@ -110,10 +101,7 @@ test("--log-level and --verbose set the threshold in the preAction hook", async 
     assert.equal(await run(["noop"]), "warn");
     assert.equal(await run(["--log-level", "debug", "noop"]), "debug");
 
-    await assert.rejects(
-        run(["--log-level", "loud", "noop"]),
-        (error: Error & { code?: string }) => error.code === "commander.invalidArgument",
-    );
+    await assert.rejects(run(["--log-level", "loud", "noop"]), (error: Error & { code?: string }) => error.code === "commander.invalidArgument");
 });
 
 /* ---------------------------- formatting --------------------------- */
@@ -176,11 +164,7 @@ test("concurrent writers rotating at once never throw or lose a line", async () 
     const file = path.join(root, "tyr.log");
     const count = 30;
     try {
-        await Promise.all(
-            Array.from({ length: count }, (_, n) =>
-                writeLog(file, "info", `concurrent-${n}`, { maxBytes: 64, keep: 100, threshold: "info" }),
-            ),
-        );
+        await Promise.all(Array.from({ length: count }, (_, n) => writeLog(file, "info", `concurrent-${n}`, { maxBytes: 64, keep: 100, threshold: "info" })));
         let all = "";
         for (const name of await fs.readdir(root)) {
             all += await readOrEmpty(path.join(root, name));

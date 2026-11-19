@@ -4,15 +4,7 @@
 import { test } from "node:test";
 import * as assert from "node:assert/strict";
 import type { TyrEvent } from "../cli/core/events.js";
-import {
-    createEventFormatter,
-    formatClock,
-    formatDuration,
-    formatEvent,
-    formatUptime,
-    parseSince,
-    type EventViewOptions,
-} from "../cli/ui/event-view.js";
+import { createEventFormatter, formatClock, formatDuration, formatEvent, formatUptime, parseSince, type EventViewOptions } from "../cli/ui/event-view.js";
 
 const NOW = new Date(2026, 10, 10, 15, 0, 0);
 /** A timestamp on NOW's local day, so no date prefix is added. */
@@ -124,10 +116,7 @@ test("claude kinds", () => {
         summary({ source: "claude", kind: "claude.prompt", data: { ...data, prompt: "fix the tests", promptLength: 200 } }),
         'prompt: "fix the tests…"',
     );
-    assert.equal(
-        summary({ source: "claude", kind: "claude.tool_use", data: { ...data, tool: "Edit", input: "src/a.ts", file: "src/a.ts" } }),
-        "Edit src/a.ts",
-    );
+    assert.equal(summary({ source: "claude", kind: "claude.tool_use", data: { ...data, tool: "Edit", input: "src/a.ts", file: "src/a.ts" } }), "Edit src/a.ts");
     assert.equal(summary({ source: "claude", kind: "claude.tool_use", data: { ...data, tool: "Bash", input: "npm test" } }), "Bash: npm test");
     assert.equal(
         summary({ source: "claude", kind: "claude.tool_use", data: { ...data, tool: "Grep", input: "TODO", agentType: "Explore" } }),
@@ -142,7 +131,11 @@ test("claude kinds", () => {
         "Bash: sleep  ✗ interrupted",
     );
     assert.equal(
-        summary({ source: "claude", kind: "claude.tool_result", data: { ...data, tool: "Edit", input: "a.ts", file: "a.ts", success: true, durationMs: 1250 } }),
+        summary({
+            source: "claude",
+            kind: "claude.tool_result",
+            data: { ...data, tool: "Edit", input: "a.ts", file: "a.ts", success: true, durationMs: 1250 },
+        }),
         "Edit a.ts  ✓ 1.3s",
     );
     assert.equal(summary({ source: "claude", kind: "claude.subagent_stop", data: { ...data, agentType: "Explore" } }), "subagent Explore finished");
@@ -186,12 +179,12 @@ test("ASCII fallback replaces every glyph", () => {
     assert.equal(line({ source: "claude", kind: "claude.stop" }, ascii).slice(9, 10), "@");
     assert.equal(line({ source: "fs", kind: "fs.changed", data: { total: 1, modified: ["a"] } }, ascii).slice(9, 10), "+");
     assert.equal(line({ source: "tyr", kind: "init.completed" }, ascii).slice(9, 10), "*");
+    assert.equal(summary({ source: "claude", kind: "claude.tool_result", data: { tool: "Bash", input: "x", success: false } }, ascii), "Bash: x  x failed");
     assert.equal(
-        summary({ source: "claude", kind: "claude.tool_result", data: { tool: "Bash", input: "x", success: false } }, ascii),
-        "Bash: x  x failed",
-    );
-    assert.equal(
-        summary({ source: "git", kind: "git.head", data: { previous: { commit: "aaaaaaa1" }, current: { branch: "m", commit: "bbbbbbb2" }, commitChanged: true } }, ascii),
+        summary(
+            { source: "git", kind: "git.head", data: { previous: { commit: "aaaaaaa1" }, current: { branch: "m", commit: "bbbbbbb2" }, commitChanged: true } },
+            ascii,
+        ),
         "m moved aaaaaaa -> bbbbbbb",
     );
     const long = line({ source: "tyr", kind: "x", message: "y".repeat(200) }, { ...ascii, width: 40 });
@@ -209,10 +202,7 @@ test("width truncates the summary but keeps the outcome", () => {
 });
 
 test("verbose adds the kind, id and details on indented lines", () => {
-    const text = line(
-        { source: "fs", kind: "fs.changed", data: { added: ["n.ts"], modified: ["a.ts"], removed: [], total: 2 } },
-        { verbose: true },
-    );
+    const text = line({ source: "fs", kind: "fs.changed", data: { added: ["n.ts"], modified: ["a.ts"], removed: [], total: 2 } }, { verbose: true });
     assert.deepEqual(text.split("\n"), [
         "14:22:33 ✎ fs      2 files changed: n.ts, a.ts",
         "           fs.changed  id-1",

@@ -212,7 +212,11 @@ test("collectStatus: a corrupt tyr.json is a warning, not a crash", async () => 
 test("collectStatus: findings come from the newest review report when the engine has none", async () => {
     const root = await makeProject({ ".tyr/tyr.json": "{}\n" });
     try {
-        await writeReport(root, { kind: "review", title: "old", findings: [{ severity: "info", title: "old note" }] }, { now: new Date("2026-11-01T00:00:00Z"), retention: false });
+        await writeReport(
+            root,
+            { kind: "review", title: "old", findings: [{ severity: "info", title: "old note" }] },
+            { now: new Date("2026-11-01T00:00:00Z"), retention: false },
+        );
         const written = await writeReport(
             root,
             {
@@ -261,9 +265,7 @@ test("collectStatus: findings.json is authoritative, threshold-filtered and capp
             JSON.stringify({ version: FINDINGS_STATE_VERSION, updatedAt: "2026-11-17T11:00:00.000Z", findings, reportId: null }),
         );
 
-        const report = initialized(
-            await collectStatus(root, { now: NOW, daemonStatus: NOT_RUNNING, scanFiles: false, threshold: "warning", maxFindings: 2 }),
-        );
+        const report = initialized(await collectStatus(root, { now: NOW, daemonStatus: NOT_RUNNING, scanFiles: false, threshold: "warning", maxFindings: 2 }));
         assert.equal(report.findings.source, "engine");
         assert.equal(report.findings.updatedAt, "2026-11-17T11:00:00.000Z");
         assert.equal(report.findings.threshold, "warning");

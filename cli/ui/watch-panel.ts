@@ -158,7 +158,6 @@ function ago(ts: string, now: Date): string {
 
 /** Visible length, ignoring SGR codes. */
 function visible(text: string): number {
-     
     return Array.from(text.replace(/\x1b\[[0-9;]*m/g, "")).length;
 }
 
@@ -169,7 +168,7 @@ export function fitLine(text: string, max: number, unicode: boolean): string {
     const keep = Math.max(0, max - Array.from(ellipsis).length);
     let out = "";
     let shown = 0;
-     
+
     const parts = text.split(/(\x1b\[[0-9;]*m)/);
     for (const part of parts) {
         if (part.startsWith("\x1b[")) {
@@ -187,9 +186,7 @@ export function fitLine(text: string, max: number, unicode: boolean): string {
 
 export function renderPanel(state: PanelState, options: PanelRenderOptions): string[] {
     const { now, color, unicode } = options;
-    const g = unicode
-        ? { on: "●", off: "○", ok: "✓", bad: "✗", rule: "─", dot: "·" }
-        : { on: "*", off: "o", ok: "ok", bad: "X", rule: "-", dot: "|" };
+    const g = unicode ? { on: "●", off: "○", ok: "✓", bad: "✗", rule: "─", dot: "·" } : { on: "*", off: "o", ok: "ok", bad: "X", rule: "-", dot: "|" };
     const label = (text: string): string => paint(text.padEnd(9), SGR.dim, color);
     const sep = paint(` ${g.dot} `, SGR.dim, color);
 
@@ -226,11 +223,7 @@ export function renderPanel(state: PanelState, options: PanelRenderOptions): str
     const problems =
         state.problems.length === 0
             ? paint("none", SGR.green, color)
-            : paint(
-                  `${state.problems.length}: ${state.problems.map((p) => `${p.kind} ${p.regression ? "regressed" : "failing"}`).join(", ")}`,
-                  SGR.red,
-                  color,
-              );
+            : paint(`${state.problems.length}: ${state.problems.map((p) => `${p.kind} ${p.regression ? "regressed" : "failing"}`).join(", ")}`, SGR.red, color);
     let line3 = label("problems") + problems;
     if (state.findings !== null) {
         const f = state.findings;

@@ -38,7 +38,9 @@ export function registerStatusCommand(program: Command) {
         .description("Show what Tyr knows about this project and what it is doing")
         .option("--no-scan", "Skip the file scan used to measure drift since the last index (faster)")
         .option("--no-color", "Disable colored output")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Summarizes everything recorded in .tyr/: the project profile from "tyr init",
 whether the background process is running, the last run and report, the
 latest check results and open problems, open findings by severity, and how
@@ -56,7 +58,8 @@ Examples:
   $ tyr status --verbose            Everything, including recent reports
   $ tyr status --no-scan            Skip the file scan (HEAD drift only)
   $ tyr status --json | jq .findings.counts
-  $ tyr --cwd ../api status         Another project`)
+  $ tyr --cwd ../api status         Another project`,
+        )
         .action(async (options: CommandOptions, command: Command) => {
             const globals = readGlobals(command);
             const verbosity = verbosityOf(globals);

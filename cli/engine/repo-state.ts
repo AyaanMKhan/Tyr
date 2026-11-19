@@ -105,9 +105,7 @@ export function applyCheckRun(state: EngineState, run: CheckRun, now: Date = new
             lastSeenAt: seenAt,
             regression: existing?.regression ?? previous.lastGood !== null,
         };
-        problems = existing
-            ? problems.map((problem) => (problem.key === key ? refreshed : problem))
-            : [...problems, refreshed];
+        problems = existing ? problems.map((problem) => (problem.key === key ? refreshed : problem)) : [...problems, refreshed];
     }
 
     return { ...state, version: ENGINE_STATE_VERSION, updatedAt: now.toISOString(), checks, problems };
@@ -185,10 +183,7 @@ function parseEngineState(value: Record<string, unknown>): EngineState | null {
 
     const cleanProblems = problems.filter(
         (problem): problem is Problem =>
-            isObject(problem) &&
-            typeof problem.key === "string" &&
-            typeof problem.firstSeenAt === "string" &&
-            typeof problem.lastSeenAt === "string",
+            isObject(problem) && typeof problem.key === "string" && typeof problem.firstSeenAt === "string" && typeof problem.lastSeenAt === "string",
     );
 
     return {

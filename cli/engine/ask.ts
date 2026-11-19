@@ -26,16 +26,7 @@ import type { TyrSettings } from "../core/settings-types.js";
 import { collectStatus, type InitializedStatus } from "../core/status.js";
 import type { TyrConfig } from "../core/types.js";
 import { redactSecrets } from "./diff-review.js";
-import {
-    errorReason,
-    profileText,
-    readDoc,
-    redact,
-    supportsEffort,
-    trimPatch,
-    usageOf,
-    type LlmReviewUsage,
-} from "./llm-review.js";
+import { errorReason, profileText, readDoc, redact, supportsEffort, trimPatch, usageOf, type LlmReviewUsage } from "./llm-review.js";
 
 /** The one SDK call ask makes; `messages` of an Anthropic client fits. */
 export interface AskMessagesClient {
@@ -110,9 +101,7 @@ export async function askRepository(root: string, question: string, opts: AskOpt
 
         const client = opts.client ?? defaultClient(apiKey);
         const timeoutMs = opts.timeoutMs ?? DEFAULT_ASK_TIMEOUT_MS;
-        const signal = opts.signal
-            ? AbortSignal.any([opts.signal, AbortSignal.timeout(timeoutMs)])
-            : AbortSignal.timeout(timeoutMs);
+        const signal = opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
         const stream = client.stream(body, { signal, timeout: timeoutMs });
         for await (const event of stream) {
             if (event.type === "content_block_delta" && event.delta.type === "text_delta") {

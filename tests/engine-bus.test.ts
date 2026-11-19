@@ -155,15 +155,11 @@ test("normalizeEvent: claude tool hooks -> claude.tool", () => {
     assert.equal(use.tool, "Edit");
     assert.equal("success" in use, false);
 
-    const ok = normalizeEvent(
-        journal(hook({ hook_event_name: "PostToolUse", session_id: "s1", tool_name: "Bash", tool_response: {} })),
-    );
+    const ok = normalizeEvent(journal(hook({ hook_event_name: "PostToolUse", session_id: "s1", tool_name: "Bash", tool_response: {} })));
     assert.equal(ok.type === "claude.tool" && ok.phase, "result");
     assert.equal(ok.type === "claude.tool" && ok.success, true);
 
-    const failed = normalizeEvent(
-        journal(hook({ hook_event_name: "PostToolUseFailure", session_id: "s1", tool_name: "Bash", error: "boom" })),
-    );
+    const failed = normalizeEvent(journal(hook({ hook_event_name: "PostToolUseFailure", session_id: "s1", tool_name: "Bash", error: "boom" })));
     assert.equal(failed.type === "claude.tool" && failed.success, false);
 });
 
@@ -385,7 +381,10 @@ test("attachJournal: published journal events reach subscribers normalized, once
         await publish(root, { source: "check", kind: "check.passed", data: { run: sampleRun({ outcome: "passed", exitCode: 0 }) } });
         await publish(root, { source: "tyr", kind: "daemon.warning" });
 
-        await until(() => seen.length >= 4, () => seen.map((e) => e.raw.kind).join(","));
+        await until(
+            () => seen.length >= 4,
+            () => seen.map((e) => e.raw.kind).join(","),
+        );
         await new Promise((resolve) => setTimeout(resolve, 100));
         assert.deepEqual(
             seen.map((e) => e.type),
@@ -413,7 +412,10 @@ test("attachJournal: an aborted signal stops delivery", async () => {
         const controller = new AbortController();
         await attachJournal(root, bus, { forcePolling: true, pollIntervalMs: 20, persistent: false, signal: controller.signal });
         await publish(root, { source: "tyr", kind: "first" });
-        await until(() => seen.length >= 1, () => seen.join(","));
+        await until(
+            () => seen.length >= 1,
+            () => seen.join(","),
+        );
         controller.abort();
         await publish(root, { source: "tyr", kind: "second" });
         await new Promise((resolve) => setTimeout(resolve, 150));

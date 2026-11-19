@@ -5,14 +5,7 @@ import { test } from "node:test";
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {
-    CURRENT_CONFIG_VERSION,
-    CURRENT_STATE_VERSION,
-    migrateConfig,
-    migrateState,
-    runMigrations,
-    type MigrationStep,
-} from "../cli/core/migrate.js";
+import { CURRENT_CONFIG_VERSION, CURRENT_STATE_VERSION, migrateConfig, migrateState, runMigrations, type MigrationStep } from "../cli/core/migrate.js";
 import { loadConfig, loadState, readConfig, readState, scaffold } from "../cli/core/scaffold.js";
 import type { InitSnapshot } from "../cli/core/types.js";
 import { makeProject, removeProject } from "./helpers.js";

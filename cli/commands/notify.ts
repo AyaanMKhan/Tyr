@@ -31,7 +31,9 @@ export function registerNotifyCommand(program: Command): void {
         .option("-t, --target <target...>", `Send to these targets instead of notifications.targets (${NOTIFY_TARGETS.join(", ")})`)
         .option("--title <title>", "Notification title", "Tyr")
         .addOption(new Option("--severity <level>", "How urgent it is").choices(["info", "warning", "error"]).default("info"))
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 The background process sends a notification when a check regresses or starts
 failing, when the diff review finds a new serious problem, and when failing
 checks pass again: one per check pass at most, and the same news only once
@@ -45,7 +47,8 @@ Targets (setting notifications.targets, env TYR_NOTIFY):
 Examples:
   $ tyr notify                                Test your configured targets
   $ tyr notify -t desktop                     Test the desktop target only
-  $ tyr config set notifications.targets terminal,desktop`)
+  $ tyr config set notifications.targets terminal,desktop`,
+        )
         .action(async (message: string, options: NotifyOptions, command: Command) => {
             const globals = readGlobals(command);
             const reporter = createReporter({ verbosity: verbosityOf(globals), stream: globals.json ? process.stderr : undefined });
@@ -56,7 +59,11 @@ Examples:
                     hint: "Pass --target desktop, or run: tyr config set notifications.targets terminal,desktop",
                 });
             }
-            const result = await deliverNotification(root, { title: options.title ?? "Tyr", message, severity: options.severity, key: `manual:${Date.now()}` }, raw);
+            const result = await deliverNotification(
+                root,
+                { title: options.title ?? "Tyr", message, severity: options.severity, key: `manual:${Date.now()}` },
+                raw,
+            );
             const ok = result.results.some((r) => r.ok);
             if (globals.json) {
                 printJson({ ok, targets: parseTargets(raw).targets, results: result.results, eventId: result.event?.id ?? null });

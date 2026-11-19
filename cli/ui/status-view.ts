@@ -73,9 +73,7 @@ export function renderStatus(report: StatusReport, options: StatusViewOptions = 
         color: options.color === true,
         verbose: options.verbose === true,
         now: options.now ?? (Number.isNaN(parsedNow.getTime()) ? new Date() : parsedNow),
-        glyph: unicode
-            ? { ok: "✓", fail: "✗", dot: "●", arrow: "→", warn: "!", sep: "·" }
-            : { ok: "v", fail: "x", dot: "*", arrow: "->", warn: "!", sep: "-" },
+        glyph: unicode ? { ok: "✓", fail: "✗", dot: "●", arrow: "→", warn: "!", sep: "·" } : { ok: "v", fail: "x", dot: "*", arrow: "->", warn: "!", sep: "-" },
     };
     return report.initialized ? renderInitialized(report, ctx) : renderUninitialized(report, ctx);
 }
@@ -86,10 +84,7 @@ export function renderStatus(report: StatusReport, options: StatusViewOptions = 
 
 function renderUninitialized(report: UninitializedStatus, ctx: Ctx): string[] {
     const why = report.reason === "no-config" ? " (.tyr/ exists but has no tyr.json)" : "";
-    return [
-        `Tyr is not initialized in ${report.root}${why}.`,
-        `Run ${paint(`"${report.suggestion}"`, SGR.bold, ctx.color)} to set it up.`,
-    ];
+    return [`Tyr is not initialized in ${report.root}${why}.`, `Run ${paint(`"${report.suggestion}"`, SGR.bold, ctx.color)} to set it up.`];
 }
 
 /* -------------------------------------------------------------------------
@@ -213,13 +208,7 @@ function projectSection(project: StatusProject | null, ctx: Ctx): string[] {
             ? `branch ${project.git.branch ?? "unknown"} at init${project.git.remote === null ? "" : `, remote ${project.git.remote}`}`
             : "not a git repository at init";
         lines.push(row("Git", git, ctx));
-        lines.push(
-            row(
-                "Initialized",
-                `${formatAgo(project.initializedAt, ctx.now)} by Tyr ${project.tyrVersion} (config v${project.configVersion})`,
-                ctx,
-            ),
-        );
+        lines.push(row("Initialized", `${formatAgo(project.initializedAt, ctx.now)} by Tyr ${project.tyrVersion} (config v${project.configVersion})`, ctx));
         if (project.migrated.length > 0) lines.push(cont(dim(`migrated on read: ${project.migrated.join(", ")}`, ctx)));
     }
     return lines;
@@ -353,7 +342,9 @@ function findingLine(finding: StatusFinding, ctx: Ctx): string {
 function findingsSection(findings: StatusFindings, ctx: Ctx): string[] {
     if (findings.source === "none") return [row("Findings", dim("none recorded yet", ctx), ctx)];
     if (findings.total === 0) {
-        return [row("Findings", `${paint(ctx.glyph.ok, SGR.green, ctx.color)} none open ${dim(`(as of ${formatAgo(findings.updatedAt, ctx.now)})`, ctx)}`, ctx)];
+        return [
+            row("Findings", `${paint(ctx.glyph.ok, SGR.green, ctx.color)} none open ${dim(`(as of ${formatAgo(findings.updatedAt, ctx.now)})`, ctx)}`, ctx),
+        ];
     }
     const regressions = findings.regressions > 0 ? `, ${plural(findings.regressions, "regression")}` : "";
     const lines = [row("Findings", `${findings.total} open: ${countsText(findings.counts)}${regressions}`, ctx)];

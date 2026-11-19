@@ -73,11 +73,7 @@ export interface HookInput {
  * an error, a payload over `maxBytes`, or no end within `timeoutMs`.
  * Never rejects.
  */
-export function readHookStdin(
-    input: HookInput,
-    timeoutMs: number = HOOK_STDIN_TIMEOUT_MS,
-    maxBytes: number = HOOK_MAX_PAYLOAD_BYTES,
-): Promise<string | null> {
+export function readHookStdin(input: HookInput, timeoutMs: number = HOOK_STDIN_TIMEOUT_MS, maxBytes: number = HOOK_MAX_PAYLOAD_BYTES): Promise<string | null> {
     if (input.isTTY === true) return Promise.resolve(null);
     return new Promise((resolve) => {
         const chunks: Buffer[] = [];
@@ -284,7 +280,9 @@ export function registerHooksCommand(program: Command): void {
     const hooks = program
         .command("hooks")
         .description("Connect Tyr to Claude Code through hooks")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Claude Code can run a command on every session start, prompt, tool call and
 stop. "tyr hooks install" registers Tyr for those events in the project's
 .claude/settings.local.json (or .claude/settings.json with --shared), and each
@@ -302,14 +300,17 @@ Examples:
   $ tyr hooks install --shared --command "npx tyr hook"
                                    For the whole team (settings.json, committed)
   $ tyr hooks status
-  $ tyr hooks uninstall`);
+  $ tyr hooks uninstall`,
+        );
 
     hooks
         .command("install")
         .description("Add Tyr's hooks to .claude/settings.local.json (or settings.json with --shared)")
         .option("--shared", "Write .claude/settings.json, which is committed and applies to everyone")
-        .option("--command <cmd>", "Command Claude Code should run (default: node \"<this Tyr>/dist/cli/index.js\" hook)")
-        .addHelpText("after", `
+        .option("--command <cmd>", 'Command Claude Code should run (default: node "<this Tyr>/dist/cli/index.js" hook)')
+        .addHelpText(
+            "after",
+            `
 Adds one entry per event (${TYR_HOOK_EVENTS.join(", ")})
 and leaves every other setting and hook in the file alone. Running it again
 is harmless; with a different --command it replaces Tyr's entries instead of
@@ -324,7 +325,8 @@ Examples:
   $ tyr hooks install
   $ tyr hooks install --command "tyr hook"
   $ tyr hooks install --shared --command "npx tyr hook"
-  $ tyr hooks install --json      { ok, root, file, changed, events, command, warnings }`)
+  $ tyr hooks install --json      { ok, root, file, changed, events, command, warnings }`,
+        )
         .action(async (options: InstallOptions, command: Command) => {
             const globals = readGlobals(command);
             const reporter = reporterFor(globals);
@@ -374,7 +376,9 @@ Examples:
         .description("Remove Tyr's hooks from .claude/settings.local.json and .claude/settings.json")
         .option("--shared", "Only .claude/settings.json")
         .option("--local", "Only .claude/settings.local.json")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Removes only the entries Tyr installed (they end in "# tyr:claude-hook");
 your own hooks and settings stay. Without --shared or --local both files are
 cleaned, and a file left completely empty is deleted. The journal
@@ -383,7 +387,8 @@ cleaned, and a file left completely empty is deleted. The journal
 Examples:
   $ tyr hooks uninstall
   $ tyr hooks uninstall --shared
-  $ tyr hooks uninstall --json    { ok, root, files: [{ file, changed, events }] }`)
+  $ tyr hooks uninstall --json    { ok, root, files: [{ file, changed, events }] }`,
+        )
         .action(async (options: UninstallOptions, command: Command) => {
             const globals = readGlobals(command);
             const reporter = reporterFor(globals);
@@ -406,14 +411,17 @@ Examples:
     hooks
         .command("status")
         .description("Show whether Tyr's Claude Code hooks are installed")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Checks .claude/settings.local.json and .claude/settings.json for Tyr's
 entries and whether the project is initialized (events are only recorded
 when it is). Exits 0 either way; use --json to script it.
 
 Examples:
   $ tyr hooks status
-  $ tyr hooks status --json   { ok, root, initialized, installed, files: [{ file, exists, installed, missing, commands, error? }] }`)
+  $ tyr hooks status --json   { ok, root, initialized, installed, files: [{ file, exists, installed, missing, commands, error? }] }`,
+        )
         .action(async (_options, command: Command) => {
             const globals = readGlobals(command);
             const reporter = reporterFor(globals);

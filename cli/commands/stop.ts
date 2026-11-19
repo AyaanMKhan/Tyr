@@ -16,7 +16,9 @@ export function registerStopCommand(program: Command) {
     program
         .command("stop")
         .description("Stop Tyr's background process")
-        .addHelpText("after", `
+        .addHelpText(
+            "after",
+            `
 Asks the background process to shut down, waits for it to mark state.json
 "stopped" and remove .tyr/state/daemon.pid, and kills it if it does not exit
 within a few seconds. Stopping when nothing is running is not an error; a
@@ -24,7 +26,8 @@ stale PID file left by a crash is cleaned up.
 
 Examples:
   $ tyr stop
-  $ tyr stop --json     Print { ok, root, pid, graceful, staleCleared }`)
+  $ tyr stop --json     Print { ok, root, pid, graceful, staleCleared }`,
+        )
         .action(async (_options, command: Command) => {
             const globals = readGlobals(command);
             const reporter = createReporter({
@@ -37,11 +40,7 @@ Examples:
                 const root = await findProjectRoot();
                 const outcome = await stopDaemon(root);
                 if (outcome.pid === null) {
-                    task.skip(
-                        outcome.staleCleared
-                            ? "Background process was not running (cleared a stale PID file)"
-                            : "Background process is not running",
-                    );
+                    task.skip(outcome.staleCleared ? "Background process was not running (cleared a stale PID file)" : "Background process is not running");
                 } else if (outcome.graceful) {
                     task.succeed(`Background process stopped (pid ${outcome.pid})`);
                 } else {

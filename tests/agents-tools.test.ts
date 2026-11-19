@@ -45,8 +45,14 @@ async function call(ts: ReturnType<typeof createToolset>, name: string, input: u
 }
 
 test("ALL_TOOLS has the agreed names and toolsFor picks in order", () => {
-    assert.deepEqual(ALL_TOOLS.map((t) => t.name), [...TOOL_NAMES]);
-    assert.deepEqual(toolsFor(["write_file", "read_file", "nope", "read_file"]).map((t) => t.name), ["write_file", "read_file"]);
+    assert.deepEqual(
+        ALL_TOOLS.map((t) => t.name),
+        [...TOOL_NAMES],
+    );
+    assert.deepEqual(
+        toolsFor(["write_file", "read_file", "nope", "read_file"]).map((t) => t.name),
+        ["write_file", "read_file"],
+    );
     const perms = Object.fromEntries(ALL_TOOLS.map((t) => [t.name, t.permission]));
     assert.deepEqual(perms, {
         read_file: "read",
@@ -171,10 +177,7 @@ test("edit_file requires a unique exact match and records the change", async () 
         assert.equal(ts.changes.length, 1);
         assert.equal(ts.changes[0].path, "f.ts");
         assert.equal(ts.changes[0].tool, "edit_file");
-        assert.equal(
-            ts.changes[0].patch,
-            "--- a/f.ts\n+++ b/f.ts\n@@ -1,3 +1,3 @@\n const a = 1;\n-const b = 1;\n+const b = 42;\n const c = 2;\n",
-        );
+        assert.equal(ts.changes[0].patch, "--- a/f.ts\n+++ b/f.ts\n@@ -1,3 +1,3 @@\n const a = 1;\n-const b = 1;\n+const b = 42;\n const c = 2;\n");
     } finally {
         await removeProject(root);
     }
@@ -207,7 +210,10 @@ test("dry run describes write changes without writing or asking for approval", a
         assert.equal(await fs.readFile(path.join(root, "f.txt"), "utf8"), "alpha\nbeta\n");
         await assert.rejects(fs.stat(path.join(root, "new")));
         assert.equal(g.approvals.length, 0);
-        assert.deepEqual(ts.changes.map((c) => c.path), ["f.txt", "new/dir/n.txt"]);
+        assert.deepEqual(
+            ts.changes.map((c) => c.path),
+            ["f.txt", "new/dir/n.txt"],
+        );
         assert.equal(ts.changes[1].patch, "--- /dev/null\n+++ b/new/dir/n.txt\n@@ -0,0 +1,2 @@\n+x\n+y\n");
     } finally {
         await removeProject(root);
@@ -244,7 +250,7 @@ test("list_files and search respect .tyrignore and skip .tyr, without git", asyn
         "src/a.ts": "export const needle = 1;\n",
         "src/b.js": "// needle here too\n",
         "gen/out.ts": "needle\n",
-        ".tyr/tyr.json": "{\"needle\":1}",
+        ".tyr/tyr.json": '{"needle":1}',
         "node_modules/x/index.js": "needle",
         ".tyrignore": "gen/\n",
     });

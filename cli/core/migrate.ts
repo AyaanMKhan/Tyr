@@ -80,7 +80,7 @@ function commandFromString(command: string): JsonObject {
 export const CONFIG_MIGRATIONS: readonly MigrationStep[] = [
     {
         from: 1,
-        description: "config v1 -> v2: store project.root relative to the project (\".\")",
+        description: 'config v1 -> v2: store project.root relative to the project (".")',
         apply(doc) {
             const project = doc.project;
             if (isObject(project) && typeof project.root === "string" && isAbsoluteAnywhere(project.root)) {
@@ -108,12 +108,7 @@ export const STATE_MIGRATIONS: readonly MigrationStep[] = [];
  * Run `raw` through `steps` up to `current`. Exported for tests; use
  * migrateConfig / migrateState.
  */
-export function runMigrations(
-    raw: unknown,
-    current: number,
-    steps: readonly MigrationStep[],
-    label: string,
-): MigrationResult {
+export function runMigrations(raw: unknown, current: number, steps: readonly MigrationStep[], label: string): MigrationResult {
     if (!isObject(raw)) {
         return { ok: false, reason: "invalid", errors: [`${label}: expected a JSON object`] };
     }
@@ -136,9 +131,7 @@ export function runMigrations(
         return {
             ok: false,
             reason: "newer",
-            errors: [
-                `version: ${label} is version ${version}, written by a newer Tyr (this Tyr understands up to ${current}); upgrade Tyr`,
-            ],
+            errors: [`version: ${label} is version ${version}, written by a newer Tyr (this Tyr understands up to ${current}); upgrade Tyr`],
         };
     }
 

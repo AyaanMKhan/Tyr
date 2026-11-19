@@ -72,10 +72,7 @@ export async function resolveAgentAi(root: string, opts: ResolveAgentAiOptions =
 
 /** The one SDK call the loop makes; `messages.create` of an Anthropic client fits. */
 export interface AgentMessagesClient {
-    create(
-        body: Anthropic.MessageCreateParamsNonStreaming,
-        options?: { signal?: AbortSignal; timeout?: number },
-    ): Promise<Anthropic.Message>;
+    create(body: Anthropic.MessageCreateParamsNonStreaming, options?: { signal?: AbortSignal; timeout?: number }): Promise<Anthropic.Message>;
 }
 
 export function defaultAgentClient(apiKey: string): AgentMessagesClient {
@@ -177,9 +174,7 @@ export async function runToolLoop(opts: ToolLoopOptions): Promise<ToolLoopResult
             emit({ type: "turn", turn: turns });
 
             const body = buildLoopRequest(opts, messages);
-            const signal = opts.signal
-                ? AbortSignal.any([opts.signal, AbortSignal.timeout(timeoutMs)])
-                : AbortSignal.timeout(timeoutMs);
+            const signal = opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
             const response = await opts.client.create(body, { signal, timeout: timeoutMs });
             addUsage(usage, response);
 

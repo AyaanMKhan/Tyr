@@ -50,15 +50,9 @@ test("same-second, same-title reports get collision suffixes", async () => {
     const root = await makeProject({});
     try {
         const now = new Date(Date.UTC(2026, 10, 1, 12, 0, 0));
-        const results = await Promise.all(
-            [1, 2, 3].map(() => writeReport(root, { kind: "check", title: "Lint" }, { now, retention: false })),
-        );
+        const results = await Promise.all([1, 2, 3].map(() => writeReport(root, { kind: "check", title: "Lint" }, { now, retention: false })));
         const ids = results.map((r) => r.id).sort();
-        assert.deepEqual(ids, [
-            "20261101-120000-check-lint",
-            "20261101-120000-check-lint-2",
-            "20261101-120000-check-lint-3",
-        ]);
+        assert.deepEqual(ids, ["20261101-120000-check-lint", "20261101-120000-check-lint-2", "20261101-120000-check-lint-3"]);
         assert.equal((await reportFiles(root)).length, 6);
     } finally {
         await removeProject(root);
@@ -118,11 +112,17 @@ test("readReport and listReports round-trip, newest first, filter and limit", as
         assert.equal(await readReport(root, "20990101-000000-review-missing"), null);
 
         const all = await listReports(root);
-        assert.deepEqual(all.map((r) => r.title), ["Three", "Two", "One"]);
+        assert.deepEqual(
+            all.map((r) => r.title),
+            ["Three", "Two", "One"],
+        );
         assert.equal(all[2].findingCounts.error, 1);
 
         const reviews = await listReports(root, { kind: "review", limit: 1 });
-        assert.deepEqual(reviews.map((r) => r.id), [third.id]);
+        assert.deepEqual(
+            reviews.map((r) => r.id),
+            [third.id],
+        );
     } finally {
         await removeProject(root);
     }
@@ -158,15 +158,7 @@ test("retention by count deletes oldest pairs and leaves unrelated files", async
         assert.ok(pruned.every((p) => p.reason === "count" && p.files.length === 2));
 
         const files = await reportFiles(root);
-        assert.deepEqual(files, [
-            ".gitkeep",
-            `${ids[3]}.json`,
-            `${ids[3]}.md`,
-            `${ids[4]}.json`,
-            `${ids[4]}.md`,
-            "README.json",
-            "notes.md",
-        ].sort());
+        assert.deepEqual(files, [".gitkeep", `${ids[3]}.json`, `${ids[3]}.md`, `${ids[4]}.json`, `${ids[4]}.md`, "README.json", "notes.md"].sort());
     } finally {
         await removeProject(root);
     }
@@ -185,7 +177,10 @@ test("retention by age, applied automatically after writeReport from config", as
         assert.deepEqual(retentionFromConfig(null), { maxCount: 100, maxAgeDays: 30 });
 
         const fresh = await writeReport(root, { kind: "run", title: "fresh" }, { now: new Date(now), config });
-        assert.deepEqual(fresh.pruned.map((p) => [p.id, p.reason]), [[old.id, "age"]]);
+        assert.deepEqual(
+            fresh.pruned.map((p) => [p.id, p.reason]),
+            [[old.id, "age"]],
+        );
         assert.deepEqual(await reportFiles(root), [".gitkeep", `${fresh.id}.json`, `${fresh.id}.md`, `${recent.id}.json`, `${recent.id}.md`].sort());
 
         // Disabled rules prune nothing.

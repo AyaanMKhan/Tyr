@@ -238,9 +238,11 @@ export async function reviewPass(root: string, input: ReviewPassInput): Promise<
     const ctx = input.diff !== undefined ? input.diff : reviewDiff || (input.llm && reviewDiffWithLlm) ? await workingTreeContext(root) : null;
     if (ctx !== null && reviewDiff) guard("diff", () => reviewDiff(ctx));
     if (ctx !== null && input.llm && reviewDiffWithLlm) {
-        const outcome = await reviewDiffWithLlm(ctx).catch(
-            (error: unknown): LlmOutcome => ({ status: "error", findings: [], reason: error instanceof Error ? error.message : String(error) }),
-        );
+        const outcome = await reviewDiffWithLlm(ctx).catch((error: unknown): LlmOutcome => ({
+            status: "error",
+            findings: [],
+            reason: error instanceof Error ? error.message : String(error),
+        }));
         if (outcome.status === "ok") collected.push(...cap(outcome.findings));
         else notes.push(`LLM review ${outcome.status}${outcome.reason ? `: ${outcome.reason}` : ""}`);
     }
@@ -334,7 +336,10 @@ function reportTitle(findings: readonly EngineFinding[], regressions: number, re
 function reportSummary(input: ReviewPassInput, findings: readonly EngineFinding[], added: number, resolved: number, regressions: number): string {
     const ran = input.runs.map((r) => `${r.kind} ${r.outcome}`).join(", ") || "no checks";
     const counts = countBySeverity(findings);
-    const bySeverity = FINDING_SEVERITIES.filter((s) => counts[s] > 0).map((s) => `${counts[s]} ${s}`).join(", ") || "none";
+    const bySeverity =
+        FINDING_SEVERITIES.filter((s) => counts[s] > 0)
+            .map((s) => `${counts[s]} ${s}`)
+            .join(", ") || "none";
     return (
         `Triggered by ${input.trigger.reason}. Checks: ${ran}. Findings: ${bySeverity}` +
         ` (${added} new, ${resolved} resolved, ${plural(regressions, "regression")}).`

@@ -36,11 +36,7 @@ function gitAvailable(): boolean {
 }
 
 function git(root: string, ...args: string[]): void {
-    execFileSync(
-        "git",
-        ["-c", "user.name=Tyr", "-c", "user.email=tyr@example.com", "-c", "commit.gpgsign=false", ...args],
-        { cwd: root, stdio: "ignore" },
-    );
+    execFileSync("git", ["-c", "user.name=Tyr", "-c", "user.email=tyr@example.com", "-c", "commit.gpgsign=false", ...args], { cwd: root, stdio: "ignore" });
 }
 
 function delay(ms: number): Promise<void> {
@@ -96,8 +92,10 @@ test(
                 await delay(50);
             }
         };
-        const fsChanged = (rel: string) => (event: TyrEvent): boolean =>
-            event.kind === "fs.changed" && pathsOf(event).includes(rel);
+        const fsChanged =
+            (rel: string) =>
+            (event: TyrEvent): boolean =>
+                event.kind === "fs.changed" && pathsOf(event).includes(rel);
 
         try {
             // A second branch whose files differ from main's: one modified,
@@ -139,10 +137,7 @@ test(
 
             // 2. A new branch at the same commit: a branch switch, no files.
             git(root, "checkout", "-q", "-b", "x");
-            await waitFor(
-                "git.head switching to x",
-                (e) => e.kind === "git.head" && (e.data?.current as { branch?: string } | undefined)?.branch === "x",
-            );
+            await waitFor("git.head switching to x", (e) => e.kind === "git.head" && (e.data?.current as { branch?: string } | undefined)?.branch === "x");
 
             // 3. Switching to a branch with different files: one git event,
             //    and the rewritten files arrive as ONE fs.changed attributed to it.
@@ -186,7 +181,10 @@ test(
             assert.equal(isProcessAlive(started.pid), false);
             pid = null;
             await waitFor("daemon.stopped", (e) => e.kind === "daemon.stopped");
-            assert.equal(events.some((e) => e.kind === "daemon.crashed"), false);
+            assert.equal(
+                events.some((e) => e.kind === "daemon.crashed"),
+                false,
+            );
 
             if (process.env.TYR_E2E_DUMP === "1") {
                 // For eyeballing the journal: TYR_E2E_DUMP=1 npm test

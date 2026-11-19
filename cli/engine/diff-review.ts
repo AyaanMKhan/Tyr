@@ -22,14 +22,7 @@
 
 import type { DiffFileStat, DiffResult, DiffStatus } from "../core/git-diff.js";
 import type { FindingSeverity } from "../core/reports.js";
-import {
-    MAX_FINDINGS_PER_DETECTOR,
-    compareFindings,
-    dedupeFindings,
-    makeFinding,
-    type EngineFinding,
-    type ReviewContext,
-} from "./findings.js";
+import { MAX_FINDINGS_PER_DETECTOR, compareFindings, dedupeFindings, makeFinding, type EngineFinding, type ReviewContext } from "./findings.js";
 
 /* -------------------------------------------------------------------------
  * Options
@@ -320,8 +313,7 @@ function patternRule(
 ): DiffRule {
     return lineRule(id, summary, {
         appliesTo,
-        match: ({ text }) =>
-            pattern.test(text) ? { severity, title, detail: withExcerpt(detail, text) } : null,
+        match: ({ text }) => (pattern.test(text) ? { severity, title, detail: withExcerpt(detail, text) } : null),
     });
 }
 
@@ -599,7 +591,8 @@ const envFileRule: DiffRule = {
  * Tests
  * ---------------------------------------------------------------------- */
 
-const TEST_CASE = /^\s*(?:(?:it|test|specify)(?:\.(?:each|concurrent|only|skip|todo)\S*)?\s*\(|(?:async\s+)?def\s+test_\w*|#\[(?:[\w:]+::)?test\]|func\s+Test\w*\s*\()/;
+const TEST_CASE =
+    /^\s*(?:(?:it|test|specify)(?:\.(?:each|concurrent|only|skip|todo)\S*)?\s*\(|(?:async\s+)?def\s+test_\w*|#\[(?:[\w:]+::)?test\]|func\s+Test\w*\s*\()/;
 
 const deletedTestFileRule: DiffRule = {
     id: "diff/deleted-test-file",
@@ -698,7 +691,9 @@ const execInterpolatedRule = patternRule(
 const rmRfRule = lineRule("diff/rm-rf", "Recursive forced delete (rm -rf) added to a script", {
     appliesTo: isSourceLike,
     match: ({ text }) => {
-        const match = /\brm\s+(?:-[a-zA-Z]*(?:r[a-zA-Z]*f|f[a-zA-Z]*r)[a-zA-Z]*|-r\s+-f|-f\s+-r|--recursive\s+--force|--force\s+--recursive)\s+(.*)$/.exec(text);
+        const match = /\brm\s+(?:-[a-zA-Z]*(?:r[a-zA-Z]*f|f[a-zA-Z]*r)[a-zA-Z]*|-r\s+-f|-f\s+-r|--recursive\s+--force|--force\s+--recursive)\s+(.*)$/.exec(
+            text,
+        );
         if (match === null) return null;
         const target = (match[1] ?? "").trim();
         // A bare root, home, or an unquoted variable followed by "/" ("$DIR/"
@@ -706,9 +701,7 @@ const rmRfRule = lineRule("diff/rm-rf", "Recursive forced delete (rm -rf) added 
         const dangerous = /^(?:\/\*?|~\/?\*?|\$HOME\/?\*?|"?\$\{?\w+\}?"?\/\*?|\*)(?:\s|$|;|&|\|)/.test(target);
         return {
             severity: dangerous ? "error" : "warning",
-            title: dangerous
-                ? "Recursive forced delete of a root, home or variable path added"
-                : "Recursive forced delete (rm -rf) added",
+            title: dangerous ? "Recursive forced delete of a root, home or variable path added" : "Recursive forced delete (rm -rf) added",
             detail: excerptOf(text),
         };
     },
@@ -751,14 +744,7 @@ const eslintDisableRule = patternRule(
     isJsPath,
 );
 
-const anyCastRule = patternRule(
-    "diff/any-cast",
-    "Cast to any added in TypeScript",
-    "info",
-    /\bas\s+any\b|<any>\s*[\w(]/,
-    "Cast to `any` added",
-    isTsPath,
-);
+const anyCastRule = patternRule("diff/any-cast", "Cast to any added in TypeScript", "info", /\bas\s+any\b|<any>\s*[\w(]/, "Cast to `any` added", isTsPath);
 
 const todoRule = patternRule(
     "diff/todo",
@@ -769,14 +755,7 @@ const todoRule = patternRule(
     isSourceLike,
 );
 
-const consoleLogRule = patternRule(
-    "diff/console-log",
-    "console.log added in non-test source",
-    "info",
-    /\bconsole\.log\s*\(/,
-    "console.log added",
-    isNonTestJs,
-);
+const consoleLogRule = patternRule("diff/console-log", "console.log added in non-test source", "info", /\bconsole\.log\s*\(/, "console.log added", isNonTestJs);
 
 const debuggerRule = lineRule("diff/debugger", "debugger statement or breakpoint added in non-test source", {
     appliesTo: (p) => !isTestPath(p) && (isJsPath(p) || extension(p) === "py"),
@@ -952,9 +931,7 @@ function collectSuppressions(files: readonly PatchFile[]): Map<string, Map<numbe
                 if (entry.kind !== "add") continue;
                 const match = /\btyr-ignore\b(?:\s*:\s*([\w./*-]+(?:\s*,\s*[\w./*-]+)*))?/.exec(entry.text);
                 if (match === null) continue;
-                const rules = new Set<string>(
-                    match[1] === undefined ? ["*"] : match[1].split(",").map((r) => normalizeRuleId(r)),
-                );
+                const rules = new Set<string>(match[1] === undefined ? ["*"] : match[1].split(",").map((r) => normalizeRuleId(r)));
                 let lines = out.get(file.path);
                 if (lines === undefined) out.set(file.path, (lines = new Map()));
                 lines.set(entry.line, rules);

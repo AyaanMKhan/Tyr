@@ -45,13 +45,7 @@ export interface TyrPaths {
  * and settings.json stay tracked so a team shares one profile and one set of
  * preferences. Keep settings.json off this list.
  */
-const TYR_GITIGNORE = [
-    "# Tyr runtime output — not meant to be committed.",
-    "logs/",
-    "reports/",
-    "state/",
-    "",
-].join("\n");
+const TYR_GITIGNORE = ["# Tyr runtime output — not meant to be committed.", "logs/", "reports/", "state/", ""].join("\n");
 
 /* -------------------------------------------------------------------------
  * Paths
@@ -230,10 +224,7 @@ export function toJsonDocument(value: unknown): string {
  * leave a half-written tyr.json behind; a temp file in /tmp would risk EXDEV.
  */
 export async function writeFileAtomic(target: string, contents: string): Promise<void> {
-    const tmp = path.join(
-        path.dirname(target),
-        `.${path.basename(target)}.${process.pid}.${Date.now()}.tmp`,
-    );
+    const tmp = path.join(path.dirname(target), `.${path.basename(target)}.${process.pid}.${Date.now()}.tmp`);
 
     try {
         await fs.writeFile(tmp, contents, "utf8");
@@ -246,10 +237,7 @@ export async function writeFileAtomic(target: string, contents: string): Promise
 }
 
 /** Outcome of reading one of Tyr's JSON files, keeping the reason on failure. */
-export type JsonFileRead =
-    | { kind: "ok"; value: Record<string, unknown> }
-    | { kind: "missing" }
-    | { kind: "invalid"; error: string };
+export type JsonFileRead = { kind: "ok"; value: Record<string, unknown> } | { kind: "missing" } | { kind: "invalid"; error: string };
 
 /** Read and parse a JSON object file, saying why when it cannot. Never throws. */
 export async function readJsonFile(file: string): Promise<JsonFileRead> {
@@ -330,11 +318,7 @@ export interface ScaffoldResult extends TyrPaths {
  * (which resets *detection*) may discard it. Delete it by hand to get a
  * fresh starter file.
  */
-export async function scaffold(
-    snapshot: InitSnapshot,
-    tyrVersion: string,
-    options: ScaffoldOptions = {},
-): Promise<ScaffoldResult> {
+export async function scaffold(snapshot: InitSnapshot, tyrVersion: string, options: ScaffoldOptions = {}): Promise<ScaffoldResult> {
     const paths = resolveTyrPaths(snapshot.discovery.root);
 
     // Read before anything is written. Missing or malformed files read as
@@ -346,10 +330,7 @@ export async function scaffold(
     // what upgrades tyr.json on disk; see loadConfig for why reads don't.
     const [previousConfig, previousState] = options.reset
         ? [null, null]
-        : await Promise.all([
-              readPreviousDocument(paths.configFile, migrateConfig),
-              readPreviousDocument(paths.stateFile, migrateState),
-          ]);
+        : await Promise.all([readPreviousDocument(paths.configFile, migrateConfig), readPreviousDocument(paths.stateFile, migrateState)]);
     const config = mergeConfig(buildConfig(snapshot, tyrVersion), previousConfig);
     const state = mergeState(buildInitialState(snapshot), previousState);
 
@@ -371,11 +352,7 @@ export async function scaffold(
 
     // Append rather than truncate so re-initializing keeps the existing
     // history (subject to the shared size cap / rotation in log.ts).
-    await writeLog(
-        paths.logFile,
-        "info",
-        `tyr init — scaffolded ${TYR_DIR_NAME}/ with Tyr ${tyrVersion} (${snapshot.discovery.fileCount} files scanned)`,
-    );
+    await writeLog(paths.logFile, "info", `tyr init — scaffolded ${TYR_DIR_NAME}/ with Tyr ${tyrVersion} (${snapshot.discovery.fileCount} files scanned)`);
 
     return {
         ...paths,
@@ -391,10 +368,7 @@ export async function scaffold(
  * Any other migration failure (e.g. a garbled `version`) falls back to the
  * raw document, which the lenient merge can still mine for user edits.
  */
-async function readPreviousDocument(
-    file: string,
-    migrate: (raw: unknown) => MigrationResult,
-): Promise<Record<string, unknown> | null> {
+async function readPreviousDocument(file: string, migrate: (raw: unknown) => MigrationResult): Promise<Record<string, unknown> | null> {
     const raw = await readJsonObject(file);
     if (raw === null) return null;
     const migrated = migrate(raw);

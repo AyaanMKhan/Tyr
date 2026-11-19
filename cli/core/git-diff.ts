@@ -43,10 +43,7 @@ const DIFF_FLAGS = ["--no-color", "--no-ext-diff", "--no-textconv", "--src-prefi
  *   tracked files together. With `until: "head"` it is `ref` vs HEAD, i.e.
  *   only what was committed (`ref..HEAD`).
  */
-export type DiffScope =
-    | { kind: "staged" }
-    | { kind: "unstaged" }
-    | { kind: "since"; ref: string; until?: "worktree" | "head" };
+export type DiffScope = { kind: "staged" } | { kind: "unstaged" } | { kind: "since"; ref: string; until?: "worktree" | "head" };
 
 /** Git's single-letter change status (`--name-status`). */
 export type DiffStatus = "A" | "C" | "D" | "M" | "R" | "T" | "U" | "X";
@@ -116,11 +113,7 @@ export type DiffStatOptions = Omit<DiffOptions, "contextLines" | "maxPatchBytes"
  * totals. Null when `root` is not in a work tree, a ref doesn't resolve, or
  * git fails.
  */
-export async function getDiffStat(
-    root: string,
-    scope: DiffScope,
-    options: DiffStatOptions = {},
-): Promise<DiffStat | null> {
+export async function getDiffStat(root: string, scope: DiffScope, options: DiffStatOptions = {}): Promise<DiffStat | null> {
     const range = await resolveRange(root, scope, options.timeoutMs);
     if (range === null) {
         return null;
@@ -129,18 +122,7 @@ export async function getDiffStat(
     const [stat, untracked] = await Promise.all([
         runGit(
             root,
-            [
-                ...CONFIG_OVERRIDES,
-                "diff",
-                ...DIFF_FLAGS,
-                ...renameFlags(options),
-                "--raw",
-                "--numstat",
-                "-z",
-                ...range,
-                "--",
-                ...(options.pathspec ?? []),
-            ],
+            [...CONFIG_OVERRIDES, "diff", ...DIFF_FLAGS, ...renameFlags(options), "--raw", "--numstat", "-z", ...range, "--", ...(options.pathspec ?? [])],
             { timeoutMs: options.timeoutMs ?? GIT_TIMEOUT_MS },
         ),
         listUntracked(root, scope, options),
@@ -158,34 +140,20 @@ export async function getDiffStat(
  * `maxPatchBytes` is not an error: it comes back cut at the last whole line
  * with `truncated: true`, while `files`/`totals` still describe everything.
  */
-export async function getDiff(
-    root: string,
-    scope: DiffScope,
-    options: DiffOptions = {},
-): Promise<DiffResult | null> {
+export async function getDiff(root: string, scope: DiffScope, options: DiffOptions = {}): Promise<DiffResult | null> {
     const range = await resolveRange(root, scope, options.timeoutMs);
     if (range === null) {
         return null;
     }
 
     const maxBytes = Math.max(1, Math.floor(options.maxPatchBytes ?? DEFAULT_MAX_PATCH_BYTES));
-    const context =
-        options.contextLines === undefined ? [] : [`--unified=${Math.max(0, Math.floor(options.contextLines))}`];
+    const context = options.contextLines === undefined ? [] : [`--unified=${Math.max(0, Math.floor(options.contextLines))}`];
 
     const [stat, patch] = await Promise.all([
         getDiffStat(root, scope, options),
         runGit(
             root,
-            [
-                ...CONFIG_OVERRIDES,
-                "diff",
-                ...DIFF_FLAGS,
-                ...renameFlags(options),
-                ...context,
-                ...range,
-                "--",
-                ...(options.pathspec ?? []),
-            ],
+            [...CONFIG_OVERRIDES, "diff", ...DIFF_FLAGS, ...renameFlags(options), ...context, ...range, "--", ...(options.pathspec ?? [])],
             // One byte over the cap is enough to know the patch didn't fit.
             { timeoutMs: options.timeoutMs ?? GIT_TIMEOUT_MS, maxBuffer: maxBytes + 1 },
         ),
@@ -266,22 +234,17 @@ function renameFlags(options: DiffStatOptions): string[] {
  * means git failed (the caller turns that into null); `null` means "not
  * requested / not applicable".
  */
-async function listUntracked(
-    root: string,
-    scope: DiffScope,
-    options: DiffStatOptions,
-): Promise<string[] | null | undefined> {
+async function listUntracked(root: string, scope: DiffScope, options: DiffStatOptions): Promise<string[] | null | undefined> {
     const touchesWorktree = scope.kind === "unstaged" || (scope.kind === "since" && scope.until !== "head");
     if (options.includeUntracked !== true || !touchesWorktree) {
         return null;
     }
 
     // `--full-name` keeps paths top-level-relative like the diff output.
-    const result = await runGit(
-        root,
-        ["ls-files", "--others", "--exclude-standard", "--full-name", "-z", "--", ...(options.pathspec ?? [])],
-        { timeoutMs: options.timeoutMs ?? GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER },
-    );
+    const result = await runGit(root, ["ls-files", "--others", "--exclude-standard", "--full-name", "-z", "--", ...(options.pathspec ?? [])], {
+        timeoutMs: options.timeoutMs ?? GIT_TIMEOUT_MS,
+        maxBuffer: GIT_MAX_BUFFER,
+    });
     if (!result.ok) {
         return undefined;
     }
@@ -321,7 +284,7 @@ function parseRawNumstat(stdout: string): DiffFileStat[] {
             const score = statusField.slice(1);
             const paired = letter === "R" || letter === "C";
             const first = tokens[i + 1] ?? "";
-            const second = paired ? tokens[i + 2] ?? "" : undefined;
+            const second = paired ? (tokens[i + 2] ?? "") : undefined;
             i += paired ? 3 : 2;
 
             const status: DiffStatus = isDiffStatus(letter) ? letter : "X";

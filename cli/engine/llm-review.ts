@@ -32,14 +32,7 @@ import { readConfig } from "../core/scaffold.js";
 import { resolveSettings } from "../core/settings.js";
 import type { TyrSettings } from "../core/settings-types.js";
 import type { TyrConfig } from "../core/types.js";
-import {
-    MAX_FINDINGS_PER_DETECTOR,
-    compareFindings,
-    dedupeFindings,
-    makeFinding,
-    type EngineFinding,
-    type ReviewContext,
-} from "./findings.js";
+import { MAX_FINDINGS_PER_DETECTOR, compareFindings, dedupeFindings, makeFinding, type EngineFinding, type ReviewContext } from "./findings.js";
 
 /* -------------------------------------------------------------------------
  * Public types
@@ -47,10 +40,7 @@ import {
 
 /** The one SDK call the reviewer makes; `messages.create` of an Anthropic client fits. */
 export interface LlmMessagesClient {
-    create(
-        body: Anthropic.MessageCreateParamsNonStreaming,
-        options?: { signal?: AbortSignal; timeout?: number },
-    ): Promise<Anthropic.Message>;
+    create(body: Anthropic.MessageCreateParamsNonStreaming, options?: { signal?: AbortSignal; timeout?: number }): Promise<Anthropic.Message>;
 }
 
 export interface LlmReviewOptions {
@@ -193,9 +183,7 @@ export async function reviewDiffWithLlm(ctx: ReviewContext, opts: LlmReviewOptio
 
         const client = opts.client ?? defaultClient(apiKey);
         const timeoutMs = opts.timeoutMs ?? DEFAULT_LLM_TIMEOUT_MS;
-        const signal = opts.signal
-            ? AbortSignal.any([opts.signal, AbortSignal.timeout(timeoutMs)])
-            : AbortSignal.timeout(timeoutMs);
+        const signal = opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs);
 
         const response = await client.create(body, { signal, timeout: timeoutMs });
         const usage = usageOf(response);
@@ -206,9 +194,7 @@ export async function reviewDiffWithLlm(ctx: ReviewContext, opts: LlmReviewOptio
         if (response.stop_reason === "max_tokens") {
             return { status: "error", findings: [], reason: "the response was cut off at max_tokens", usage, omittedFiles: trimmed.omitted };
         }
-        const text = response.content
-            .map((block) => (block.type === "text" ? block.text : ""))
-            .join("");
+        const text = response.content.map((block) => (block.type === "text" ? block.text : "")).join("");
         let parsed: unknown;
         try {
             parsed = JSON.parse(text);
@@ -331,11 +317,7 @@ export function profileText(config: TyrConfig): string {
  * ancestors, excluding the root one (already in the system prompt). Sorted
  * by path so the order is deterministic.
  */
-async function loadNestedClaudeMd(
-    root: string,
-    included: readonly string[],
-    maxBytes: number,
-): Promise<Array<{ path: string; text: string }>> {
+async function loadNestedClaudeMd(root: string, included: readonly string[], maxBytes: number): Promise<Array<{ path: string; text: string }>> {
     const dirs = new Set<string>();
     for (const file of included) {
         let dir = path.posix.dirname(file);
@@ -400,7 +382,10 @@ interface FileChunk {
  * is incomplete and never sent.
  */
 export function trimPatch(diff: ReviewContext["diff"], maxBytes: number): TrimmedPatch {
-    const chunks = splitPatch(diff.patch, diff.files.map((f) => ({ path: f.path, oldPath: f.oldPath })));
+    const chunks = splitPatch(
+        diff.patch,
+        diff.files.map((f) => ({ path: f.path, oldPath: f.oldPath })),
+    );
     if (diff.truncated && chunks.length > 0) chunks.pop();
     const binary = new Set(diff.files.filter((f) => f.binary).map((f) => f.path));
 

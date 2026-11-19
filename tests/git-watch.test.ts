@@ -45,8 +45,7 @@ class Recorder {
         const deadline = Date.now() + WAIT_MS;
         while (Date.now() < deadline) {
             const match = this.events.find(
-                (event): event is Extract<GitWatchEvent, { kind: K }> =>
-                    event.kind === kind && predicate(event as Extract<GitWatchEvent, { kind: K }>),
+                (event): event is Extract<GitWatchEvent, { kind: K }> => event.kind === kind && predicate(event as Extract<GitWatchEvent, { kind: K }>),
             );
             if (match !== undefined) {
                 return match;

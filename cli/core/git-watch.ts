@@ -51,19 +51,19 @@ export interface GitOperationState {
 
 export type GitWatchEvent =
     | {
-        kind: "head";
-        previous: GitHeadState;
-        current: GitHeadState;
-        /** HEAD moved to a different commit (commit, reset, pull, checkout). */
-        commitChanged: boolean;
-        /** HEAD now names a different branch (checkout/switch, detach). */
-        branchChanged: boolean;
-    }
+          kind: "head";
+          previous: GitHeadState;
+          current: GitHeadState;
+          /** HEAD moved to a different commit (commit, reset, pull, checkout). */
+          commitChanged: boolean;
+          /** HEAD now names a different branch (checkout/switch, detach). */
+          branchChanged: boolean;
+      }
     | {
-        kind: "index";
-        /** Paths that differ between the index and HEAD after the change. */
-        staged: string[];
-    }
+          kind: "index";
+          /** Paths that differ between the index and HEAD after the change. */
+          staged: string[];
+      }
     | { kind: "refs"; changes: GitRefChange[] }
     | { kind: "merge-state"; previous: GitOperationState; current: GitOperationState };
 
@@ -335,7 +335,10 @@ async function resolveGitDirs(root: string): Promise<{ gitDir: string; commonDir
         return null;
     }
 
-    const lines = result.stdout.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+    const lines = result.stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
     if (lines.length < 2) {
         return null;
     }
@@ -448,12 +451,7 @@ function closeQuietly(watcher: fs.FSWatcher): void {
  * ---------------------------------------------------------------------- */
 
 async function readSnapshot(root: string, gitDir: string): Promise<Snapshot> {
-    const [head, index, refs, operations] = await Promise.all([
-        readHead(root),
-        readIndex(root),
-        readRefs(root),
-        readOperations(gitDir),
-    ]);
+    const [head, index, refs, operations] = await Promise.all([readHead(root), readIndex(root), readRefs(root), readOperations(gitDir)]);
     // A failed baseline read (e.g. a timeout) falls back to "empty" so the
     // watcher still starts; the next successful read reports the difference.
     return {
@@ -464,13 +462,7 @@ async function readSnapshot(root: string, gitDir: string): Promise<Snapshot> {
     };
 }
 
-async function checkKinds(
-    root: string,
-    gitDir: string,
-    kinds: Set<GitWatchKind>,
-    snapshot: Snapshot,
-    emit: (event: GitWatchEvent) => void,
-): Promise<void> {
+async function checkKinds(root: string, gitDir: string, kinds: Set<GitWatchKind>, snapshot: Snapshot, emit: (event: GitWatchEvent) => void): Promise<void> {
     // Reads run together; emission order is fixed (head, index, refs,
     // merge-state) so consumers see a commit as "head moved" first.
     const [head, index, refs, operations] = await Promise.all([
@@ -507,9 +499,7 @@ async function checkKinds(
 
     if (operations !== null) {
         const previous = snapshot["merge-state"];
-        const changed = (Object.keys(operations) as (keyof GitOperationState)[]).some(
-            (key) => previous[key] !== operations[key],
-        );
+        const changed = (Object.keys(operations) as (keyof GitOperationState)[]).some((key) => previous[key] !== operations[key]);
         if (changed) {
             snapshot["merge-state"] = operations;
             emit({ kind: "merge-state", previous, current: operations });
@@ -518,10 +508,7 @@ async function checkKinds(
 }
 
 async function readHead(root: string): Promise<GitHeadState | null> {
-    const [commit, branchInfo] = await Promise.all([
-        runGit(root, ["rev-parse", "-q", "--verify", "HEAD^{commit}"], READ_ONLY),
-        getCurrentBranch(root),
-    ]);
+    const [commit, branchInfo] = await Promise.all([runGit(root, ["rev-parse", "-q", "--verify", "HEAD^{commit}"], READ_ONLY), getCurrentBranch(root)]);
     if (commit.timedOut) {
         return null;
     }
